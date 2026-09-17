@@ -3,6 +3,7 @@ class MarketChart {
     this.container = container;
     this.chart = null;
     this.series = null;
+    this.indicatorLayer = null;
     this.candleCount = 0;
     this.firstCandleTime = null;
     this.weekendOverlay = showWeekends ? new WeekendOverlay(container) : null;
@@ -17,6 +18,7 @@ class MarketChart {
       wickUpColor: "#36c984",
       wickDownColor: "#eb6f92",
     });
+    this.indicatorLayer = new ChartIndicatorLayer(this.chart);
     this.weekendOverlay?.attach(this.chart);
 
     new ResizeObserver(([entry]) => {
@@ -49,6 +51,7 @@ class MarketChart {
 
     this.candleCount = data.length;
     this.firstCandleTime = data[0].time;
+    this.indicatorLayer?.setCandles(candles);
     this.weekendOverlay?.setCandles(candles);
     if (fitContent) this.chart.timeScale().fitContent();
     this.weekendOverlay?.render();
@@ -56,6 +59,7 @@ class MarketChart {
 
   reset() {
     this.series.setData([]);
+    this.indicatorLayer?.reset();
     this.candleCount = 0;
     this.firstCandleTime = null;
     this.weekendOverlay?.reset();
@@ -64,6 +68,7 @@ class MarketChart {
   applyTheme() {
     if (!this.chart) return;
     this.chart.applyOptions(this.options());
+    this.indicatorLayer?.applyTheme();
   }
 
   options() {

@@ -79,6 +79,21 @@
             </div>
             <span class="badge">Public market data</span>
           </div>
+          <div id="indicator-toolbar" class="chart-toolbar" aria-label="Chart indicators">
+            <div class="chart-toolbar-controls">
+              <label class="field">
+                Indicator
+                <select class="field-control" data-indicator-type>
+                  <option value="sma">Simple moving average</option>
+                  <option value="bollinger">Bollinger Bands</option>
+                </select>
+              </label>
+              <button class="button button--secondary" type="button" data-indicator-add>
+                Add indicator
+              </button>
+            </div>
+            <div class="indicator-list" data-indicator-list aria-live="polite"></div>
+          </div>
           <div class="chart-frame">
             <div id="market-chart" role="img" aria-label="Interactive candlestick chart"></div>
             <div id="chart-empty" class="empty-state">Loading market data…</div>
@@ -88,7 +103,11 @@
     </div>
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/chart-overlays.js?v=3"></script>
-    <script src="/market-chart.js?v=2"></script>
-    <script src="/market.js?v=2"></script>
+    <script src="/chart/indicators/calculations.js?v=1"></script>
+    <script src="/chart/indicators/definitions.js?v=1"></script>
+    <script src="/chart/indicators/layer.js?v=1"></script>
+    <script src="/market-chart.js?v=3"></script>
+    <script src="/chart/indicators/toolbar.js?v=1"></script>
+    <script src="/market.js?v=3"></script>
   </body>
 </html>

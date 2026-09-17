@@ -7,6 +7,10 @@ const feedDot = document.querySelector("#feed-dot");
 const feedLabel = document.querySelector("#feed-label");
 const barCount = document.querySelector("#bar-count");
 const lastPrice = document.querySelector("#last-price");
+const indicatorToolbar = new ChartIndicatorToolbar(
+  document.querySelector("#indicator-toolbar"),
+  marketChart.indicatorLayer,
+);
 
 let requestId = 0;
 

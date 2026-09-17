@@ -39,6 +39,7 @@ OHLCV download → SQLite → backtest runner → Backtest UI
 - The console receives a list of bot snapshots from the backend; it does not run strategy logic.
 - Market View: analyzes one selected market independently. It does not create bots, stage strategies, or run backtests. It bootstraps the latest 1,000 Binance candles into memory, then keeps the current candle updated from the public kline WebSocket. It does not write market data to SQLite. The browser renders the feed with TradingView Lightweight Charts; chart interaction stays in the UI layer.
 - Chart annotations are reusable overlays configured by the chart caller. The current Market View enables a UTC weekend background overlay; the same chart component can enable it for Backtest later without duplicating page logic.
+- Chart indicators are reusable UI-layer modules under `web/chart/indicators/`. Indicator calculations are separate from chart rendering and toolbar state. Market View initially exposes Simple Moving Average and Bollinger Bands with editable parameters; active settings remain in browser memory and are not written to SQLite.
 - Backtest: runs a selected strategy on stored historical data only.
 - Data Management: will manage historical data downloads and storage when explicitly requested.
 
