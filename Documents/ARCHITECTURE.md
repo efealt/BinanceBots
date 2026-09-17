@@ -10,9 +10,11 @@ The live and paper trading paths run on live market data and keep their working 
 ## Live and paper trading
 
 ```text
-Live market data → in-memory grid engine → live or paper executor → in-memory bot state → UI snapshot
+Live market data → in-memory bot runtimes → live or paper executor → bot snapshots → UI
 ```
 
+- Each bot is an independent in-memory runtime with its own bot ID, strategy, symbol, and state.
+- One grid bot runs one symbol. Multiple bots may run at the same time.
 - Live and paper use the same live market data and strategy engine.
 - Only execution differs: exchange orders for live trading, simulated fills for paper trading.
 - Grid decisions, order handling, position state, and UI reads must not wait on SQLite.
@@ -33,7 +35,10 @@ OHLCV download → SQLite → backtest runner → Backtest UI
 
 ## UI boundaries
 
-- Console: displays live or paper bot state from backend snapshots.
+- Console: shows a top-row bot selector and the detail view for one selected bot. Selecting a card changes only the UI view; it does not affect any bot runtime.
+- The console receives a list of bot snapshots from the backend; it does not run strategy logic.
+- Market View: analyzes one selected market independently. It does not create bots, stage strategies, or run backtests. It bootstraps the latest 1,000 Binance candles into memory, then keeps the current candle updated from the public kline WebSocket. It does not write market data to SQLite. The browser renders the feed with TradingView Lightweight Charts; chart interaction stays in the UI layer.
+- Chart annotations are reusable overlays configured by the chart caller. The current Market View enables a UTC weekend background overlay; the same chart component can enable it for Backtest later without duplicating page logic.
 - Backtest: runs a selected strategy on stored historical data only.
 - Data Management: will manage historical data downloads and storage when explicitly requested.
 

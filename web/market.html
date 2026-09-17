@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Binance Grid · Market View</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a class="active" href="/market.html" aria-current="page">Market</a>
+          <a href="/backtests.html">Backtest</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot live"></span> Market mode</span>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel toolbar" aria-label="Market selection and live price">
+          <div class="toolbar-group">
+            <div class="toolbar-heading">
+              <p class="eyebrow">Market data</p>
+              <span>Choose the instrument and timeframe</span>
+            </div>
+            <div class="field-grid">
+              <label class="field">
+                Market
+                <select id="market-symbol" class="field-control">
+                  <option value="BTCUSDT">BTCUSDT</option>
+                  <option value="ETHUSDT">ETHUSDT</option>
+                </select>
+              </label>
+              <label class="field">
+                Timeframe
+                <select id="market-timeframe" class="field-control">
+                  <option value="1m">1 minute</option>
+                  <option value="5m">5 minutes</option>
+                  <option value="1h">1 hour</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="metric-card" aria-live="polite">
+            <div class="metric-heading">
+              <span class="eyebrow">Live price</span>
+              <span class="badge">Binance</span>
+            </div>
+            <strong id="last-price" class="metric-value">—</strong>
+            <div class="status-line">
+              <span id="feed-dot" class="status-dot pending"></span>
+              <span id="feed-label">Loading 1,000 candles</span>
+              <span id="bar-count" class="muted-copy"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel chart-panel" aria-label="Live market chart">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Live chart</p>
+              <h2 id="chart-title">BTCUSDT · 1 minute</h2>
+            </div>
+            <span class="badge">Public market data</span>
+          </div>
+          <div class="chart-frame">
+            <div id="market-chart" role="img" aria-label="Interactive candlestick chart"></div>
+            <div id="chart-empty" class="empty-state">Loading market data…</div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/chart-overlays.js?v=3"></script>
+    <script src="/market-chart.js?v=2"></script>
+    <script src="/market.js?v=2"></script>
+  </body>
+</html>

@@ -20,6 +20,7 @@
 
         <nav class="primary-nav" aria-label="Main navigation">
           <a href="/">Console</a>
+          <a href="/market.html">Market</a>
           <a class="active" href="/backtests.html" aria-current="page">Backtest</a>
         </nav>
 
@@ -32,14 +33,6 @@
       </header>
 
       <main>
-        <section class="page-heading">
-          <div>
-            <p class="eyebrow">Historical research</p>
-            <h1>Backtest</h1>
-            <p class="lede">Run an existing strategy against OHLCV data that has already been downloaded.</p>
-          </div>
-        </section>
-
         <section class="single-run-grid">
           <article class="panel">
             <div class="panel-heading">
@@ -47,10 +40,10 @@
                 <p class="eyebrow">Inputs</p>
                 <h2>Backtest setup</h2>
               </div>
-              <span class="muted-badge">Not wired</span>
+              <span class="badge badge--muted">Not wired</span>
             </div>
 
-            <form class="strategy-form">
+            <form class="form-grid">
               <label>
                 Strategy
                 <input value="No strategy selected" disabled />
@@ -77,7 +70,7 @@
               </label>
             </form>
 
-            <button class="run-button" type="button" disabled>Run backtest</button>
+            <button class="button button--secondary" type="button" disabled>Run backtest</button>
             <p class="panel-note">This page uses stored historical data only. Data download and management will be built separately.</p>
           </article>
 
@@ -87,7 +80,7 @@
                 <p class="eyebrow">Output</p>
                 <h2>Backtest result</h2>
               </div>
-              <span class="muted-badge">No run</span>
+              <span class="badge badge--muted">No run</span>
             </div>
             <div class="result-placeholder">Select a strategy and stored OHLCV dataset, then run the backtest to see the result.</div>
           </article>

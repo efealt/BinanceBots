@@ -20,7 +20,8 @@
 
         <nav class="primary-nav" aria-label="Main navigation">
           <a class="active" href="/" aria-current="page">Console</a>
-          <a href="/backtests.html">Backtests</a>
+          <a href="/market.html">Market</a>
+          <a href="/backtests.html">Backtest</a>
         </nav>
 
         <div class="topbar-actions">
@@ -32,126 +33,18 @@
       </header>
 
       <main>
-        <section class="page-heading">
-          <div>
-            <p class="eyebrow">System overview</p>
-            <h1>Execution workspace</h1>
-            <p class="lede">The UI is ready. Exchange, strategy, charting, positions, and storage are intentionally offline.</p>
+        <section class="bot-selector" aria-label="Bots">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Bots</p>
+              <h2>Bot strip</h2>
+            </div>
+            <span id="bot-count" class="badge badge--muted">0 bots</span>
           </div>
-          <p id="last-updated" class="last-updated">Checking local service…</p>
+          <div id="bot-strip" class="bot-strip"></div>
         </section>
 
-        <section class="status-grid" aria-label="System status">
-          <article class="status-card">
-            <div class="card-header">
-              <p>Exchange</p>
-              <span id="exchange-state" class="status-dot pending" aria-label="Pending"></span>
-            </div>
-            <strong id="exchange-title">Binance API</strong>
-            <span id="exchange-detail">Not connected</span>
-          </article>
-
-          <article class="status-card">
-            <div class="card-header">
-              <p>Execution</p>
-              <span id="execution-state" class="status-dot pending" aria-label="Pending"></span>
-            </div>
-            <strong id="execution-title">Execution</strong>
-            <span id="execution-detail">No strategy configured</span>
-          </article>
-
-          <article class="status-card">
-            <div class="card-header">
-              <p>Persistence</p>
-              <span id="storage-state" class="status-dot pending" aria-label="Pending"></span>
-            </div>
-            <strong id="storage-title">Trade storage</strong>
-            <span id="storage-detail">Not configured</span>
-          </article>
-        </section>
-
-        <section class="workspace-grid">
-          <article class="panel chart-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Market view</p>
-                <h2>Chart &amp; grid view</h2>
-              </div>
-              <span class="muted-badge">Waiting for market data</span>
-            </div>
-
-            <div class="chart-placeholder" role="img" aria-label="Empty chart placeholder">
-              <div class="chart-axis chart-axis-y"><span>Price</span></div>
-              <div class="chart-axis chart-axis-x"><span>Time</span></div>
-              <div class="empty-chart-copy">
-                <strong>No market feed yet</strong>
-                <span>Live price, grid levels, fills, and paper/live state will render here.</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel strategy-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Strategy workspace</p>
-                <h2>Grid parameters</h2>
-              </div>
-              <span class="muted-badge">Not wired</span>
-            </div>
-
-            <form class="strategy-form">
-              <label>
-                Symbol
-                <input value="BTCUSDT" disabled />
-              </label>
-              <label>
-                Lower price
-                <input value="—" disabled />
-              </label>
-              <label>
-                Upper price
-                <input value="—" disabled />
-              </label>
-              <label>
-                Grid levels
-                <input value="—" disabled />
-              </label>
-              <label>
-                Allocation
-                <input value="—" disabled />
-              </label>
-              <label>
-                Mode
-                <input value="Not configured" disabled />
-              </label>
-            </form>
-            <p class="panel-note">Controls activate only after we define the first strategy and risk rules.</p>
-          </article>
-        </section>
-
-        <section class="workspace-grid lower-grid">
-          <article class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Inventory</p>
-                <h2>Open positions</h2>
-              </div>
-              <span class="muted-badge">0 positions</span>
-            </div>
-            <div class="empty-table">No positions. This table will show quantity, entry, mark price, unrealized P&amp;L, and exposure.</div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Activity</p>
-                <h2>Orders &amp; fills</h2>
-              </div>
-              <span class="muted-badge">No activity</span>
-            </div>
-            <div class="empty-table">No events. Order placement, cancellations, and fills will appear here once execution is enabled.</div>
-          </article>
-        </section>
+        <section id="console-detail" class="console-detail" aria-live="polite"></section>
       </main>
     </div>
 
