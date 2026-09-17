@@ -27,4 +27,5 @@
 
 - This is a personal project for the user and Codex. Do not use team-process overhead, pull requests, or feature branches.
 - When the user says "commit push", run `./scripts/commit-push.sh` directly. Do not inspect diffs or status, and do not produce a changelog.
-- Pass any short label supplied with the request to the script; it becomes both the commit message and the one-sentence reply. If none is supplied, use `checkpoint`.
+- Codex owns the description: use the current chat to write one short, factual summary of its own work and pass it to the script. Never ask the user to label or describe code changes.
+- The script uses that summary as the commit message and the one-sentence reply.
