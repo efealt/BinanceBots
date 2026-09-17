@@ -7,6 +7,8 @@
 ## Working agreement
 
 - Do not proactively code, create files, run project steps, or make changes without the user's explicit approval for that exact next step. The user directs the next steps.
+- Scope warning: do not add, design, or expand features the user did not explicitly ask for. Implement only the requested slice and wait for the user's next instruction before extending it.
+- Architecture rule: `Documents/ARCHITECTURE.md` is the living architecture source of truth. Update it in the same change whenever the agreed architecture changes.
 - The user is the quant analyst: proposes market hypotheses, trading ideas, parameters, and risk constraints.
 - Codex is the quant coder: turns agreed ideas into production-quality Rust, tests them, documents behavior, and flags implementation or risk issues.
 - We co-create strategies. Do not change strategy rules or live-trading behavior without agreement.

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Backtest · Binance Grid</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a class="active" href="/backtests.html" aria-current="page">Backtest</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot pending"></span> Backtest mode</span>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">Historical research</p>
+            <h1>Backtest</h1>
+            <p class="lede">Run an existing strategy against OHLCV data that has already been downloaded.</p>
+          </div>
+        </section>
+
+        <section class="single-run-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Inputs</p>
+                <h2>Backtest setup</h2>
+              </div>
+              <span class="muted-badge">Not wired</span>
+            </div>
+
+            <form class="strategy-form">
+              <label>
+                Strategy
+                <input value="No strategy selected" disabled />
+              </label>
+              <label>
+                Dataset
+                <input value="No OHLCV data selected" disabled />
+              </label>
+              <label>
+                Symbol
+                <input value="—" disabled />
+              </label>
+              <label>
+                Timeframe
+                <input value="—" disabled />
+              </label>
+              <label>
+                Start date
+                <input value="—" disabled />
+              </label>
+              <label>
+                End date
+                <input value="—" disabled />
+              </label>
+            </form>
+
+            <button class="run-button" type="button" disabled>Run backtest</button>
+            <p class="panel-note">This page uses stored historical data only. Data download and management will be built separately.</p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Output</p>
+                <h2>Backtest result</h2>
+              </div>
+              <span class="muted-badge">No run</span>
+            </div>
+            <div class="result-placeholder">Select a strategy and stored OHLCV dataset, then run the backtest to see the result.</div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/backtests.js"></script>
+  </body>
+</html>
