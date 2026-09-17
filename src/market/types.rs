@@ -129,6 +129,15 @@ pub struct MarketSnapshot {
     pub trades: Vec<MarketTrade>,
 }
 
+#[derive(Clone, Serialize)]
+pub struct MarketUpdate {
+    pub status: FeedStatus,
+    pub candle: Option<Candle>,
+    pub quote: MarketQuote,
+    pub order_book: OrderBookSnapshot,
+    pub trades: Vec<MarketTrade>,
+}
+
 #[derive(Debug, Error)]
 pub enum MarketError {
     #[error("invalid market selection: {0}")]

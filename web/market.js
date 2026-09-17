@@ -27,7 +27,9 @@ const indicatorToolbar = new ChartIndicatorToolbar(
   marketChart.indicatorLayer,
 );
 
-let requestId = 0;
+let marketSocket = null;
+let marketConnectionToken = 0;
+let reconnectTimer = null;
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -57,6 +59,7 @@ function setFeedState(status, detail) {
 }
 
 function formatPrice(value) {
+  if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
   const maximumFractionDigits = number >= 100 ? 2 : number >= 1 ? 4 : 8;
@@ -64,6 +67,7 @@ function formatPrice(value) {
 }
 
 function formatQuantity(value) {
+  if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
   return number.toLocaleString(undefined, { maximumFractionDigits: 6 });
@@ -88,18 +92,24 @@ function appendTextCell(row, text, className = "") {
   row.append(cell);
 }
 
+function numericValue(value) {
+  if (value === null || value === undefined || value === "") return NaN;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : NaN;
+}
+
 function renderQuote(quote = {}) {
-  const bid = Number(quote.best_bid);
-  const bidSize = Number(quote.best_bid_quantity);
-  const ask = Number(quote.best_ask);
-  const askSize = Number(quote.best_ask_quantity);
-  const spread = Number.isFinite(Number(quote.spread))
-    ? Number(quote.spread)
+  const bid = numericValue(quote.best_bid);
+  const bidSize = numericValue(quote.best_bid_quantity);
+  const ask = numericValue(quote.best_ask);
+  const askSize = numericValue(quote.best_ask_quantity);
+  const spread = Number.isFinite(numericValue(quote.spread))
+    ? numericValue(quote.spread)
     : Number.isFinite(bid) && Number.isFinite(ask)
       ? ask - bid
       : NaN;
-  const midpoint = Number.isFinite(Number(quote.mid_price))
-    ? Number(quote.mid_price)
+  const midpoint = Number.isFinite(numericValue(quote.mid_price))
+    ? numericValue(quote.mid_price)
     : Number.isFinite(bid) && Number.isFinite(ask)
       ? (bid + ask) / 2
       : NaN;
@@ -167,8 +177,8 @@ function renderOrderBook(orderBook = {}, quote = {}) {
   renderBookSide(orderBookAsks, asks, "ask");
   renderBookSide(orderBookBids, bids, "bid");
 
-  const midpoint = Number(quote.mid_price);
-  const spread = Number(quote.spread);
+  const midpoint = numericValue(quote.mid_price);
+  const spread = numericValue(quote.spread);
   orderBookMid.textContent = formatPrice(midpoint);
   orderBookSpread.textContent = Number.isFinite(spread) ? "Spread " + formatPrice(spread) : "Spread —";
   orderBookStatus.textContent = asks.length > 0 && bids.length > 0
@@ -207,44 +217,90 @@ function clearMarketPanels() {
   renderTrades();
 }
 
-async function refreshMarket(fitContent = false) {
-  const currentRequest = ++requestId;
+function applyMarketSnapshot(snapshot) {
+  const candles = Array.isArray(snapshot.candles) ? snapshot.candles : [];
+  setFeedState(snapshot.status);
+  barCount.textContent = `${candles.length.toLocaleString()} bars in memory`;
+  lastPrice.textContent = candles.length ? formatPrice(candles[candles.length - 1].close) : "—";
+  chartEmpty.hidden = candles.length > 0;
+  marketChart.setCandles(candles, true);
+  renderQuote(snapshot.quote);
+  renderOrderBook(snapshot.order_book, snapshot.quote);
+  renderTrades(snapshot.trades);
+}
+
+function applyMarketUpdate(update) {
+  setFeedState(update.status);
+  if (update.candle) {
+    marketChart.updateCandle(update.candle);
+    chartEmpty.hidden = true;
+    lastPrice.textContent = formatPrice(update.candle.close);
+  }
+  renderQuote(update.quote);
+  renderOrderBook(update.order_book, update.quote);
+  renderTrades(update.trades);
+}
+
+function marketStreamUrl() {
+  const selectedOption = symbolSelect.options[symbolSelect.selectedIndex];
   const params = new URLSearchParams({
     symbol: symbolSelect.value,
     interval: timeframeSelect.value,
-    market_type: symbolSelect.options[symbolSelect.selectedIndex].dataset.marketType ?? "spot",
+    market_type: selectedOption.dataset.marketType ?? "spot",
+  });
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.host}/api/market/stream?${params}`;
+}
+
+function scheduleReconnect(token) {
+  if (reconnectTimer !== null) return;
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    if (token === marketConnectionToken) openMarketStream();
+  }, 1_000);
+}
+
+function openMarketStream() {
+  const token = ++marketConnectionToken;
+  const socket = new WebSocket(marketStreamUrl());
+  marketSocket = socket;
+
+  socket.addEventListener("message", (event) => {
+    if (token !== marketConnectionToken || socket !== marketSocket) return;
+    try {
+      const message = JSON.parse(event.data);
+      if (message.type === "snapshot") applyMarketSnapshot(message.data);
+      if (message.type === "update") applyMarketUpdate(message.data);
+    } catch {
+      setFeedState("reconnecting", "Invalid market update");
+    }
   });
 
-  try {
-    const response = await fetch(`/api/market/candles?${params}`);
-    if (!response.ok) throw new Error(await response.text());
+  socket.addEventListener("error", () => {
+    if (token === marketConnectionToken) socket.close();
+  });
 
-    const snapshot = await response.json();
-    if (currentRequest !== requestId) return;
+  socket.addEventListener("close", () => {
+    if (token !== marketConnectionToken) return;
+    marketSocket = null;
+    setFeedState("reconnecting", "Reconnecting to market feed");
+    scheduleReconnect(token);
+  });
+}
 
-    setFeedState(snapshot.status);
-    barCount.textContent = `${snapshot.candles.length.toLocaleString()} bars in memory`;
-    lastPrice.textContent = snapshot.candles.length
-      ? formatPrice(snapshot.candles[snapshot.candles.length - 1].close)
-      : "—";
-    chartEmpty.hidden = snapshot.candles.length > 0;
-    marketChart.setCandles(snapshot.candles, fitContent);
-    renderQuote(snapshot.quote);
-    renderOrderBook(snapshot.order_book, snapshot.quote);
-    renderTrades(snapshot.trades);
-  } catch (error) {
-    if (currentRequest !== requestId) return;
-    setFeedState("reconnecting", "Market feed unavailable");
-    barCount.textContent = "";
-    lastPrice.textContent = "—";
-    chartEmpty.hidden = false;
-    chartEmpty.textContent = "Market data could not load";
-    clearMarketPanels();
+function closeMarketStream() {
+  marketConnectionToken += 1;
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
+  const socket = marketSocket;
+  marketSocket = null;
+  socket?.close();
 }
 
 function changeMarket() {
-  requestId += 1;
+  closeMarketStream();
   marketChart.reset();
   updateTitle();
   setFeedState("loading", "Loading 1,000 candles");
@@ -253,7 +309,7 @@ function changeMarket() {
   chartEmpty.hidden = false;
   chartEmpty.textContent = "Loading market data…";
   clearMarketPanels();
-  refreshMarket(true);
+  openMarketStream();
 }
 
 themeToggle.addEventListener("click", () => {
@@ -264,4 +320,3 @@ timeframeSelect.addEventListener("change", changeMarket);
 
 initializeTheme();
 changeMarket();
-window.setInterval(() => refreshMarket(false), 2_000);

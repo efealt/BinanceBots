@@ -4,6 +4,7 @@ class MarketChart {
     this.chart = null;
     this.series = null;
     this.indicatorLayer = null;
+    this.candles = [];
     this.candleCount = 0;
     this.firstCandleTime = null;
     this.weekendOverlay = showWeekends ? new WeekendOverlay(container) : null;
@@ -30,6 +31,7 @@ class MarketChart {
   }
 
   setCandles(candles, fitContent = false) {
+    this.candles = candles.slice();
     const data = candles.map((candle) => ({
       time: Math.floor(candle.open_time / 1000),
       open: candle.open,
@@ -57,8 +59,34 @@ class MarketChart {
     this.weekendOverlay?.render();
   }
 
+  updateCandle(candle) {
+    if (!candle) return;
+
+    const lastCandle = this.candles[this.candles.length - 1];
+    if (lastCandle?.open_time === candle.open_time) {
+      this.candles[this.candles.length - 1] = candle;
+    } else {
+      this.candles.push(candle);
+      if (this.candles.length > 1_000) this.candles.shift();
+    }
+
+    this.series.update({
+      time: Math.floor(candle.open_time / 1000),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+    });
+    this.candleCount = this.candles.length;
+    this.firstCandleTime = this.candles[0].open_time / 1000;
+    this.indicatorLayer?.setCandles(this.candles);
+    this.weekendOverlay?.setCandles(this.candles);
+    this.weekendOverlay?.render();
+  }
+
   reset() {
     this.series.setData([]);
+    this.candles = [];
     this.indicatorLayer?.reset();
     this.candleCount = 0;
     this.firstCandleTime = null;

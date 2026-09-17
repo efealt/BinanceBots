@@ -6,4 +6,4 @@ mod trades;
 mod types;
 
 pub use service::MarketService;
-pub use types::{MarketError, MarketKey, MarketSnapshot, MarketType};
+pub use types::{MarketError, MarketKey, MarketSnapshot, MarketType, MarketUpdate};

@@ -1,5 +1,5 @@
 use super::{
-    MarketError, MarketKey, MarketSnapshot,
+    MarketError, MarketKey, MarketSnapshot, MarketUpdate,
     binance::{BinanceMarketClient, trim_to_capacity},
     stream::{MarketEvent, parse_market_event},
     types::{Candle, FeedStatus, MAX_RECENT_TRADES, MarketQuote, MarketTrade, OrderBookSnapshot},
@@ -25,6 +25,11 @@ impl MarketService {
     pub async fn snapshot_for(&self, key: MarketKey) -> Result<MarketSnapshot, MarketError> {
         let feed = self.feed_for(key).await?;
         Ok(feed.snapshot().await)
+    }
+
+    pub async fn update_for(&self, key: &MarketKey) -> Result<MarketUpdate, MarketError> {
+        let feed = self.feed_for(key.clone()).await?;
+        Ok(feed.update().await)
     }
 
     async fn feed_for(&self, key: MarketKey) -> Result<Arc<MarketFeed>, MarketError> {
@@ -87,6 +92,17 @@ impl MarketFeed {
             interval: self.key.interval.clone(),
             status: state.status,
             candles: state.candles.iter().cloned().collect(),
+            quote: state.quote.clone(),
+            order_book: state.order_book.clone(),
+            trades: state.trades.iter().cloned().collect(),
+        }
+    }
+
+    async fn update(&self) -> MarketUpdate {
+        let state = self.state.read().await;
+        MarketUpdate {
+            status: state.status,
+            candle: state.candles.back().cloned(),
             quote: state.quote.clone(),
             order_book: state.order_book.clone(),
             trades: state.trades.iter().cloned().collect(),

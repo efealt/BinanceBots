@@ -13,6 +13,7 @@
 - Codex is the quant coder: turns agreed ideas into production-quality Rust, tests them, documents behavior, and flags implementation or risk issues.
 - We co-create strategies. Do not change strategy rules or live-trading behavior without agreement.
 - This is a private production project for a live account, not a demo or throwaway MVP. Move quickly while keeping order handling, risk controls, recovery, and observability explicit.
+- Every explicitly requested feature must be implemented as production-ready code for the current architecture and live-account use. Do not intentionally deliver a basic, temporary, first-version, MVP, or deferred implementation unless the user explicitly requests that scope. Required correctness, performance, reliability, security, validation, and integration belong in the requested feature now.
 - Keep API keys and other secrets in environment variables or ignored local storage. Never commit, print, or expose them in the UI.
 
 ## Initial tech stack
