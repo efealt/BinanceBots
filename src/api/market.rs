@@ -1,4 +1,4 @@
-use crate::market::{MarketError, MarketKey, MarketService};
+use crate::market::{MarketError, MarketKey, MarketService, MarketType};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -13,6 +13,7 @@ use std::sync::Arc;
 struct MarketQuery {
     symbol: String,
     interval: String,
+    market_type: Option<String>,
 }
 
 pub fn router(market_service: Arc<MarketService>) -> Router {
@@ -25,7 +26,8 @@ async fn candles(
     State(market_service): State<Arc<MarketService>>,
     Query(query): Query<MarketQuery>,
 ) -> Result<Json<crate::market::MarketSnapshot>, ApiError> {
-    let key = MarketKey::new(&query.symbol, &query.interval)?;
+    let market_type = MarketType::parse(query.market_type.as_deref().unwrap_or("spot"))?;
+    let key = MarketKey::new(&query.symbol, &query.interval, market_type)?;
     Ok(Json(market_service.snapshot_for(key).await?))
 }
 

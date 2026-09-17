@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Binance Grid · Market View</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=6" />
   </head>
   <body>
     <div class="app-shell">
@@ -45,6 +45,7 @@
                 <select id="market-symbol" class="field-control">
                   <option value="BTCUSDT">BTCUSDT</option>
                   <option value="ETHUSDT">ETHUSDT</option>
+                  <option value="XAGUSDT" data-market-type="usd_m_perpetual">XAGUSDT · Futures (Perp)</option>
                 </select>
               </label>
               <label class="field">
@@ -71,34 +72,111 @@
           </div>
         </section>
 
-        <section class="panel chart-panel" aria-label="Live market chart">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Live chart</p>
-              <h2 id="chart-title">BTCUSDT · 1 minute</h2>
+        <div class="market-workspace">
+          <section class="panel chart-panel market-chart-panel" aria-label="Live market chart">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Live chart</p>
+                <h2 id="chart-title">BTCUSDT · 1 minute</h2>
+              </div>
+              <span class="badge">Public market data</span>
             </div>
-            <span class="badge">Public market data</span>
-          </div>
-          <div id="indicator-toolbar" class="chart-toolbar" aria-label="Chart indicators">
-            <div class="chart-toolbar-controls">
-              <label class="field">
-                Indicator
-                <select class="field-control" data-indicator-type>
-                  <option value="sma">Simple moving average</option>
-                  <option value="bollinger">Bollinger Bands</option>
-                </select>
-              </label>
-              <button class="button button--secondary" type="button" data-indicator-add>
-                Add indicator
-              </button>
+            <div id="indicator-toolbar" class="chart-toolbar" aria-label="Chart indicators">
+              <div class="chart-toolbar-controls">
+                <label class="field">
+                  Indicator
+                  <select class="field-control" data-indicator-type>
+                    <option value="sma">Simple moving average</option>
+                    <option value="bollinger">Bollinger Bands</option>
+                  </select>
+                </label>
+                <button class="button button--secondary" type="button" data-indicator-add>
+                  Add indicator
+                </button>
+              </div>
+              <div class="indicator-list" data-indicator-list aria-live="polite"></div>
             </div>
-            <div class="indicator-list" data-indicator-list aria-live="polite"></div>
-          </div>
-          <div class="chart-frame">
-            <div id="market-chart" role="img" aria-label="Interactive candlestick chart"></div>
-            <div id="chart-empty" class="empty-state">Loading market data…</div>
-          </div>
-        </section>
+            <div class="chart-frame">
+              <div id="market-chart" role="img" aria-label="Interactive candlestick chart"></div>
+              <div id="chart-empty" class="empty-state">Loading market data…</div>
+            </div>
+          </section>
+
+          <aside class="market-sidebar" aria-label="Live market depth">
+            <section class="panel market-side-panel quote-panel" aria-label="Live bid and ask">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Live quote</p>
+                  <h2>Bid / ask</h2>
+                </div>
+                <span id="quote-status" class="badge">Waiting</span>
+              </div>
+              <div class="quote-grid">
+                <div class="quote-card quote-card--bid">
+                  <span>Best bid</span>
+                  <strong id="best-bid">—</strong>
+                  <small id="bid-quantity">—</small>
+                </div>
+                <div class="quote-card quote-card--ask">
+                  <span>Best ask</span>
+                  <strong id="best-ask">—</strong>
+                  <small id="ask-quantity">—</small>
+                </div>
+              </div>
+              <div class="spread-summary">
+                <div>
+                  <span>Spread</span>
+                  <strong id="spread-value">—</strong>
+                  <small id="spread-bps">—</small>
+                </div>
+                <div>
+                  <span>Mid price</span>
+                  <strong id="mid-price">—</strong>
+                  <small>Best bid / ask midpoint</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel market-side-panel order-book-panel" aria-label="Live order book">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Order book</p>
+                  <h2>Depth</h2>
+                </div>
+                <span id="order-book-status" class="badge">Waiting</span>
+              </div>
+              <div class="market-table-head order-book-head">
+                <span>Price</span>
+                <span>Size</span>
+                <span>Total</span>
+              </div>
+              <ul id="order-book-asks" class="order-book-list" aria-live="polite"></ul>
+              <div class="order-book-mid">
+                <strong id="order-book-mid">—</strong>
+                <span id="order-book-spread">—</span>
+              </div>
+              <ul id="order-book-bids" class="order-book-list" aria-live="polite"></ul>
+              <p class="market-panel-foot">Top 10 levels · live depth feed</p>
+            </section>
+
+          </aside>
+
+          <aside class="panel market-side-panel trades-panel market-trades-column" aria-label="Recent market trades">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Trades</p>
+                <h2>Recent</h2>
+              </div>
+              <span id="trades-status" class="badge">Waiting</span>
+            </div>
+            <div class="market-table-head trades-head">
+              <span>Price</span>
+              <span>Amount</span>
+              <span>Time · UTC</span>
+            </div>
+            <ul id="recent-trades" class="trade-list" aria-live="polite"></ul>
+          </aside>
+        </div>
       </main>
     </div>
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -108,6 +186,6 @@
     <script src="/chart/indicators/layer.js?v=1"></script>
     <script src="/market-chart.js?v=3"></script>
     <script src="/chart/indicators/toolbar.js?v=1"></script>
-    <script src="/market.js?v=3"></script>
+    <script src="/market.js?v=4"></script>
   </body>
 </html>

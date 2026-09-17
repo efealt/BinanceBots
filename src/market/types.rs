@@ -2,15 +2,38 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub const MAX_CANDLES: usize = 1_000;
+pub const MAX_RECENT_TRADES: usize = 40;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum MarketType {
+    Spot,
+    UsdMarginedPerpetual,
+}
+
+impl MarketType {
+    pub fn parse(value: &str) -> Result<Self, MarketError> {
+        if value.eq_ignore_ascii_case("spot") {
+            return Ok(Self::Spot);
+        }
+        if value.eq_ignore_ascii_case("usd_m_perpetual") {
+            return Ok(Self::UsdMarginedPerpetual);
+        }
+
+        Err(MarketError::InvalidSelection(
+            "market_type must be spot or usd_m_perpetual".into(),
+        ))
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct MarketKey {
     pub symbol: String,
     pub interval: String,
+    pub market_type: MarketType,
 }
 
 impl MarketKey {
-    pub fn new(symbol: &str, interval: &str) -> Result<Self, MarketError> {
+    pub fn new(symbol: &str, interval: &str, market_type: MarketType) -> Result<Self, MarketError> {
         let symbol = symbol.trim().to_uppercase();
         let interval = interval.trim().to_lowercase();
 
@@ -30,7 +53,11 @@ impl MarketKey {
             ));
         }
 
-        Ok(Self { symbol, interval })
+        Ok(Self {
+            symbol,
+            interval,
+            market_type,
+        })
     }
 
     pub fn stream_name(&self) -> String {
@@ -50,6 +77,39 @@ pub struct Candle {
     pub is_closed: bool,
 }
 
+#[derive(Clone, Default, Serialize)]
+pub struct MarketQuote {
+    pub update_id: Option<u64>,
+    pub best_bid: Option<f64>,
+    pub best_bid_quantity: Option<f64>,
+    pub best_ask: Option<f64>,
+    pub best_ask_quantity: Option<f64>,
+    pub spread: Option<f64>,
+    pub mid_price: Option<f64>,
+}
+
+#[derive(Clone, Default, Serialize)]
+pub struct OrderBookLevel {
+    pub price: f64,
+    pub quantity: f64,
+}
+
+#[derive(Clone, Default, Serialize)]
+pub struct OrderBookSnapshot {
+    pub update_id: Option<u64>,
+    pub bids: Vec<OrderBookLevel>,
+    pub asks: Vec<OrderBookLevel>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct MarketTrade {
+    pub trade_id: u64,
+    pub price: f64,
+    pub quantity: f64,
+    pub trade_time: i64,
+    pub is_buyer_maker: bool,
+}
+
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FeedStatus {
@@ -64,6 +124,9 @@ pub struct MarketSnapshot {
     pub interval: String,
     pub status: FeedStatus,
     pub candles: Vec<Candle>,
+    pub quote: MarketQuote,
+    pub order_book: OrderBookSnapshot,
+    pub trades: Vec<MarketTrade>,
 }
 
 #[derive(Debug, Error)]

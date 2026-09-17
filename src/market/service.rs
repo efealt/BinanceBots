@@ -1,11 +1,12 @@
 use super::{
     MarketError, MarketKey, MarketSnapshot,
-    binance::{BinanceMarketClient, parse_stream_candle, trim_to_capacity},
-    types::{Candle, FeedStatus},
+    binance::{BinanceMarketClient, trim_to_capacity},
+    stream::{MarketEvent, parse_market_event},
+    types::{Candle, FeedStatus, MAX_RECENT_TRADES, MarketQuote, MarketTrade, OrderBookSnapshot},
 };
 use futures_util::StreamExt;
 use std::{collections::HashMap, collections::VecDeque, sync::Arc};
-use tokio::{sync::RwLock, time::Duration};
+use tokio::{sync::RwLock, task::JoinSet, time::Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 pub struct MarketService {
@@ -53,6 +54,9 @@ struct MarketFeed {
 struct MarketFeedState {
     status: FeedStatus,
     candles: VecDeque<Candle>,
+    quote: MarketQuote,
+    order_book: OrderBookSnapshot,
+    trades: VecDeque<MarketTrade>,
 }
 
 impl MarketFeed {
@@ -62,6 +66,9 @@ impl MarketFeed {
             state: Arc::new(RwLock::new(MarketFeedState {
                 status: FeedStatus::Loading,
                 candles: candles.into(),
+                quote: MarketQuote::default(),
+                order_book: OrderBookSnapshot::default(),
+                trades: VecDeque::new(),
             })),
         }
     }
@@ -80,6 +87,9 @@ impl MarketFeed {
             interval: self.key.interval.clone(),
             status: state.status,
             candles: state.candles.iter().cloned().collect(),
+            quote: state.quote.clone(),
+            order_book: state.order_book.clone(),
+            trades: state.trades.iter().cloned().collect(),
         }
     }
 
@@ -87,24 +97,42 @@ impl MarketFeed {
         loop {
             self.set_status(FeedStatus::Loading).await;
 
-            match connect_async(client.stream_url(&self.key)).await {
-                Ok((stream, _)) => {
-                    self.set_status(FeedStatus::Live).await;
-                    let (_, mut reader) = stream.split();
-
-                    while let Some(message) = reader.next().await {
-                        match message {
-                            Ok(Message::Text(payload)) => {
-                                if let Ok(candle) = parse_stream_candle(&payload.to_string()) {
-                                    self.upsert_candle(candle).await;
-                                }
-                            }
-                            Ok(Message::Close(_)) | Err(_) => break,
-                            _ => {}
-                        }
+            let mut streams = Vec::new();
+            let mut connected = true;
+            for url in client.stream_urls(&self.key) {
+                match connect_async(url).await {
+                    Ok((stream, _)) => streams.push(stream),
+                    Err(_) => {
+                        connected = false;
+                        break;
                     }
                 }
-                Err(_) => {}
+            }
+
+            if connected {
+                self.set_status(FeedStatus::Live).await;
+                let mut readers = JoinSet::new();
+                for stream in streams {
+                    let feed = self.clone();
+                    readers.spawn(async move {
+                        let (_, mut reader) = stream.split();
+                        while let Some(message) = reader.next().await {
+                            match message {
+                                Ok(Message::Text(payload)) => {
+                                    if let Ok(event) = parse_market_event(&payload.to_string()) {
+                                        feed.apply_event(event).await;
+                                    }
+                                }
+                                Ok(Message::Close(_)) | Err(_) => break,
+                                _ => {}
+                            }
+                        }
+                    });
+                }
+
+                let _ = readers.join_next().await;
+                readers.abort_all();
+                while readers.join_next().await.is_some() {}
             }
 
             self.set_status(FeedStatus::Reconnecting).await;
@@ -114,6 +142,25 @@ impl MarketFeed {
 
     async fn set_status(&self, status: FeedStatus) {
         self.state.write().await.status = status;
+    }
+
+    async fn apply_event(&self, event: MarketEvent) {
+        match event {
+            MarketEvent::Candle(candle) => self.upsert_candle(candle).await,
+            MarketEvent::Quote(quote) => self.state.write().await.quote = quote,
+            MarketEvent::OrderBook(order_book) => {
+                self.state.write().await.order_book = order_book;
+            }
+            MarketEvent::Trade(trade) => self.add_trade(trade).await,
+        }
+    }
+
+    async fn add_trade(&self, trade: MarketTrade) {
+        let mut state = self.state.write().await;
+        state.trades.push_front(trade);
+        while state.trades.len() > MAX_RECENT_TRADES {
+            state.trades.pop_back();
+        }
     }
 
     async fn upsert_candle(&self, candle: Candle) {

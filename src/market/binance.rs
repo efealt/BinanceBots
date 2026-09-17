@@ -1,8 +1,11 @@
-use super::types::{Candle, MAX_CANDLES, MarketError, MarketKey};
+use super::types::{Candle, MAX_CANDLES, MarketError, MarketKey, MarketType};
 use serde::Deserialize;
 
-const REST_BASE_URL: &str = "https://api.binance.com";
-const STREAM_BASE_URL: &str = "wss://stream.binance.com:9443/ws";
+const SPOT_REST_BASE_URL: &str = "https://api.binance.com";
+const SPOT_STREAM_BASE_URL: &str = "wss://stream.binance.com:9443";
+const USD_M_REST_BASE_URL: &str = "https://fapi.binance.com";
+const USD_M_PUBLIC_STREAM_BASE_URL: &str = "wss://fstream.binance.com/public/stream";
+const USD_M_MARKET_STREAM_BASE_URL: &str = "wss://fstream.binance.com/market/stream";
 
 pub struct BinanceMarketClient {
     http: reqwest::Client,
@@ -16,9 +19,13 @@ impl BinanceMarketClient {
     }
 
     pub async fn latest_candles(&self, key: &MarketKey) -> Result<Vec<Candle>, MarketError> {
+        let (base_url, path) = match key.market_type {
+            MarketType::Spot => (SPOT_REST_BASE_URL, "/api/v3/klines"),
+            MarketType::UsdMarginedPerpetual => (USD_M_REST_BASE_URL, "/fapi/v1/klines"),
+        };
         let url = format!(
-            "{REST_BASE_URL}/api/v3/klines?symbol={}&interval={}&limit=1000",
-            key.symbol, key.interval
+            "{base_url}{path}?symbol={}&interval={}&limit=1000",
+            key.symbol, key.interval,
         );
         let response = self.http.get(url).send().await?.error_for_status()?;
 
@@ -30,8 +37,21 @@ impl BinanceMarketClient {
             .collect()
     }
 
-    pub fn stream_url(&self, key: &MarketKey) -> String {
-        format!("{STREAM_BASE_URL}/{}", key.stream_name())
+    pub fn stream_urls(&self, key: &MarketKey) -> Vec<String> {
+        let symbol = key.symbol.to_lowercase();
+        let kline_stream = key.stream_name();
+
+        match key.market_type {
+            MarketType::Spot => vec![format!(
+                "{SPOT_STREAM_BASE_URL}/stream?streams={kline_stream}/{symbol}@bookTicker/{symbol}@depth20@100ms/{symbol}@trade",
+            )],
+            MarketType::UsdMarginedPerpetual => vec![
+                format!("{USD_M_MARKET_STREAM_BASE_URL}?streams={kline_stream}/{symbol}@aggTrade",),
+                format!(
+                    "{USD_M_PUBLIC_STREAM_BASE_URL}?streams={symbol}@bookTicker/{symbol}@depth20",
+                ),
+            ],
+        }
     }
 }
 
@@ -87,9 +107,9 @@ struct StreamKline {
     x: bool,
 }
 
-pub fn parse_stream_candle(payload: &str) -> Result<Candle, MarketError> {
+pub fn parse_stream_candle_value(value: serde_json::Value) -> Result<Candle, MarketError> {
     let event: KlineEvent =
-        serde_json::from_str(payload).map_err(|_| MarketError::InvalidPayload)?;
+        serde_json::from_value(value).map_err(|_| MarketError::InvalidPayload)?;
     Ok(Candle {
         open_time: event.k.t,
         close_time: event.k.close_time,
