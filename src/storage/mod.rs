@@ -39,11 +39,19 @@ pub enum StorageError {
         market_type: String,
         interval: String,
     },
+    #[error("data entry {0} was not found")]
+    DataDownloadNotFound(i64),
+    #[error("data entry {0} is currently downloading")]
+    DataDownloadAlreadyRunning(i64),
+    #[error("a UTC start date is required before this data entry can download")]
+    DataDownloadStartDateRequired,
+    #[error("the saved start date cannot be changed after a download entry is created")]
+    DataDownloadStartDateImmutable,
 }
 
 pub use reader::{
     CaptureInspection, CaptureSummary, DataDownload, DataDownloadSpec, DatasetInspection,
-    DatasetSummary, StorageReader,
+    DatasetSummary, DownloadRunPreparation, HistoricalKline, InspectionCandle, StorageReader,
 };
 
 #[derive(Clone, Copy)]

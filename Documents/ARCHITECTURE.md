@@ -25,12 +25,14 @@ Live market data → in-memory bot runtimes → live or paper executor → bot s
 ## Historical backtesting
 
 ```text
-OHLCV download → SQLite → backtest runner → Backtest UI
+Binance archive/API data → normalized historical tables in SQLite → backtest runner → Backtest UI
 ```
 
-- SQLite stores downloaded historical OHLCV data for backtests.
-- Historical data is organized as `historical_datasets` plus `historical_ohlcv`, with its Binance REST source and time range recorded.
-- The Backtest page selects an existing strategy and stored OHLCV data, then runs one backtest.
+- SQLite is the historical research and backtesting store; it is not used by the live execution path.
+- `historical_datasets` is the canonical catalog for one instrument, data kind, and interval. `historical_imports` records each daily/monthly ZIP or REST backfill that populated it, including coverage, checksum, row count, and outcome.
+- Historical tables are separated by data shape: traded OHLCV, mark/index/premium reference candles, raw trades, aggregate trades, funding-rate events, best-bid/ask quotes, and depth snapshots with levels.
+- Historical instrument rules, fee schedules, and maintenance-margin brackets are versioned separately so a backtest can apply the rules that were effective at the time.
+- The Backtest page begins with an Initial Data Selector: it selects one stored OHLCV dataset and renders its complete candle series with OHLC candles and base-asset volume in separate chart panes. The selector can display the stored 1-minute series or UTC-aggregated 1-hour/1-day views; aggregation uses first open, extreme high/low, last close, and summed volume/trade fields. Strategy inputs and backtest outputs remain separate, subsequent slices.
 - Backtesting is isolated from live and paper trading.
 - Data download and management belong to a separate Data Downloader page, not the Backtest page.
 
@@ -38,12 +40,12 @@ OHLCV download → SQLite → backtest runner → Backtest UI
 
 ```text
 Binance WebSocket capture → raw live events + normalized live tables → SQLite
-Binance historical download → historical dataset + OHLCV rows → SQLite
+Binance historical download → dataset catalog + import receipt + normalized historical rows → SQLite
 ```
 
 - `market_instruments` is the shared identity for a Binance symbol and market type, so Spot and USDⓈ-M perpetual data cannot be confused.
 - Live capture stores the raw WebSocket payload and normalized kline updates, book-ticker quotes, top-depth snapshots and levels, and trades. The raw event log remains the source record for later parsing or candle reconstruction.
-- Historical OHLCV and live WebSocket data remain physically separate, then can be selected together through the source-labelled `market_candles` view when a research workflow explicitly needs both.
+- Historical backtest data and live WebSocket captures remain physically separate. The source-labelled `market_candles` view only joins traded historical candles with live-capture candles when a research workflow explicitly needs both.
 - The current Market View still keeps its working feed in memory; only the dedicated capture command writes to SQLite.
 
 ## UI boundaries
@@ -51,11 +53,11 @@ Binance historical download → historical dataset + OHLCV rows → SQLite
 - Console: shows a top-row bot selector and the detail view for one selected bot. Selecting a card changes only the UI view; it does not affect any bot runtime.
 - The console receives a list of bot snapshots from the backend; it does not run strategy logic.
 - Market View: analyzes one selected market independently. It does not create bots, stage strategies, or run backtests. It supports Binance Spot markets and USDⓈ-M perpetual futures, bootstraps the latest 1,000 candles into memory, then keeps the current candle, best bid/ask quote, partial order-book depth, and recent public trades updated from the product's public WebSocket streams. Rust processes the exchange events continuously; the browser receives one initial snapshot followed by bounded, coalesced WebSocket updates instead of periodic REST polling. It does not write market data to SQLite. The browser renders the feed with TradingView Lightweight Charts; chart interaction stays in the UI layer.
-- Chart annotations are reusable overlays configured by the chart caller. The current Market View enables a UTC weekend background overlay; the same chart component can enable it for Backtest later without duplicating page logic.
+- Chart annotations are reusable time-window overlays configured by the chart caller. Market View enables the UTC weekend background overlay. Backtest enables selectable UTC weekend and after-hours shading; metals (`XAG`, `XAU`, `XPT`, and `XPD`) use the 22:00–07:00 UTC overnight window, while other symbols use the default 16:00–20:00 UTC research window. Overlay preferences persist in browser storage while the chart changes timeframe.
 - Chart indicators are reusable UI-layer modules under `web/chart/indicators/`. Indicator calculations are separate from chart rendering and toolbar state. Market View initially exposes Simple Moving Average and Bollinger Bands with editable parameters; active settings remain in browser memory and are not written to SQLite.
 - Data Diagnostics: read-only analysis of saved WebSocket captures or downloaded candles. WebSocket diagnostics load all trades, quotes, and captured partial-depth snapshots. Separate charts show executed prices, aggressive volume, trade sizes, spread, activity, cumulative volume delta, quote-size imbalance, and historical depth. Time charts use actual receipt timestamps on a linear UTC axis, preserve simultaneous events, and share a user-selected interval (full capture by default). Histograms include every selected observation; activity buckets disclose their duration. No raw JSON or event tables are exposed. REST diagnostics fetch every candle page for price, volume, and return distributions. Rendering and calculations are separate modules under web/diagnostics; no external chart dependency is needed by this page. The page never downloads exchange data or writes storage.
 - Backtest: runs a selected strategy on stored historical data only.
-- Data Downloader: stores user-defined historical data entries in SQLite, including provider, symbol, market type, name, interval, and the current download coverage metadata. The first slice only saves definitions and exposes a clearly non-functional download action; archive backfills and incremental Binance downloads are separate follow-up work.
+- Data Downloader: stores user-defined 1-minute kline entries in SQLite, including provider, symbol, market type, name, interval, a persisted UTC start date, and current download coverage metadata. Saved catalog entries expose a modal start-date editor; after saving an earlier date, Download missing reuses the updated date and fills only archive history not already recorded. It imports Binance public-data ZIPs only: completed calendar months use monthly archives and the current partial month uses daily archives through yesterday. Each run skips ZIPs already recorded as imported, so it requests only missing history. A process-wide single-run guard and a two-second delay between archives prevent concurrent or rapid archive requests. Spot uses `data/spot/...`; USDⓈ-M perpetual uses `data/futures/um/...`; they remain separate SQLite instruments and datasets.
 
 ## Change rule
 

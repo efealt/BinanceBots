@@ -7,6 +7,15 @@ const tableWrap = document.querySelector("#download-table-wrap");
 const tableBody = document.querySelector("#download-table-body");
 const emptyState = document.querySelector("#download-empty");
 const themeToggle = document.querySelector("#theme-toggle");
+const editDialog = document.querySelector("#edit-download-dialog");
+const editForm = document.querySelector("#edit-download-form");
+const editSummary = document.querySelector("#edit-download-summary");
+const editStartDate = document.querySelector("#edit-download-start-date");
+const editSaveButton = document.querySelector("#save-edit-download");
+const editFeedback = document.querySelector("#edit-download-feedback");
+const cancelEditButton = document.querySelector("#cancel-edit-download");
+const cancelEditIcon = document.querySelector("#cancel-edit-download-icon");
+let editingDownloadId = null;
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -21,10 +30,17 @@ function initializeTheme() {
 
 function formatDate(timestamp) {
   if (timestamp === null || timestamp === undefined) return "—";
-  return new Intl.DateTimeFormat(undefined, {
+  const formatted = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "UTC",
   }).format(new Date(timestamp));
+  return `${formatted} UTC`;
+}
+
+function formatDay(timestamp) {
+  if (timestamp === null || timestamp === undefined) return "—";
+  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 function marketLabel(marketType) {
@@ -56,6 +72,27 @@ function setFeedback(message, tone = "") {
   saveFeedback.dataset.tone = tone;
 }
 
+function setEditFeedback(message, tone = "") {
+  editFeedback.textContent = message;
+  editFeedback.dataset.tone = tone;
+}
+
+function openEditDialog(download) {
+  editingDownloadId = download.download_id;
+  editSummary.textContent = `${download.name} · ${download.symbol} · ${marketLabel(download.market_type)}`;
+  editStartDate.value = formatDay(download.requested_start_time_ms) === "—"
+    ? ""
+    : formatDay(download.requested_start_time_ms);
+  setEditFeedback("");
+  editSaveButton.disabled = false;
+  editDialog.showModal();
+  editStartDate.focus();
+}
+
+function closeEditDialog() {
+  if (editDialog.open) editDialog.close();
+}
+
 function textCell(value, className = "") {
   const cell = document.createElement("td");
   cell.textContent = value;
@@ -76,7 +113,7 @@ function renderDownloads(downloads) {
 
   tableWrap.hidden = false;
   emptyState.hidden = true;
-  catalogStatus.textContent = "Saved definitions are stored locally in SQLite.";
+  catalogStatus.textContent = "ZIP imports use completed-month archives and daily files through yesterday.";
 
   for (const download of downloads) {
     const row = document.createElement("tr");
@@ -86,24 +123,101 @@ function renderDownloads(downloads) {
       textCell(marketLabel(download.market_type)),
       textCell(download.provider === "binance" ? "Binance" : download.provider),
       textCell(intervalLabel(download.interval)),
+      textCell(formatDay(download.requested_start_time_ms)),
       textCell(formatDate(download.last_downloaded_at_ms)),
       textCell(formatDate(download.data_start_time_ms)),
       textCell(formatDate(download.data_end_time_ms)),
     );
 
     const actionCell = document.createElement("td");
+    actionCell.className = "download-actions";
     const actionButton = document.createElement("button");
     actionButton.type = "button";
     actionButton.className = "data-download-action";
-    actionButton.textContent = "Download";
-    actionButton.addEventListener("click", () => {
-      setFeedback("Downloading will be wired in step 2.", "info");
+    actionButton.textContent = "Download missing";
+    let startDate;
+    if (download.requested_start_time_ms === null || download.requested_start_time_ms === undefined) {
+      startDate = document.createElement("input");
+      startDate.type = "date";
+      startDate.className = "download-start-date";
+      startDate.setAttribute("aria-label", `Start date for ${download.name}`);
+      actionCell.append(startDate);
+    }
+    actionButton.addEventListener("click", async () => {
+      const payload = startDate ? { start_date: startDate.value } : {};
+      if (startDate && !startDate.value) {
+        setFeedback("Choose a UTC start date before downloading.", "error");
+        return;
+      }
+      actionButton.disabled = true;
+      if (startDate) startDate.disabled = true;
+      actionButton.textContent = "Downloading…";
+      setFeedback(`Downloading missing ZIP archives for ${download.name}…`, "info");
+      try {
+        const response = await fetch(`/api/data/downloads/${download.download_id}/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        const failed = result.failed_archives.length;
+        const message = `Imported ${result.rows_imported.toLocaleString()} candles from ${result.archives_imported} ZIP ${result.archives_imported === 1 ? "archive" : "archives"}${result.archives_already_present ? `; ${result.archives_already_present} already present` : ""}${failed ? `; ${failed} archive ${failed === 1 ? "needs" : "need"} retry` : ""}.`;
+        setFeedback(message, failed ? "error" : "success");
+        await loadDownloads();
+      } catch (error) {
+        setFeedback(error.message || "Could not import the archive data.", "error");
+        actionButton.disabled = false;
+        if (startDate) startDate.disabled = false;
+        actionButton.textContent = "Download missing";
+      }
     });
-    actionCell.append(actionButton);
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "data-download-edit";
+    editButton.textContent = "✎";
+    editButton.title = "Edit catalog entry";
+    editButton.setAttribute("aria-label", `Edit start date for ${download.name}`);
+    editButton.addEventListener("click", () => openEditDialog(download));
+    actionCell.append(actionButton, editButton);
     row.append(actionCell);
     tableBody.append(row);
   }
 }
+
+editForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!editingDownloadId) return;
+  if (!editStartDate.value) {
+    setEditFeedback("Choose a UTC start date.", "error");
+    return;
+  }
+
+  editSaveButton.disabled = true;
+  setEditFeedback("Saving start date…", "info");
+  try {
+    const response = await fetch(`/api/data/downloads/${editingDownloadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_date: editStartDate.value }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const saved = await response.json();
+    closeEditDialog();
+    setFeedback(`Updated ${saved.name}. Click Download missing to backfill from ${formatDay(saved.requested_start_time_ms)}.`, "success");
+    await loadDownloads();
+  } catch (error) {
+    setEditFeedback(error.message || "Could not update the catalog entry.", "error");
+    editSaveButton.disabled = false;
+  }
+});
+
+cancelEditButton.addEventListener("click", closeEditDialog);
+cancelEditIcon.addEventListener("click", closeEditDialog);
+editDialog.addEventListener("close", () => {
+  editingDownloadId = null;
+  editSaveButton.disabled = false;
+});
 
 async function loadDownloads() {
   catalogStatus.textContent = "Loading saved entries…";

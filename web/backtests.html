@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Backtest · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=backtest-overlay-colors" />
   </head>
   <body>
     <div class="app-shell">
@@ -35,6 +35,54 @@
       </header>
 
       <main>
+        <section class="panel backtest-data-selector">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Initial data selector</p>
+              <h2>Historical OHLCV</h2>
+            </div>
+          </div>
+
+          <div class="backtest-data-controls">
+            <label class="field">
+              Ticker
+              <select id="backtest-dataset" class="field-control" aria-describedby="backtest-data-status"></select>
+            </label>
+            <label class="field">
+              Chart interval
+              <select id="backtest-timeframe" class="field-control" aria-label="Chart interval">
+                <option value="1m">1 minute</option>
+                <option value="1h">1 hour</option>
+                <option value="1d">1 day</option>
+              </select>
+            </label>
+          </div>
+          <p id="backtest-data-status" class="backtest-data-status" role="status">Loading stored tickers…</p>
+          <div class="backtest-overlay-controls" aria-label="Chart overlays">
+            <span class="backtest-overlay-heading">Overlays</span>
+            <label class="backtest-overlay-toggle">
+              <input id="backtest-weekend-overlay" type="checkbox" checked />
+              <i class="backtest-overlay-swatch backtest-overlay-swatch--weekend" aria-hidden="true"></i>
+              <span>Weekend · UTC</span>
+            </label>
+            <label class="backtest-overlay-toggle">
+              <input id="backtest-after-hours-overlay" type="checkbox" checked />
+              <i class="backtest-overlay-swatch backtest-overlay-swatch--after-hours" aria-hidden="true"></i>
+              <span id="backtest-after-hours-label">After-hours · 16:00–20:00 UTC</span>
+            </label>
+          </div>
+          <div class="backtest-data-chart-frame">
+            <div id="backtest-data-chart" role="img" aria-label="Historical OHLCV candlestick chart"></div>
+            <div class="backtest-chart-legend" aria-label="Chart series">
+              <span><i class="backtest-chart-swatch backtest-chart-swatch--price"></i>Price · OHLC</span>
+              <span><i class="backtest-chart-swatch backtest-chart-swatch--volume"></i>Volume · base asset</span>
+              <span><i class="backtest-chart-swatch backtest-chart-swatch--weekend"></i>Weekend</span>
+              <span><i class="backtest-chart-swatch backtest-chart-swatch--after-hours"></i>After-hours</span>
+            </div>
+            <div id="backtest-data-empty" class="empty-state">Select a stored ticker to view its OHLCV data.</div>
+          </div>
+        </section>
+
         <section class="single-run-grid">
           <article class="panel">
             <div class="panel-heading">
@@ -73,7 +121,7 @@
             </form>
 
             <button class="button button--secondary" type="button" disabled>Run backtest</button>
-            <p class="panel-note">This page uses stored historical data only. Data download and management will be built separately.</p>
+            <p class="panel-note">This page uses stored historical data only.</p>
           </article>
 
           <article class="panel">
@@ -90,6 +138,8 @@
       </main>
     </div>
 
-    <script src="/backtests.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/chart-overlays.js?v=5"></script>
+    <script src="/backtests.js?v=overlay-schedules"></script>
   </body>
 </html>

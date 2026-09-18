@@ -1,5 +1,6 @@
 mod api;
 mod collector;
+mod downloader;
 mod market;
 mod storage;
 

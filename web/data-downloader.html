@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Data Downloader · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=desktop-layout" />
+    <link rel="stylesheet" href="/styles.css?v=editable-catalog" />
   </head>
   <body>
     <div class="app-shell">
@@ -42,7 +42,7 @@
                 <p class="eyebrow">Data entry</p>
                 <h2>Save a market dataset</h2>
               </div>
-              <span class="badge badge--muted">Step 1 · Save only</span>
+              <span class="badge badge--muted">1m ZIP archive</span>
             </div>
 
             <form id="download-entry-form" class="form-grid downloader-form">
@@ -71,20 +71,11 @@
                 Interval
                 <select name="interval" required>
                   <option value="1m" selected>1 minute</option>
-                  <option value="3m">3 minutes</option>
-                  <option value="5m">5 minutes</option>
-                  <option value="15m">15 minutes</option>
-                  <option value="30m">30 minutes</option>
-                  <option value="1h">1 hour</option>
-                  <option value="2h">2 hours</option>
-                  <option value="4h">4 hours</option>
-                  <option value="6h">6 hours</option>
-                  <option value="8h">8 hours</option>
-                  <option value="12h">12 hours</option>
-                  <option value="1d">1 day</option>
-                  <option value="3d">3 days</option>
-                  <option value="1w">1 week</option>
                 </select>
+              </label>
+              <label>
+                Start date (UTC)
+                <input name="start_date" type="date" required />
               </label>
             </form>
 
@@ -113,6 +104,7 @@
                     <th>Market</th>
                     <th>Provider</th>
                     <th>Interval</th>
+                    <th>Requested start</th>
                     <th>Last download</th>
                     <th>Data start</th>
                     <th>Data end</th>
@@ -128,6 +120,28 @@
       </main>
     </div>
 
-    <script src="/downloader.js"></script>
+    <dialog id="edit-download-dialog" class="download-edit-dialog" aria-labelledby="edit-download-title">
+      <form id="edit-download-form" class="download-edit-form">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Edit catalog entry</p>
+            <h2 id="edit-download-title">Update start date</h2>
+          </div>
+          <button id="cancel-edit-download-icon" class="icon-button" type="button" aria-label="Close edit dialog">×</button>
+        </div>
+        <p id="edit-download-summary" class="download-edit-summary"></p>
+        <label>
+          Requested start date (UTC)
+          <input id="edit-download-start-date" type="date" required />
+        </label>
+        <div class="download-edit-actions">
+          <button id="cancel-edit-download" class="button button--secondary" type="button">Cancel</button>
+          <button id="save-edit-download" class="button button--primary" type="submit">Save changes</button>
+        </div>
+        <p id="edit-download-feedback" class="downloader-feedback" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <script src="/downloader.js?v=editable-catalog"></script>
   </body>
 </html>
