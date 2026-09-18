@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Backtest · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=backtest-overlay-colors" />
+    <link rel="stylesheet" href="/styles.css?v=calendar-diagnostics-echarts-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -21,7 +21,6 @@
         <nav class="primary-nav" aria-label="Main navigation">
           <a href="/">Console</a>
           <a href="/market.html">Market</a>
-          <a href="/data.html">Data Diagnostics</a>
           <a href="/data-downloader.html">Data Downloader</a>
           <a class="active" href="/backtests.html" aria-current="page">Backtest</a>
         </nav>
@@ -83,6 +82,18 @@
           </div>
         </section>
 
+        <section class="panel diagnostics-section" aria-labelledby="diagnostics-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Diagnostics</p>
+              <h2 id="diagnostics-heading">Calendar effects</h2>
+            </div>
+            <span id="diagnostics-context" class="badge badge--muted">Selected interval · 1 minute</span>
+          </div>
+          <p id="diagnostics-status" class="backtest-data-status" role="status">Loading interval diagnostics…</p>
+          <div id="diagnostics-rows" class="diagnostic-rows"></div>
+        </section>
+
         <section class="single-run-grid">
           <article class="panel">
             <div class="panel-heading">
@@ -139,7 +150,8 @@
     </div>
 
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
     <script src="/chart-overlays.js?v=5"></script>
-    <script src="/backtests.js?v=overlay-schedules"></script>
+    <script src="/backtests.js?v=calendar-diagnostics-echarts-1"></script>
   </body>
 </html>

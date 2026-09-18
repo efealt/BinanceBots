@@ -31,8 +31,6 @@ pub enum StorageError {
     WriterResponseUnavailable,
     #[error("historical dataset {0} was not found")]
     DatasetNotFound(i64),
-    #[error("WebSocket capture {0} was not found")]
-    CaptureNotFound(i64),
     #[error("data entry already exists for {symbol} {market_type} {interval}")]
     DataDownloadAlreadyExists {
         symbol: String,
@@ -50,8 +48,8 @@ pub enum StorageError {
 }
 
 pub use reader::{
-    CaptureInspection, CaptureSummary, DataDownload, DataDownloadSpec, DatasetInspection,
-    DatasetSummary, DownloadRunPreparation, HistoricalKline, InspectionCandle, StorageReader,
+    DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation, HistoricalKline,
+    OhlcvCandle, StorageReader,
 };
 
 #[derive(Clone, Copy)]
