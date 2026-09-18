@@ -11,6 +11,13 @@ pub enum MarketType {
 }
 
 impl MarketType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Spot => "spot",
+            Self::UsdMarginedPerpetual => "usd_m_perpetual",
+        }
+    }
+
     pub fn parse(value: &str) -> Result<Self, MarketError> {
         if value.eq_ignore_ascii_case("spot") {
             return Ok(Self::Spot);

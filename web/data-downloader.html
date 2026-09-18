@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Data Downloader · Binance Grid</title>
+    <link rel="stylesheet" href="/styles.css?v=desktop-layout" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a href="/market.html">Market</a>
+          <a href="/data.html">Data Diagnostics</a>
+          <a class="active" href="/data-downloader.html" aria-current="page">Data Downloader</a>
+          <a href="/backtests.html">Backtest</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot pending"></span> Research mode</span>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="downloader-page">
+        <section class="downloader-stack">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Data entry</p>
+                <h2>Save a market dataset</h2>
+              </div>
+              <span class="badge badge--muted">Step 1 · Save only</span>
+            </div>
+
+            <form id="download-entry-form" class="form-grid downloader-form">
+              <label>
+                Symbol
+                <input name="symbol" type="text" placeholder="XAGUSDT" autocomplete="off" required />
+              </label>
+              <label>
+                Market
+                <select name="market_type" required>
+                  <option value="spot">Spot</option>
+                  <option value="usd_m_perpetual">Futures · USDⓈ-M perpetual</option>
+                </select>
+              </label>
+              <label>
+                Name
+                <input name="name" type="text" placeholder="Silver futures 1m" autocomplete="off" required />
+              </label>
+              <label>
+                Provider
+                <select name="provider" required>
+                  <option value="binance">Binance</option>
+                </select>
+              </label>
+              <label>
+                Interval
+                <select name="interval" required>
+                  <option value="1m" selected>1 minute</option>
+                  <option value="3m">3 minutes</option>
+                  <option value="5m">5 minutes</option>
+                  <option value="15m">15 minutes</option>
+                  <option value="30m">30 minutes</option>
+                  <option value="1h">1 hour</option>
+                  <option value="2h">2 hours</option>
+                  <option value="4h">4 hours</option>
+                  <option value="6h">6 hours</option>
+                  <option value="8h">8 hours</option>
+                  <option value="12h">12 hours</option>
+                  <option value="1d">1 day</option>
+                  <option value="3d">3 days</option>
+                  <option value="1w">1 week</option>
+                </select>
+              </label>
+            </form>
+
+            <div class="downloader-form-actions">
+              <button id="save-download" class="button button--primary" type="submit" form="download-entry-form">Save data entry</button>
+              <p id="save-feedback" class="downloader-feedback" role="status" aria-live="polite"></p>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Saved entries</p>
+                <h2>Data catalog</h2>
+              </div>
+              <span id="download-count" class="badge badge--muted">0 entries</span>
+            </div>
+
+            <p id="catalog-status" class="downloader-status" role="status">Loading saved entries…</p>
+            <div id="download-table-wrap" class="table-wrap" hidden>
+              <table class="run-table download-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Symbol</th>
+                    <th>Market</th>
+                    <th>Provider</th>
+                    <th>Interval</th>
+                    <th>Last download</th>
+                    <th>Data start</th>
+                    <th>Data end</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="download-table-body"></tbody>
+              </table>
+            </div>
+            <div id="download-empty" class="empty-table" hidden>No saved data entries yet. Add a symbol above to create the first one.</div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/downloader.js"></script>
+  </body>
+</html>

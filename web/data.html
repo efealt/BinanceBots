@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Data Diagnostics · Binance Grid</title>
+    <link rel="stylesheet" href="/styles.css?v=11" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a href="/market.html">Market</a>
+          <a class="active" href="/data.html" aria-current="page">Data Diagnostics</a>
+          <a href="/data-downloader.html">Data Downloader</a>
+          <a href="/backtests.html">Backtest</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot pending"></span> Research mode</span>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="diagnostic-page">
+        <section class="panel">
+          <div class="diagnostic-controls">
+            <label class="field">Source<select id="source"><option value="websocket">Saved WebSocket captures</option><option value="rest">Downloaded candles</option></select></label>
+            <label class="field">Dataset<select id="dataset"></select></label>
+            <label class="field">Activity buckets<select id="bucket"><option value="1">1 second</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="60">1 minute</option></select></label>
+          </div>
+          <p id="coverage" role="status">Loading saved data…</p>
+          <div class="diagnostic-controls" id="window-controls">
+            <label class="field">From · seconds into capture<input id="from" type="number" min="0" step="0.1" value="0"></label>
+            <label class="field">To · seconds into capture<input id="to" type="number" min="0" step="0.1"></label>
+            <button id="apply" class="button button--secondary">Inspect interval</button>
+            <button id="reset" class="button button--secondary">Full capture</button>
+          </div>
+        </section>
+        <div id="metrics" class="diagnostic-metrics"></div>
+        <p id="scope-note"></p>
+        <div id="charts" class="diagnostic-grid"></div>
+      </main>
+    </div>
+    <link rel="stylesheet" href="/diagnostics/style.css">
+    <script type="module" src="/diagnostics/page.js"></script>
+  </body>
+</html>
