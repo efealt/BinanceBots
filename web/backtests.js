@@ -9,8 +9,12 @@ const chartEmpty = document.querySelector("#backtest-data-empty");
 const diagnosticsContext = document.querySelector("#diagnostics-context");
 const diagnosticsStatus = document.querySelector("#diagnostics-status");
 const diagnosticsRows = document.querySelector("#diagnostics-rows");
+const rollingPredictionCard = document.querySelector("#rolling-prediction-card");
+const rollingPredictionStatus = document.querySelector("#rolling-prediction-status");
 const TIMEFRAME_MS = { "1m": 60_000, "1h": 3_600_000, "1d": 86_400_000 };
 const TIMEFRAME_LABELS = { "1m": "1 minute", "1h": "1 hour", "1d": "1 day" };
+const ROLLING_WINDOW_SIZE = 30;
+const ROLLING_SCOPE_LABELS = { full: "Full sample", weekdays: "Weekdays", weekends: "Weekends" };
 const DIAGNOSTIC_WINDOWS = {
   postNewYork: { startHour: 21, endHour: 24, label: "21:00–00:00 UTC" },
   middleAsia: { startHour: 2, endHour: 5, label: "02:00–05:00 UTC" },
@@ -86,6 +90,8 @@ const afterHoursOverlay = new AfterHoursOverlay(
 let rawCandles = [];
 let datasetsById = new Map();
 let diagnosticCharts = [];
+let diagnosticCandles = [];
+let rollingPredictionScope = "full";
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -261,6 +267,7 @@ function createDiagnosticStates(interval) {
   ].map((state) => ({
     ...state,
     count: 0,
+    candles: [],
     returns: [],
     ranges: [],
     volumes: [],
@@ -270,6 +277,7 @@ function createDiagnosticStates(interval) {
 
 function appendDiagnosticObservation(state, candle, bucket) {
   state.count += 1;
+  state.candles.push(candle);
   const open = Number(candle.open_price);
   const close = Number(candle.close_price);
   const high = Number(candle.high_price);
@@ -330,7 +338,11 @@ function diagnosticDomains(states) {
     : 0.01;
   const rangeDomain = rangeStats ? Math.max(rangeStats.p99, 0.01) : 0.01;
   const volumeDomain = volumeStats ? Math.max(volumeStats.p95, 0.01) : 0.01;
-  const driftValues = states.flatMap((state) => state.driftMeans).filter(Number.isFinite);
+  const driftValues = states.flatMap((state) => state.driftBuckets.flatMap((bucket) => {
+    if (!bucket.length) return [];
+    const stats = summarize(bucket);
+    return [stats.p05, stats.p95];
+  })).filter(Number.isFinite);
   const driftDomain = driftValues.length
     ? Math.max(...driftValues.map((value) => Math.abs(value)), 0.001)
     : 0.001;
@@ -343,12 +355,91 @@ function driftBucketLabels(interval) {
     : Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 }
 
+function cumulativeReturnsByHour(observationCandles, timelineCandles = observationCandles) {
+  const intervalMs = TIMEFRAME_MS["1h"];
+  const candlesByTime = new Map();
+  timelineCandles.forEach((candle) => {
+    const timestamp = Number(candle.open_time_ms);
+    if (!Number.isFinite(timestamp)) return;
+    candlesByTime.set(timestamp, candle);
+  });
+
+  const returnsByHour = Array.from({ length: 24 }, () => []);
+  observationCandles.forEach((candle) => {
+    const timestamp = Number(candle.open_time_ms);
+    const nextCandle = candlesByTime.get(timestamp + intervalMs);
+    const entryPrice = Number(candle.open_price);
+    const exitPrice = Number(nextCandle?.open_price);
+    if (!nextCandle || !Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return;
+    returnsByHour[new Date(timestamp).getUTCHours()].push(exitPrice / entryPrice);
+  });
+
+  return returnsByHour.map((returns, hour) => {
+    const compoundedFactor = returns.reduce((factor, value) => factor * value, 1);
+    return {
+      cumulativeReturn: returns.length ? (compoundedFactor - 1) * 100 : null,
+      hour,
+      observationCount: returns.length,
+    };
+  });
+}
+
+function rollingObservationCandles(candles, scope) {
+  if (scope === "full") return candles;
+  return candles.filter((candle) => {
+    const timestamp = Number(candle.open_time_ms);
+    if (!Number.isFinite(timestamp)) return false;
+    const day = new Date(timestamp).getUTCDay();
+    const weekend = day === 0 || day === 6;
+    return scope === "weekends" ? weekend : !weekend;
+  });
+}
+
+function rollingPredictionByHour(observationCandles, windowSize, timelineCandles = observationCandles) {
+  const intervalMs = TIMEFRAME_MS["1h"];
+  const candlesByTime = new Map();
+  timelineCandles.forEach((candle) => {
+    const timestamp = Number(candle.open_time_ms);
+    if (Number.isFinite(timestamp)) candlesByTime.set(timestamp, candle);
+  });
+  const returnsByHour = Array.from({ length: 24 }, () => []);
+  observationCandles.forEach((candle) => {
+    const timestamp = Number(candle.open_time_ms);
+    const nextCandle = candlesByTime.get(timestamp + intervalMs);
+    const entryPrice = Number(candle.open_price);
+    const exitPrice = Number(nextCandle?.open_price);
+    if (!nextCandle || !Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return;
+    returnsByHour[new Date(timestamp).getUTCHours()].push((exitPrice / entryPrice) - 1);
+  });
+
+  return returnsByHour.map((returns, hour) => {
+    let correct = 0;
+    let incorrect = 0;
+    for (let index = windowSize; index < returns.length; index += 1) {
+      const window = returns.slice(index - windowSize, index);
+      const windowAverage = window.reduce((sum, value) => sum + value, 0) / window.length;
+      const predictedPositive = windowAverage > 0;
+      const actualPositive = returns[index] > 0;
+      if (predictedPositive === actualPositive) correct += 1;
+      else incorrect += 1;
+    }
+    const total = correct + incorrect;
+    return {
+      accuracy: total ? correct / total : null,
+      correct,
+      hour,
+      incorrect,
+      total,
+    };
+  });
+}
+
 function diagnosticCard(title, unit, chartKey, ariaLabel, stats) {
   const statMarkup = stats.map(([label, value]) => `<span><strong>${value}</strong><small>${label}</small></span>`).join("");
   return `<article class="diagnostic-card">
     <div class="diagnostic-card-heading"><h4>${title}</h4><span>${unit}</span></div>
     <div class="diagnostic-chart" data-diagnostic-chart="${chartKey}" role="img" aria-label="${ariaLabel}"></div>
-    <div class="diagnostic-card-stats">${statMarkup}</div>
+    ${statMarkup ? `<div class="diagnostic-card-stats">${statMarkup}</div>` : ""}
   </article>`;
 }
 
@@ -529,23 +620,35 @@ function driftChartOption(state, interval, domain, palette) {
   if (!state.returnStats) return null;
   const labels = driftBucketLabels(interval);
   const visibleLabels = interval === "1d" ? labels.map((_, index) => index) : [0, 6, 12, 18, 23];
-  const data = state.driftMeans.map((mean, index) => ({
-    value: Number.isFinite(mean) ? mean : "-",
-    bucketLabel: labels[index],
-    sampleCount: state.driftBuckets[index]?.length ?? 0,
-    itemStyle: { color: Number.isFinite(mean) && mean >= 0 ? palette.bid : palette.ask },
-  }));
+  const data = state.driftBuckets.map((values, index) => {
+    if (!values.length) return "-";
+    const stats = summarize(values);
+    const medianColor = stats.p50 >= 0 ? palette.bid : palette.ask;
+    return {
+      value: [stats.p05, stats.p25, stats.p50, stats.p75, stats.p95],
+      bucketLabel: labels[index],
+      sampleCount: values.length,
+      stats,
+      itemStyle: {
+        color: medianColor,
+        borderColor: medianColor,
+        borderWidth: 1.5,
+        opacity: 0.72,
+      },
+    };
+  });
   return {
     animation: false,
     grid: diagnosticGrid(42, 30),
     tooltip: {
       ...diagnosticTooltipStyle(palette),
-      axisPointer: { type: "shadow" },
       formatter: (params) => {
         const item = Array.isArray(params) ? params[0] : params;
         const bucket = item?.data;
-        if (!bucket || !Number.isFinite(bucket.value)) return "";
-        return `<strong>UTC ${bucket.bucketLabel}</strong><br>Average return: ${formatPercent(bucket.value)}<br>Observations: ${formatCount(bucket.sampleCount)}`;
+        const stats = bucket?.stats;
+        if (!stats) return "";
+        const bucketLabel = interval === "1d" ? bucket.bucketLabel : `UTC ${bucket.bucketLabel}`;
+        return `<strong>${bucketLabel}</strong><br>p05: ${formatPercent(stats.p05, false)}<br>p25: ${formatPercent(stats.p25, false)}<br>Median: ${formatPercent(stats.p50, false)}<br>p75: ${formatPercent(stats.p75, false)}<br>p95: ${formatPercent(stats.p95, false)}<br>Observations: ${formatCount(bucket.sampleCount)}`;
       },
       trigger: "item",
     },
@@ -572,11 +675,12 @@ function driftChartOption(state, interval, domain, palette) {
       type: "value",
     },
     series: [{
-      type: "bar",
-      name: "Average return",
-      barMaxWidth: 12,
+      type: "boxplot",
+      name: "Return distribution",
       data,
-      emphasis: { focus: "series", itemStyle: { shadowBlur: 8 } },
+      layout: "vertical",
+      itemStyle: { color: palette.surface, borderColor: palette.accent, borderWidth: 1.5 },
+      emphasis: { itemStyle: { color: palette.accent, opacity: 0.28 } },
       markLine: {
         data: [{ yAxis: 0 }],
         label: { show: false },
@@ -588,8 +692,169 @@ function driftChartOption(state, interval, domain, palette) {
   };
 }
 
+function cumulativeReturnByHourChartOption(candles, timelineCandles, palette) {
+  const hourlyReturns = cumulativeReturnsByHour(candles, timelineCandles);
+  const finiteReturns = hourlyReturns
+    .map((hour) => hour.cumulativeReturn)
+    .filter(Number.isFinite);
+  const domain = finiteReturns.length
+    ? Math.max(...finiteReturns.map((value) => Math.abs(value)), 0.01)
+    : 0.01;
+  const labels = hourlyReturns.map((hour) => String(hour.hour).padStart(2, "0"));
+  const data = hourlyReturns.map((hour, index) => {
+    if (!Number.isFinite(hour.cumulativeReturn)) return "-";
+    const color = hour.cumulativeReturn >= 0 ? palette.bid : palette.ask;
+    return {
+      value: hour.cumulativeReturn,
+      hourLabel: labels[index],
+      observationCount: hour.observationCount,
+      itemStyle: {
+        color,
+        borderRadius: hour.cumulativeReturn >= 0 ? [3, 3, 0, 0] : [0, 0, 3, 3],
+        opacity: 0.82,
+      },
+    };
+  });
+  return {
+    animation: false,
+    grid: diagnosticGrid(42, 34),
+    tooltip: {
+      ...diagnosticTooltipStyle(palette),
+      formatter: (params) => {
+        const item = Array.isArray(params) ? params[0] : params;
+        const hour = item?.data;
+        if (!hour || !Number.isFinite(hour.value)) return "";
+        return `<strong>${hour.hourLabel}:00 UTC</strong><br>Cumulative return: ${formatPercent(hour.value)}<br>Observations: ${formatCount(hour.observationCount)}<br>Entry: hourly candle open<br>Exit: following hourly candle open`;
+      },
+      trigger: "item",
+    },
+    xAxis: {
+      ...diagnosticAxisStyle(palette),
+      axisLabel: {
+        ...diagnosticAxisStyle(palette).axisLabel,
+        interval: 2,
+      },
+      data: labels,
+      type: "category",
+    },
+    yAxis: {
+      ...diagnosticAxisStyle(palette),
+      axisLabel: {
+        ...diagnosticAxisStyle(palette).axisLabel,
+        formatter: (value) => formatPercent(value, false),
+      },
+      max: domain,
+      min: -domain,
+      name: "raw cumulative %",
+      nameTextStyle: { color: palette.muted, fontSize: 10 },
+      splitNumber: 2,
+      splitLine: { lineStyle: { color: palette.grid } },
+      type: "value",
+    },
+    series: [{
+      type: "bar",
+      name: "Cumulative hourly return",
+      barMaxWidth: 28,
+      barMinHeight: 2,
+      data,
+      emphasis: { focus: "series", itemStyle: { opacity: 1, shadowBlur: 8, shadowColor: palette.accent } },
+      markLine: {
+        data: [{ yAxis: 0 }],
+        label: { show: false },
+        lineStyle: { color: palette.border, width: 1 },
+        silent: true,
+        symbol: "none",
+      },
+    }],
+  };
+}
+
+function rollingPredictionChartOption(observationCandles, timelineCandles, windowSize, palette) {
+  const results = rollingPredictionByHour(observationCandles, windowSize, timelineCandles);
+  const labels = results.map((result) => String(result.hour).padStart(2, "0"));
+  const dataFor = (key) => results.map((result, index) => ({
+    value: result[key],
+    hourLabel: labels[index],
+    total: result.total,
+    accuracy: result.accuracy,
+  }));
+  return {
+    animation: false,
+    grid: { bottom: 36, containLabel: true, left: 42, right: 8, top: 30 },
+    legend: {
+      data: ["Correct", "False"],
+      icon: "roundRect",
+      itemHeight: 9,
+      itemWidth: 12,
+      right: 8,
+      textStyle: { color: palette.muted, fontSize: 10 },
+      top: 0,
+    },
+    tooltip: {
+      ...diagnosticTooltipStyle(palette),
+      axisPointer: { type: "shadow" },
+      formatter: (params) => {
+        const items = Array.isArray(params) ? params : [params];
+        const first = items[0]?.data;
+        if (!first) return "";
+        const correct = items.find((item) => item.seriesName === "Correct")?.value ?? 0;
+        const incorrect = items.find((item) => item.seriesName === "False")?.value ?? 0;
+        const accuracy = Number.isFinite(first.accuracy) ? `${(first.accuracy * 100).toFixed(1)}%` : "—";
+        return `<strong>UTC ${first.hourLabel}:00</strong><br>Correct: ${formatCount(correct)}<br>False: ${formatCount(incorrect)}<br>Accuracy: ${accuracy}<br>Eligible predictions: ${formatCount(first.total)}`;
+      },
+      trigger: "axis",
+    },
+    xAxis: {
+      ...diagnosticAxisStyle(palette),
+      axisLabel: {
+        ...diagnosticAxisStyle(palette).axisLabel,
+        interval: 2,
+      },
+      data: labels,
+      type: "category",
+    },
+    yAxis: {
+      ...diagnosticAxisStyle(palette),
+      axisLabel: {
+        ...diagnosticAxisStyle(palette).axisLabel,
+        formatter: (value) => formatCompact(value),
+      },
+      min: 0,
+      name: "predictions",
+      nameTextStyle: { color: palette.muted, fontSize: 10 },
+      splitLine: { lineStyle: { color: palette.grid } },
+      type: "value",
+    },
+    series: [
+      {
+        name: "Correct",
+        type: "bar",
+        stack: "outcome",
+        barMaxWidth: 28,
+        data: dataFor("correct"),
+        itemStyle: { color: palette.bid, opacity: 0.86 },
+      },
+      {
+        name: "False",
+        type: "bar",
+        stack: "outcome",
+        barMaxWidth: 28,
+        data: dataFor("incorrect"),
+        itemStyle: { color: palette.ask, opacity: 0.86 },
+      },
+    ],
+  };
+}
+
 function diagnosticChartOption(record) {
   const palette = diagnosticPalette(record.state);
+  if (record.kind === "cumulative") {
+    return cumulativeReturnByHourChartOption(record.candles, record.timelineCandles, palette);
+  }
+  if (record.kind === "rolling") {
+    const observations = rollingObservationCandles(record.candles, rollingPredictionScope);
+    return rollingPredictionChartOption(observations, record.timelineCandles, ROLLING_WINDOW_SIZE, palette);
+  }
   if (record.kind === "returns") {
     return histogramChartOption(
       record.state,
@@ -626,11 +891,11 @@ function disposeDiagnosticCharts() {
   diagnosticCharts = [];
 }
 
-function initializeDiagnosticCharts(states, interval, domains) {
+function initializeDiagnosticCharts(states, interval, domains, candles) {
   disposeDiagnosticCharts();
   if (!window.echarts) {
     diagnosticsStatus.textContent += " Interactive diagnostics are unavailable because ECharts did not load.";
-    diagnosticsRows.querySelectorAll(".diagnostic-chart").forEach((element) => {
+    document.querySelectorAll(".diagnostic-chart").forEach((element) => {
       element.textContent = "Interactive chart library unavailable.";
       element.classList.add("diagnostic-chart--empty");
     });
@@ -640,7 +905,8 @@ function initializeDiagnosticCharts(states, interval, domains) {
     ["returns", "Return distribution"],
     ["range", "Candle range / spread"],
     ["volume", "Volume profile"],
-    ["drift", "Average drift"],
+    ["drift", "Average return by UTC bucket"],
+    ["cumulative", "Cumulative return by hour"],
   ];
   const records = [];
   states.filter((state) => !state.disabled).forEach((state) => {
@@ -648,7 +914,16 @@ function initializeDiagnosticCharts(states, interval, domains) {
       const key = `${state.id}:${kind}`;
       const element = diagnosticsRows.querySelector(`[data-diagnostic-chart="${key}"]`);
       if (!element) return;
-      const record = { domains, element, interval, kind, label, state };
+      const record = {
+        candles: kind === "cumulative" ? state.candles : undefined,
+        domains,
+        element,
+        interval,
+        kind,
+        label,
+        state,
+        timelineCandles: kind === "cumulative" ? candles : undefined,
+      };
       const instance = window.echarts.init(element, null, { renderer: "canvas" });
       const option = diagnosticChartOption(record);
       if (option) instance.setOption(option);
@@ -657,6 +932,24 @@ function initializeDiagnosticCharts(states, interval, domains) {
       records.push({ ...record, instance, resizeObserver });
     });
   });
+  const rollingElement = rollingPredictionCard?.querySelector('[data-diagnostic-chart="rolling-prediction"]');
+  if (rollingElement && interval === "1h") {
+    const record = {
+      candles,
+      element: rollingElement,
+      interval,
+      kind: "rolling",
+      label: "Rolling same-hour prediction",
+      state: states[0],
+      timelineCandles: candles,
+    };
+    const instance = window.echarts.init(rollingElement, null, { renderer: "canvas" });
+    const option = diagnosticChartOption(record);
+    if (option) instance.setOption(option);
+    const resizeObserver = new ResizeObserver(() => instance.resize());
+    resizeObserver.observe(rollingElement);
+    records.push({ ...record, instance, resizeObserver });
+  }
   diagnosticCharts = records;
 }
 
@@ -665,6 +958,76 @@ function refreshDiagnosticCharts() {
     const option = diagnosticChartOption(record);
     if (option) record.instance.setOption(option, true);
   });
+}
+
+function renderCumulativeReturnCard(state, interval) {
+  if (interval !== "1h") {
+    return `<article class="diagnostic-card diagnostic-card--unavailable">
+      <div class="diagnostic-card-heading"><h4>Cumulative return by hour</h4><span>1-hour candles</span></div>
+      <div class="diagnostic-unavailable">Select the 1-hour chart interval to calculate cumulative returns by UTC hour.</div>
+    </article>`;
+  }
+  return diagnosticCard(
+    "Cumulative return by hour",
+    "raw cumulative %",
+    `${state.id}:cumulative`,
+    `${state.label} cumulative return by UTC hour`,
+    [],
+  );
+}
+
+function rollingScopeToggleMarkup(disabled = false) {
+  return `<div class="rolling-scope-toggle" role="group" aria-label="Rolling prediction sample">
+    ${Object.entries(ROLLING_SCOPE_LABELS).map(([scope, label]) => {
+      const active = scope === rollingPredictionScope;
+      return `<button class="rolling-scope-toggle-button${active ? " is-active" : ""}" type="button" data-rolling-scope="${scope}" aria-pressed="${active}"${disabled ? " disabled" : ""}>${label}</button>`;
+    }).join("")}
+  </div>`;
+}
+
+function bindRollingScopeToggle() {
+  rollingPredictionCard.querySelectorAll("[data-rolling-scope]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextScope = button.dataset.rollingScope;
+      if (!nextScope || nextScope === rollingPredictionScope) return;
+      rollingPredictionScope = nextScope;
+      renderDiagnostics(diagnosticCandles);
+    });
+  });
+}
+
+function renderRollingPrediction(candles, interval) {
+  const scopeLabel = ROLLING_SCOPE_LABELS[rollingPredictionScope];
+  if (interval !== "1h") {
+    rollingPredictionStatus.textContent = `${scopeLabel} · This check uses hourly candles.`;
+    rollingPredictionCard.innerHTML = `<article class="diagnostic-card rolling-prediction-card rolling-prediction-card--unavailable">
+      <div class="diagnostic-card-heading"><h4>Correct vs false by UTC hour</h4><span>${ROLLING_WINDOW_SIZE} prior same-hour bars</span></div>
+      ${rollingScopeToggleMarkup(true)}
+      <div class="diagnostic-unavailable">Select the 1-hour chart interval to run the rolling same-hour prediction check.</div>
+    </article>`;
+    bindRollingScopeToggle();
+    return;
+  }
+  const observations = rollingObservationCandles(candles, rollingPredictionScope);
+  const results = rollingPredictionByHour(observations, ROLLING_WINDOW_SIZE, candles);
+  const totals = results.reduce((summary, result) => ({
+    correct: summary.correct + result.correct,
+    incorrect: summary.incorrect + result.incorrect,
+  }), { correct: 0, incorrect: 0 });
+  const total = totals.correct + totals.incorrect;
+  const accuracy = total ? `${((totals.correct / total) * 100).toFixed(1)}%` : "—";
+  rollingPredictionStatus.textContent = `${scopeLabel} · For each UTC hour, the previous ${ROLLING_WINDOW_SIZE} same-hour returns are averaged. Positive average predicts positive; otherwise negative.`;
+  rollingPredictionCard.innerHTML = `<article class="diagnostic-card rolling-prediction-card">
+    <div class="diagnostic-card-heading"><h4>Correct vs false by UTC hour</h4><span>${ROLLING_WINDOW_SIZE} prior same-hour bars</span></div>
+    ${rollingScopeToggleMarkup()}
+    <div class="diagnostic-chart" data-diagnostic-chart="rolling-prediction" role="img" aria-label="Correct and false rolling predictions by UTC hour"></div>
+    <div class="diagnostic-card-stats">
+      <span><strong>${formatCount(totals.correct)}</strong><small>Correct</small></span>
+      <span><strong>${formatCount(totals.incorrect)}</strong><small>False</small></span>
+      <span><strong>${accuracy}</strong><small>Accuracy</small></span>
+    </div>
+  </article>`;
+  bindRollingScopeToggle();
 }
 
 function renderDiagnosticRow(state, interval, domains) {
@@ -683,6 +1046,7 @@ function renderDiagnosticRow(state, interval, domains) {
   ), -1);
   const labels = driftBucketLabels(interval);
   const peakLabel = peakIndex >= 0 ? labels[peakIndex] : "—";
+  const averageByBucketTitle = interval === "1d" ? "Average return by weekday" : "Average return by hour";
   return `<article class="diagnostic-row" style="--diagnostic-accent:${state.color}">
     ${rowHeading}
     <div class="diagnostic-card-grid">
@@ -701,25 +1065,30 @@ function renderDiagnosticRow(state, interval, domains) {
         ["P90", formatCompact(volumeStats?.p90)],
         ["Total", formatCompact(volumeStats?.total)],
       ])}
-      ${diagnosticCard("Average drift", `% return per ${TIMEFRAME_LABELS[interval]}`, `${state.id}:drift`, `Average ${TIMEFRAME_LABELS[interval]} return by UTC ${interval === "1d" ? "weekday" : "hour"}`, [
+      ${diagnosticCard(averageByBucketTitle, `% return per ${TIMEFRAME_LABELS[interval]}`, `${state.id}:drift`, averageByBucketTitle, [
         ["Mean", formatPercent(returnStats?.mean)],
         ["Positive", returnStats ? `${(returnStats.positiveShare * 100).toFixed(1)}%` : "—"],
         ["Peak UTC bucket", peakLabel],
       ])}
+      ${renderCumulativeReturnCard(state, interval)}
     </div>
   </article>`;
 }
 
 function resetDiagnostics(message) {
   disposeDiagnosticCharts();
+  diagnosticCandles = [];
   diagnosticsContext.textContent = `Selected interval · ${TIMEFRAME_LABELS[timeframeSelect.value]}`;
   diagnosticsStatus.textContent = message;
   diagnosticsRows.replaceChildren();
+  rollingPredictionStatus.textContent = message;
+  rollingPredictionCard.replaceChildren();
 }
 
 function renderDiagnostics(candles) {
   const interval = timeframeSelect.value;
   const intervalLabel = TIMEFRAME_LABELS[interval];
+  diagnosticCandles = candles;
   diagnosticsContext.textContent = `Selected interval · ${intervalLabel}`;
   if (!candles.length) {
     resetDiagnostics("Select a stored ticker to calculate calendar effects.");
@@ -729,7 +1098,8 @@ function renderDiagnostics(candles) {
   const domains = diagnosticDomains(states);
   diagnosticsStatus.textContent = `All metrics use ${intervalLabel} OHLCV candles. Hover a chart for exact bins and statistics. UTC weekends are separated; weekday candidate windows exclude weekends.`;
   diagnosticsRows.innerHTML = states.map((state) => renderDiagnosticRow(state, interval, domains)).join("");
-  initializeDiagnosticCharts(states, interval, domains);
+  renderRollingPrediction(candles, interval);
+  initializeDiagnosticCharts(states, interval, domains, candles);
 }
 
 function renderSelectedTimeframe() {

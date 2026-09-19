@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Backtest · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=calendar-diagnostics-echarts-1" />
+    <link rel="stylesheet" href="/styles.css?v=calendar-diagnostics-echarts-11" />
   </head>
   <body>
     <div class="app-shell">
@@ -51,7 +51,7 @@
               Chart interval
               <select id="backtest-timeframe" class="field-control" aria-label="Chart interval">
                 <option value="1m">1 minute</option>
-                <option value="1h">1 hour</option>
+                <option value="1h" selected>1 hour</option>
                 <option value="1d">1 day</option>
               </select>
             </label>
@@ -88,10 +88,22 @@
               <p class="eyebrow">Diagnostics</p>
               <h2 id="diagnostics-heading">Calendar effects</h2>
             </div>
-            <span id="diagnostics-context" class="badge badge--muted">Selected interval · 1 minute</span>
+            <span id="diagnostics-context" class="badge badge--muted">Selected interval · 1 hour</span>
           </div>
           <p id="diagnostics-status" class="backtest-data-status" role="status">Loading interval diagnostics…</p>
           <div id="diagnostics-rows" class="diagnostic-rows"></div>
+        </section>
+
+        <section class="panel rolling-prediction-section" aria-labelledby="rolling-prediction-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Predictive check</p>
+              <h2 id="rolling-prediction-heading">Rolling same-hour prediction</h2>
+            </div>
+            <span class="badge badge--muted">30 prior same-hour bars</span>
+          </div>
+          <p id="rolling-prediction-status" class="backtest-data-status" role="status">Loading rolling prediction…</p>
+          <div id="rolling-prediction-card"></div>
         </section>
 
         <section class="single-run-grid">
@@ -152,6 +164,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
     <script src="/chart-overlays.js?v=5"></script>
-    <script src="/backtests.js?v=calendar-diagnostics-echarts-1"></script>
+    <script src="/backtests.js?v=calendar-diagnostics-echarts-11"></script>
   </body>
 </html>
