@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Security · Binance Grid</title>
+    <link rel="stylesheet" href="/styles.css?v=security-1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a href="/market.html">Market</a>
+          <a href="/data-downloader.html">Data Downloader</a>
+          <a href="/backtests.html">Backtest</a>
+          <a class="active" href="/security.html" aria-current="page">Security</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot live"></span> Private access</span>
+          <form method="post" action="/logout">
+            <button class="button button--secondary" type="submit">Sign out</button>
+          </form>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Security</p>
+              <h2>Login history</h2>
+            </div>
+            <span id="auth-event-count" class="badge badge--muted">0 events</span>
+          </div>
+          <p id="auth-event-status" class="panel-note" role="status">Loading authentication events…</p>
+          <div id="auth-event-table-wrap" class="table-wrap" hidden>
+            <table class="run-table">
+              <thead>
+                <tr>
+                  <th>Time · UTC</th>
+                  <th>Event</th>
+                  <th>Source IP</th>
+                  <th>Browser / client</th>
+                </tr>
+              </thead>
+              <tbody id="auth-event-table-body"></tbody>
+            </table>
+          </div>
+          <div id="auth-event-empty" class="empty-table" hidden>No authentication events recorded yet.</div>
+          <p class="panel-note">Records login success, login failure, and logout only. Page navigation, passwords, and session tokens are not logged.</p>
+        </section>
+      </main>
+    </div>
+    <script src="/security.js?v=1"></script>
+  </body>
+</html>

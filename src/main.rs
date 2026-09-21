@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let market_service = Arc::new(MarketService::new());
     let storage_reader = Arc::new(storage::StorageReader::new(database_path()));
     storage_reader.initialize()?;
-    let auth_state = Arc::new(auth::AuthState::from_env()?);
+    let auth_state = Arc::new(auth::AuthState::from_env(Arc::clone(&storage_reader))?);
     let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web");
 
     let protected_app = api::protected_router(market_service, storage_reader)

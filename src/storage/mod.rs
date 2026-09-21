@@ -48,8 +48,8 @@ pub enum StorageError {
 }
 
 pub use reader::{
-    DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation, HistoricalKline,
-    OhlcvCandle, StorageReader,
+    AuthAuditEvent, DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation,
+    HistoricalKline, OhlcvCandle, StorageReader,
 };
 
 #[derive(Clone, Copy)]

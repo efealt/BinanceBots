@@ -74,11 +74,13 @@ Deploy BinanceGrid to Render, prove that the application and SQLite data persist
 - [x] Ensure future bot/control/trading endpoints inherit the authenticated boundary by default.
 - [x] Keep credentials and session/signing secrets in Render environment variables or equivalent server-side secret storage, never Git or client JavaScript.
 - [x] Preserve `/api/health` as a minimal unauthenticated Render health check.
+- [x] Persist a minimal authentication audit trail for login success, login failure, and logout only; exclude passwords, session tokens, and page tracking.
+- [x] Add an authenticated read-only Security / Login History view backed by the persistent audit table.
 - [ ] Verify unauthenticated direct requests to protected pages, APIs, and WebSockets are rejected or redirected to authentication.
 - [ ] Verify authenticated access can use Console, Market, Data Downloader, Backtest, APIs, and WebSockets normally.
 - [ ] Verify logout/session invalidation removes access to protected content.
 
-**Implementation (2026-09-21):** Added Rust/Axum single-user login with opaque in-memory sessions, 12-hour expiry, secure/HttpOnly/SameSite=Strict cookie handling on Render, explicit logout invalidation, full protected routing for application files/APIs/WebSocket, and a public minimal health endpoint. Production activation/verification remains pending until the user-selected Render username/password are configured and `BINANCE_GRID_AUTH_MODE` is switched from the temporary setup value `disabled` to `enabled`.
+**Implementation (2026-09-21):** Added Rust/Axum single-user login with opaque in-memory sessions, 12-hour expiry, secure/HttpOnly/SameSite=Strict cookie handling on Render, explicit logout invalidation, full protected routing for application files/APIs/WebSocket, a public minimal health endpoint, and persistent SQLite authentication auditing for login success/failure/logout with an authenticated Security history page. Production activation/verification remains pending until the user-selected Render username/password are configured and `BINANCE_GRID_AUTH_MODE` is switched from the temporary setup value `disabled` to `enabled`.
 
 **Exit:** The hosted application is usable only after single-user authentication, while Render can still perform its minimal health check.
 

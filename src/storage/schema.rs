@@ -8,6 +8,10 @@ const DOWNLOAD_START_DATE_MIGRATION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/migrations/002_download_start_date.sql"
 ));
+const AUTH_AUDIT_MIGRATION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/migrations/003_auth_audit.sql"
+));
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
@@ -29,6 +33,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error
 
     if current_version < 2 {
         apply_migration(connection, 2, DOWNLOAD_START_DATE_MIGRATION)?;
+    }
+
+    if current_version < 3 {
+        apply_migration(connection, 3, AUTH_AUDIT_MIGRATION)?;
     }
 
     Ok(())
@@ -82,21 +90,21 @@ mod tests {
                        'historical_depth_levels',
                        'live_capture_sessions', 'live_events', 'live_kline_updates',
                        'live_book_ticker', 'live_depth_snapshots', 'live_depth_levels',
-                       'live_trades'
+                       'live_trades', 'auth_audit_events'
                    )",
                 [],
                 |row| row.get(0),
             )
             .expect("count storage tables");
 
-        assert_eq!(table_count, 22);
+        assert_eq!(table_count, 23);
 
         let version: i64 = connection
             .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
             .expect("read schema version");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
@@ -127,6 +135,6 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version after failed migration");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 }

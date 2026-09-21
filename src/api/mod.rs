@@ -1,5 +1,6 @@
 pub mod data;
 pub mod market;
+pub mod security;
 
 use crate::market::MarketService;
 use crate::storage::StorageReader;
@@ -13,7 +14,8 @@ pub fn protected_router(
 ) -> Router {
     Router::new()
         .merge(market::router(market_service))
-        .merge(data::router(storage_reader))
+        .merge(data::router(Arc::clone(&storage_reader)))
+        .merge(security::router(storage_reader))
 }
 
 pub async fn health() -> Json<HealthResponse> {

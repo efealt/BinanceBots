@@ -6,6 +6,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use crate::storage::StorageReader;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -25,10 +26,11 @@ pub struct AuthState {
     password: String,
     secure_cookie: bool,
     sessions: Mutex<HashMap<String, Instant>>,
+    storage_reader: Arc<StorageReader>,
 }
 
 impl AuthState {
-    pub fn from_env() -> Result<Self, AuthConfigError> {
+    pub fn from_env(storage_reader: Arc<StorageReader>) -> Result<Self, AuthConfigError> {
         let render_runtime = env::var_os("PORT").is_some();
         let default_mode = if render_runtime { "enabled" } else { "disabled" };
         let mode = env::var("BINANCE_GRID_AUTH_MODE").unwrap_or_else(|_| default_mode.to_string());
@@ -56,6 +58,7 @@ impl AuthState {
             password,
             secure_cookie: render_runtime,
             sessions: Mutex::new(HashMap::new()),
+            storage_reader,
         })
     }
 
@@ -171,6 +174,7 @@ struct LoginForm {
 
 async fn login(
     State(state): State<Arc<AuthState>>,
+    headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {
     if !state.enabled {
@@ -178,6 +182,7 @@ async fn login(
     }
 
     if !state.valid_credentials(&form.username, &form.password) {
+        record_auth_event(&state, &headers, "login_failed").await;
         tokio::time::sleep(Duration::from_millis(600)).await;
         return login_response(StatusCode::UNAUTHORIZED, true);
     }
@@ -186,6 +191,7 @@ async fn login(
         Ok(token) => token,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "could not create session").into_response(),
     };
+    record_auth_event(&state, &headers, "login_success").await;
     let mut response = Redirect::to("/").into_response();
     if let Ok(cookie) = HeaderValue::from_str(&state.session_cookie(&token)) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
@@ -200,6 +206,7 @@ async fn logout(State(state): State<Arc<AuthState>>, headers: HeaderMap) -> Resp
     if let Some(token) = session_token(&headers) {
         state.invalidate_session(&token);
     }
+    record_auth_event(&state, &headers, "logout").await;
     let mut response = Redirect::to("/login").into_response();
     if let Ok(cookie) = HeaderValue::from_str(&state.clear_cookie()) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
@@ -208,6 +215,48 @@ async fn logout(State(state): State<Arc<AuthState>>, headers: HeaderMap) -> Resp
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+async fn record_auth_event(state: &Arc<AuthState>, headers: &HeaderMap, event_type: &'static str) {
+    let source_ip = request_source_ip(headers);
+    let user_agent = header_value(headers, header::USER_AGENT, 512);
+    let storage_reader = Arc::clone(&state.storage_reader);
+    let result = tokio::task::spawn_blocking(move || {
+        storage_reader.record_auth_event(event_type, source_ip.as_deref(), user_agent.as_deref())
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => eprintln!("auth audit write failed: {error}"),
+        Err(error) => eprintln!("auth audit task failed: {error}"),
+    }
+}
+
+fn request_source_ip(headers: &HeaderMap) -> Option<String> {
+    ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"]
+        .iter()
+        .find_map(|name| {
+            headers
+                .get(*name)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.split(',').next())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| truncate(value, 128))
+        })
+}
+
+fn header_value(headers: &HeaderMap, name: header::HeaderName, max_len: usize) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| truncate(value, max_len))
+}
+
+fn truncate(value: &str, max_len: usize) -> String {
+    value.chars().take(max_len).collect()
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {

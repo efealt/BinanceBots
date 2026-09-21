@@ -463,6 +463,47 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn record_auth_event(
+        &self,
+        event_type: &str,
+        source_ip: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<(), StorageError> {
+        self.initialize()?;
+        let connection = self.open_write()?;
+        connection.execute(
+            "INSERT INTO auth_audit_events
+                (event_type, occurred_at_ms, source_ip, user_agent)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![event_type, super::now_ms(), source_ip, user_agent],
+        )?;
+        Ok(())
+    }
+
+    pub fn auth_audit_events(&self, limit: usize) -> Result<Vec<AuthAuditEvent>, StorageError> {
+        if !self.database_path.exists() {
+            return Ok(Vec::new());
+        }
+        let connection = self.open()?;
+        let limit = i64::try_from(limit.clamp(1, 500)).unwrap_or(500);
+        let mut statement = connection.prepare(
+            "SELECT event_id, event_type, occurred_at_ms, source_ip, user_agent
+             FROM auth_audit_events
+             ORDER BY occurred_at_ms DESC, event_id DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![limit], |row| {
+            Ok(AuthAuditEvent {
+                event_id: row.get(0)?,
+                event_type: row.get(1)?,
+                occurred_at_ms: row.get(2)?,
+                source_ip: row.get(3)?,
+                user_agent: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn ohlcv_series(&self, dataset_id: i64) -> Result<Vec<OhlcvCandle>, StorageError> {
         let connection = self.open()?;
         let exists: Option<i64> = connection
@@ -506,6 +547,15 @@ impl StorageReader {
         )?;
         Ok(connection)
     }
+}
+
+#[derive(Serialize, Clone)]
+pub struct AuthAuditEvent {
+    pub event_id: i64,
+    pub event_type: String,
+    pub occurred_at_ms: i64,
+    pub source_ip: Option<String>,
+    pub user_agent: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
