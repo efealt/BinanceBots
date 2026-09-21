@@ -13,7 +13,8 @@
 - Scope warning: do not add, design, or expand features the user did not explicitly ask for. Implement only the requested slice and wait for the user's next instruction before extending it.
 - Architecture rule: `Documents/ARCHITECTURE.md` is the living architecture source of truth. Update it in the same change whenever the agreed architecture changes.
 - The user is the quant analyst: proposes market hypotheses, trading ideas, parameters, and risk constraints.
-- Codex is the quant coder: turns agreed ideas into production-quality Rust, tests them, documents behavior, and flags implementation or risk issues.
+- ChatGPT Chat with connected GitHub access is the primary coding and maintenance agent: it reads the repository instructions, edits GitHub directly, documents behavior, and diagnoses the deployed system through the permitted observer surface.
+- Local Codex/desktop tooling is optional support for tasks that specifically require the user's machine; it is not the default or required path for routine repository development.
 - We co-create strategies. Do not change strategy rules or live-trading behavior without agreement.
 - This is a private production project for a live account, not a demo or throwaway MVP. Move quickly while keeping order handling, risk controls, recovery, and observability explicit.
 - Every explicitly requested feature must be implemented as production-ready code for the current architecture and live-account use. Do not intentionally deliver a basic, temporary, first-version, MVP, or deferred implementation unless the user explicitly requests that scope. Required correctness, performance, reliability, security, validation, and integration belong in the requested feature now.
@@ -25,9 +26,11 @@
 - Visual validation must test whether the rendered result is meaningful for the user's stated analytical task, not only whether the page loads, data counts exist, or JavaScript produces no errors. If the visual result is wrong, fix it before reporting completion.
 - Keep API keys and other secrets in environment variables or ignored local storage. Never commit, print, or expose them in the UI.
 
-## Deployment and access rules
+## Development, deployment, and access rules
 
-- Render is the intended always-on production host; preserve local development defaults while keeping production-specific paths, ports, credentials, and secrets environment-configurable.
+- GitHub `main` is the code source of truth. The normal development loop is: user directs work in ChatGPT Chat → ChatGPT edits/commits GitHub → Render builds/runs the result → the deployed system is inspected through its permitted web/diagnostic surface.
+- Render is the intended always-on production host and primary runtime environment; preserve local development defaults while keeping production-specific paths, ports, credentials, and secrets environment-configurable.
+- The user's Mac is optional for normal application development and is not a required deployment gate. Use it when the user chooses or when a task specifically benefits from local compute, local-only inspection, research, backtesting, or ML training.
 - Browser sessions are clients only. Long-running market feeds, bot runtimes, and other server work must remain backend-owned and must not depend on the browser staying open.
 - Preserve a strict boundary between a read-only diagnostic observer surface and the authenticated control/trading surface.
 - Observer access must never expose secrets or private authentication material and must never create, modify, start, stop, delete, place, cancel, or otherwise mutate application or trading state.
@@ -45,7 +48,7 @@
 
 ## Git workflow
 
-- This is a personal project for the user and Codex. Do not use team-process overhead, pull requests, or feature branches.
-- When the user says "commit push", run `./scripts/commit-push.sh` directly. Do not inspect diffs or status, and do not produce a changelog.
-- Codex owns the description: use the current chat to write one short, factual summary of its own work and pass it to the script. Never ask the user to label or describe code changes.
-- The script uses that summary as the commit message and the one-sentence reply.
+- This is a personal project for the user and ChatGPT. Do not use team-process overhead, pull requests, or feature branches unless the user explicitly asks for them.
+- When working from ChatGPT Chat with connected GitHub access, make approved repository changes directly on `main` and commit them through the GitHub integration.
+- When working locally through Codex and the user says "commit push", run `./scripts/commit-push.sh` directly. Do not inspect diffs or status, and do not produce a changelog.
+- The coding agent owns the commit description: use the current chat/task to write one short, factual summary of its own work. Never ask the user to label or describe code changes.

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Prepare BinanceGrid for its first Render deployment without changing trading strategy behavior or adding live Binance execution. The finished state is a clean GitHub `main` branch that is deployment-ready while preserving the current local Mac workflow.
+Prepare BinanceGrid for its first Render deployment without changing trading strategy behavior or adding live Binance execution. The finished state is a clean GitHub `main` branch ready to hand to Render. The user's Mac remains available as an optional research/local-compute environment but is not a required deployment gate.
 
 ## Rules
 
@@ -44,11 +44,12 @@ Prepare BinanceGrid for its first Render deployment without changing trading str
 
 **Exit:** The same codebase can run locally and on Render using environment configuration, and a failed migration cannot leave a partially recorded schema update.
 
-### Phase 4 — Verify and publish the pre-Render state
+### Phase 4 — Confirm the GitHub handoff to Render
 
-- [ ] Run the relevant Rust build/tests locally or in the available execution environment.
-- [ ] Confirm no deployment secret, database file, or machine-specific path is committed.
-- [ ] Confirm `Documents/ARCHITECTURE.md` matches the implemented deployment behavior.
-- [ ] Commit and push the completed changes to `main`.
+- [ ] Confirm GitHub `main` contains the completed Phase 1–3 architecture, operating rules, and Render-readiness code.
+- [ ] Confirm no deployment secret, database file, or machine-specific production path is committed.
+- [ ] Confirm `Documents/ARCHITECTURE.md` describes the actual operating model: ChatGPT Chat + GitHub as the primary coding path, GitHub `main` as source of truth, and Render as the primary runtime environment.
+- [ ] Confirm the repository is ready for Render to perform the first real hosted build and runtime verification.
+- [ ] Do not require the user's Mac or a local build as the exit condition for this phase; hosted build/runtime validation begins in the Render deployment roadmap.
 
-**Exit:** GitHub `main` contains the verified Render-ready version and is ready to connect to Render.
+**Exit:** GitHub `main` is the agreed Render-ready source of truth and Roadmap 2 can begin with the first hosted build.

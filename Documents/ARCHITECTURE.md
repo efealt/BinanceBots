@@ -9,6 +9,27 @@ The live and paper trading paths run on live market data and keep their working 
 
 Render is the intended always-on production deployment target. The hosted Rust backend owns long-running work; browser sessions are clients of that backend and must never own or determine the lifetime of a bot runtime.
 
+## Development and operating model
+
+```text
+User / quant analyst
+        ↓
+ChatGPT Chat + connected GitHub
+        ↓
+GitHub main (code source of truth)
+        ↓
+Render build + always-on runtime
+        ↓
+Read-only observer surface for remote diagnosis
+```
+
+- ChatGPT Chat with connected GitHub access is the primary coding and maintenance interface for this project.
+- GitHub `main` is the canonical codebase. Approved code and documentation changes are made there directly.
+- Render is the primary runtime and deployment-verification environment. Build failures, hosted behavior, persistence, market connectivity, and later backend bot behavior are verified against the Render deployment.
+- The user's Mac remains optional rather than being a required development or deployment gate. It may still be used for local research, heavy backtests, ML training, or tasks that specifically require local execution.
+- Once the observer surface exists, deployed diagnostics should be inspectable without granting trading authority. Authentication protects control and trading actions separately.
+- This workflow does not make the browser part of the trading runtime; the browser and ChatGPT inspection path remain clients of the Render-hosted backend.
+
 ## Deployment and persistence
 
 ```text
