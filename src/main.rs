@@ -1,9 +1,11 @@
 mod api;
+mod auth;
 mod collector;
 mod downloader;
 mod market;
 mod storage;
 
+use axum::{Router, middleware};
 use market::MarketService;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
@@ -23,9 +25,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let market_service = Arc::new(MarketService::new());
     let storage_reader = Arc::new(storage::StorageReader::new(database_path()));
     storage_reader.initialize()?;
+    let auth_state = Arc::new(auth::AuthState::from_env()?);
     let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web");
-    let app = api::router(market_service, storage_reader)
-        .fallback_service(ServeDir::new(web_dir).append_index_html_on_directories(true));
+
+    let protected_app = api::protected_router(market_service, storage_reader)
+        .fallback_service(ServeDir::new(web_dir).append_index_html_on_directories(true))
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&auth_state),
+            auth::require_auth,
+        ));
+
+    let app = Router::new()
+        .route("/api/health", axum::routing::get(api::health))
+        .merge(auth::public_router(auth_state))
+        .merge(protected_app);
 
     let address = server_address()?;
     let listener = tokio::net::TcpListener::bind(address).await?;

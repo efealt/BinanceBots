@@ -69,6 +69,9 @@ pages + APIs + WebSockets + diagnostics + controls
 - Authentication is enforced by the Rust/Axum backend before protected application content or endpoints are served. Client-side hiding is not authorization.
 - Credentials, session signing material, Binance API keys, and other secrets are supplied through environment configuration or equivalent server-side secret storage and are never committed to Git or embedded in client JavaScript.
 - GitHub and Render operational access remain separate from application login. Repository inspection and Render runtime logs can be used to diagnose failures even when the web application itself is unavailable.
+- The concrete single-user implementation uses a Rust/Axum login form at `/login`, opaque in-memory session IDs stored in an `HttpOnly; SameSite=Strict` cookie, and `/logout` session invalidation. Sessions expire after 12 hours and are invalidated by a service restart. Render-hosted cookies are marked `Secure`.
+- Authentication is enabled by default on Render and can be explicitly disabled only with `BINANCE_GRID_AUTH_MODE=disabled` for controlled setup/development. When enabled, `BINANCE_GRID_AUTH_USERNAME` and a password of at least 12 characters in `BINANCE_GRID_AUTH_PASSWORD` are required at startup; missing/invalid production credentials fail closed.
+- The full protected router includes application pages/static assets, `/api/data/...`, `/api/market/...`, and the market WebSocket handshake. `/api/health`, `/login`, and `/logout` are outside that protected router; only the login/session routes perform authentication work and expose no application data.
 - This full-private boundary is the target access model for the hosted application; the active Render roadmap tracks its implementation and verification.
 
 ## Live and paper trading
