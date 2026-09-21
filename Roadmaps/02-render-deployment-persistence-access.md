@@ -19,12 +19,12 @@ Deploy BinanceGrid to Render, prove that the application and SQLite data persist
 
 ### Phase 1 — Create the Render service
 
-- [ ] Connect the GitHub repository `efealt/BinanceGrid` to a Render Web Service.
-- [ ] Configure the Rust build and start commands appropriate for the repository.
-- [ ] Configure required environment values, including the Render-provided `PORT` behavior.
-- [ ] Deploy from `main`.
-- [ ] Verify the health endpoint and main web pages load successfully from the Render URL.
-- [ ] Verify Binance public market-data requests/WebSockets operate from the hosted service.
+- [x] Connect the GitHub repository `efealt/BinanceGrid` to a Render Web Service.
+- [x] Configure the Rust build and start commands appropriate for the repository.
+- [x] Configure required environment values, including the Render-provided `PORT` behavior.
+- [x] Deploy from `main`.
+- [x] Verify the health endpoint and main web pages load successfully from the Render URL.
+- [x] Verify Binance public market-data requests/WebSockets operate from the hosted service.
 
 **Exit:** The current application is reachable and functioning from its Render URL without relying on the user's Mac.
 
