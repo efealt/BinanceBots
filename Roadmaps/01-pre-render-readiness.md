@@ -17,11 +17,11 @@ Prepare BinanceGrid for its first Render deployment without changing trading str
 
 ### Phase 1 — Record the agreed deployment architecture
 
-- [ ] Update `Documents/ARCHITECTURE.md` to record Render as the intended always-on deployment target.
-- [ ] Record that production SQLite lives on a Render persistent disk while local development keeps a separate local SQLite database.
-- [ ] Record that backend bot runtimes must remain independent of the browser.
-- [ ] Record the long-term access model: public/read-only diagnostic observer surface and authenticated control/trading surface.
-- [ ] State explicitly that observer access must never expose secrets or permit state-changing/trading actions.
+- [x] Update `Documents/ARCHITECTURE.md` to record Render as the intended always-on deployment target.
+- [x] Record that production SQLite lives on a Render persistent disk while local development keeps a separate local SQLite database.
+- [x] Record that backend bot runtimes must remain independent of the browser.
+- [x] Record the long-term access model: public/read-only diagnostic observer surface and authenticated control/trading surface.
+- [x] State explicitly that observer access must never expose secrets or permit state-changing/trading actions.
 
 **Exit:** The architecture document accurately reflects the deployment and access decisions agreed before Render.
 
