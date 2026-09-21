@@ -27,9 +27,9 @@ Prepare BinanceGrid for its first Render deployment without changing trading str
 
 ### Phase 2 — Update repository operating rules
 
-- [ ] Update `AGENTS.md` only with rules future agents need to preserve the observer/control separation and production deployment constraints.
-- [ ] Keep implementation details in architecture/code rather than turning `AGENTS.md` into a design document.
-- [ ] Verify the updated rules do not conflict with the existing single-user, live-account, production-quality requirements.
+- [x] Update `AGENTS.md` only with rules future agents need to preserve the observer/control separation and production deployment constraints.
+- [x] Keep implementation details in architecture/code rather than turning `AGENTS.md` into a design document.
+- [x] Verify the updated rules do not conflict with the existing single-user, live-account, production-quality requirements.
 
 **Exit:** Future coding work has concise instructions that preserve the agreed security and diagnostic boundaries.
 
