@@ -46,10 +46,10 @@ Prepare BinanceGrid for its first Render deployment without changing trading str
 
 ### Phase 4 — Confirm the GitHub handoff to Render
 
-- [ ] Confirm GitHub `main` contains the completed Phase 1–3 architecture, operating rules, and Render-readiness code.
-- [ ] Confirm no deployment secret, database file, or machine-specific production path is committed.
-- [ ] Confirm `Documents/ARCHITECTURE.md` describes the actual operating model: ChatGPT Chat + GitHub as the primary coding path, GitHub `main` as source of truth, and Render as the primary runtime environment.
-- [ ] Confirm the repository is ready for Render to perform the first real hosted build and runtime verification.
-- [ ] Do not require the user's Mac or a local build as the exit condition for this phase; hosted build/runtime validation begins in the Render deployment roadmap.
+- [x] Confirm GitHub `main` contains the completed Phase 1–3 architecture, operating rules, and Render-readiness code.
+- [x] Confirm no deployment secret, database file, or machine-specific production path is committed.
+- [x] Confirm `Documents/ARCHITECTURE.md` describes the actual operating model: ChatGPT Chat + GitHub as the primary coding path, GitHub `main` as source of truth, and Render as the primary runtime environment.
+- [x] Confirm the repository is ready for Render to perform the first real hosted build and runtime verification.
+- [x] Do not require the user's Mac or a local build as the exit condition for this phase; hosted build/runtime validation begins in the Render deployment roadmap.
 
 **Exit:** GitHub `main` is the agreed Render-ready source of truth and Roadmap 2 can begin with the first hosted build.
