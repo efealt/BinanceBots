@@ -13,7 +13,7 @@
 - Scope warning: do not add, design, or expand features the user did not explicitly ask for. Implement only the requested slice and wait for the user's next instruction before extending it.
 - Architecture rule: `Documents/ARCHITECTURE.md` is the living architecture source of truth. Update it in the same change whenever the agreed architecture changes.
 - The user is the quant analyst: proposes market hypotheses, trading ideas, parameters, and risk constraints.
-- ChatGPT Chat with connected GitHub access is the primary coding and maintenance agent: it reads the repository instructions, edits GitHub directly, documents behavior, and diagnoses the deployed system through the permitted observer surface.
+- ChatGPT Chat with connected GitHub and Render access is the primary coding and maintenance agent: it reads the repository instructions, edits GitHub directly, documents behavior, and diagnoses the deployed system through authenticated application access plus Render deployment/runtime logs.
 - Local Codex/desktop tooling is optional support for tasks that specifically require the user's machine; it is not the default or required path for routine repository development.
 - We co-create strategies. Do not change strategy rules or live-trading behavior without agreement.
 - This is a private production project for a live account, not a demo or throwaway MVP. Move quickly while keeping order handling, risk controls, recovery, and observability explicit.
@@ -32,9 +32,11 @@
 - Render is the intended always-on production host and primary runtime environment; preserve local development defaults while keeping production-specific paths, ports, credentials, and secrets environment-configurable.
 - The user's Mac is optional for normal application development and is not a required deployment gate. Use it when the user chooses or when a task specifically benefits from local compute, local-only inspection, research, backtesting, or ML training.
 - Browser sessions are clients only. Long-running market feeds, bot runtimes, and other server work must remain backend-owned and must not depend on the browser staying open.
-- Preserve a strict boundary between a read-only diagnostic observer surface and the authenticated control/trading surface.
-- Observer access must never expose secrets or private authentication material and must never create, modify, start, stop, delete, place, cancel, or otherwise mutate application or trading state.
-- Every state-changing or trading-capable action must be protected server-side by the authenticated control boundary; hiding controls in the browser is not authorization.
+- The hosted BinanceGrid application is private by default. All application pages, static application assets, data APIs, market APIs, WebSocket feeds, diagnostics, backtests, downloader controls, bot controls, and future trading controls must require server-enforced authentication.
+- The only unauthenticated route that is always allowed is the minimal Render health-check endpoint. It may report only basic process health and must expose no market data, database contents, bot state, credentials, secrets, or private configuration.
+- If the chosen login/session design requires an unauthenticated authentication entrypoint, expose only the minimum route(s) necessary to establish a session; those routes must not expose application data.
+- Authentication and authorization must be enforced server-side. Hiding pages, buttons, APIs, or WebSocket URLs in the browser is not an access boundary.
+- Credentials, session signing material, Binance API keys, and other secrets must remain in environment variables or other server-side secret storage and must never be committed or returned to the client.
 
 ## Initial tech stack
 

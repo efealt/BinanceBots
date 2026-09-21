@@ -7,7 +7,7 @@ Last updated: 2026-09-21
 
 The live and paper trading paths run on live market data and keep their working state in memory. SQLite is not part of their hot path. A separate capture process may persist public market data asynchronously for research and later reconstruction.
 
-Render is the intended always-on production deployment target. The hosted Rust backend owns long-running work; browser sessions are clients of that backend and must never own or determine the lifetime of a bot runtime.
+Render is the intended always-on production deployment target. The hosted Rust backend owns long-running work; browser sessions are authenticated clients of that backend and must never own or determine the lifetime of a bot runtime.
 
 ## Development and operating model
 
@@ -20,15 +20,18 @@ GitHub main (code source of truth)
         ↓
 Render build + always-on runtime
         ↓
-Read-only observer surface for remote diagnosis
+Authenticated private application
+        ↓
+Browser client / ChatGPT-assisted inspection
 ```
 
 - ChatGPT Chat with connected GitHub access is the primary coding and maintenance interface for this project.
 - GitHub `main` is the canonical codebase. Approved code and documentation changes are made there directly.
 - Render is the primary runtime and deployment-verification environment. Build failures, hosted behavior, persistence, market connectivity, and later backend bot behavior are verified against the Render deployment.
 - The user's Mac remains optional rather than being a required development or deployment gate. It may still be used for local research, heavy backtests, ML training, or tasks that specifically require local execution.
-- Once the observer surface exists, deployed diagnostics should be inspectable without granting trading authority. Authentication protects control and trading actions separately.
-- This workflow does not make the browser part of the trading runtime; the browser and ChatGPT inspection path remain clients of the Render-hosted backend.
+- Deployed pages, diagnostics, historical data, market feeds, APIs, WebSockets, and future trading controls are part of one private application and require authentication.
+- Operational diagnosis does not depend on a public observer surface. ChatGPT can inspect GitHub source/history and, when connected, Render deploy status and runtime logs; authenticated browser access is used for rendered application verification.
+- This workflow does not make the browser part of the trading runtime; the authenticated browser remains a client of the Render-hosted backend.
 
 ## Deployment and persistence
 
@@ -46,19 +49,27 @@ GitHub main → Render Web Service → Rust/Axum backend
 
 ## Access boundary
 
-The hosted application has two security classes:
+The hosted application uses a full private-access model rather than a public observer/private control split.
 
 ```text
-Read-only observer surface → diagnostics only
-Authenticated control surface → state changes / trading controls
+Unauthenticated internet
+        ↓
+minimal health check
+        +
+authentication entrypoint only if required
+        ↓
+authenticated BinanceGrid application
+        ↓
+pages + APIs + WebSockets + diagnostics + controls
 ```
 
-- A read-only observer surface may be reachable without control credentials so the deployed system can be inspected and diagnosed remotely.
-- Observer access must never create, modify, start, stop, delete, place, cancel, or otherwise mutate application or trading state.
-- Observer access must never expose API keys, secrets, credentials, signing material, or other private authentication data.
-- Any endpoint or UI action that changes application state or can affect trading belongs to the authenticated control surface and must be protected server-side.
-- Hiding controls in the browser is not an authorization boundary; the backend must enforce the separation.
-- The observer/control split must remain usable for future live bots so diagnostics can be inspected without granting trading authority.
+- All application pages, static application assets, historical-data views, Data Downloader functions, Backtest views, Market View feeds, APIs, WebSockets, diagnostics, bot state, and future trading controls require server-enforced authentication.
+- The Render health-check route is the only route that is always intentionally unauthenticated. It returns only minimal process-health status and never exposes market data, database contents, bot state, credentials, secrets, or configuration.
+- If the selected authentication design needs a login/session bootstrap endpoint, only the minimum authentication route(s) needed to establish the session may be unauthenticated. They must expose no application data.
+- Authentication is enforced by the Rust/Axum backend before protected application content or endpoints are served. Client-side hiding is not authorization.
+- Credentials, session signing material, Binance API keys, and other secrets are supplied through environment configuration or equivalent server-side secret storage and are never committed to Git or embedded in client JavaScript.
+- GitHub and Render operational access remain separate from application login. Repository inspection and Render runtime logs can be used to diagnose failures even when the web application itself is unavailable.
+- This full-private boundary is the target access model for the hosted application; the active Render roadmap tracks its implementation and verification.
 
 ## Live and paper trading
 
@@ -106,7 +117,7 @@ Binance historical download → dataset catalog + import receipt + normalized hi
 
 - Console: shows a top-row bot selector and the detail view for one selected bot. Selecting a card changes only the UI view; it does not affect any bot runtime.
 - The console receives a list of bot snapshots from the backend; it does not run strategy logic.
-- Market View: analyzes one selected market independently. It does not create bots, stage strategies, or run backtests. It supports Binance Spot markets and USDⓈ-M perpetual futures, bootstraps the latest 1,000 candles into memory, then keeps the current candle, best bid/ask quote, partial order-book depth, and recent public trades updated from the product's public WebSocket streams. Rust processes the exchange events continuously; the browser receives one initial snapshot followed by bounded, coalesced WebSocket updates instead of periodic REST polling. It does not write market data to SQLite. The browser renders the feed with TradingView Lightweight Charts; chart interaction stays in the UI layer.
+- Market View: analyzes one selected market independently. It does not create bots, stage strategies, or run backtests. It supports Binance Spot markets and USDⓈ-M perpetual futures, bootstraps the latest 1,000 candles into memory, then keeps the current candle, best bid/ask quote, partial order-book depth, and recent public trades updated from the product's public WebSocket streams. Rust processes the exchange events continuously; the authenticated browser receives one initial snapshot followed by bounded, coalesced WebSocket updates instead of periodic REST polling. The application WebSocket endpoint itself is private and requires authentication even though its upstream Binance source is public. It does not write market data to SQLite. The browser renders the feed with TradingView Lightweight Charts; chart interaction stays in the UI layer.
 - Chart annotations are reusable time-window overlays configured by the chart caller. Market View enables the UTC weekend background overlay. Backtest enables selectable UTC weekend and after-hours shading; metals (`XAG`, `XAU`, `XPT`, and `XPD`) use the 22:00–07:00 UTC overnight window, while other symbols use the default 16:00–20:00 UTC research window. Overlay preferences persist in browser storage while the chart changes timeframe.
 - Chart indicators are reusable UI-layer modules under `web/chart/indicators/`. Indicator calculations are separate from chart rendering and toolbar state. Market View initially exposes Simple Moving Average and Bollinger Bands with editable parameters; active settings remain in browser memory and are not written to SQLite.
 - Backtest: runs a selected strategy on stored historical data only. Beneath the OHLCV chart, its Calendar Effects diagnostics recompute return distributions, candle ranges, base-volume profiles, average returns by UTC hour or weekday, and compounded hourly returns with mean summaries for the full sample, weekends, remaining weekday hours, post-New York/pre-Asia (21:00–00:00 UTC), and middle Asia (02:00–05:00 UTC) at the selected 1-minute, 1-hour, or 1-day chart interval. Diagnostic visuals use Apache ECharts while the OHLCV chart remains on Lightweight Charts. Session-based rows are unavailable at daily resolution because a daily candle spans the full day. The cumulative hourly return card is available at the 1-hour interval and groups one-hour open-to-open returns by UTC entry hour, with no trading costs applied. A separate rolling same-hour prediction card uses a 30-occurrence window selectable over the full sample, weekdays, or weekends: for each UTC hour, a positive average of the prior 30 same-hour returns predicts positive for the next occurrence; the card reports correct and false predictions by hour.
