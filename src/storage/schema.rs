@@ -9,7 +9,7 @@ const DOWNLOAD_START_DATE_MIGRATION: &str = include_str!(concat!(
     "/migrations/002_download_start_date.sql"
 ));
 
-pub(crate) fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
+pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
              version INTEGER PRIMARY KEY,
@@ -24,21 +24,28 @@ pub(crate) fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
     )?;
 
     if current_version < 1 {
-        connection.execute_batch(INITIAL_MIGRATION)?;
-        connection.execute(
-            "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (?1, ?2)",
-            rusqlite::params![1_i64, current_time_ms()],
-        )?;
+        apply_migration(connection, 1, INITIAL_MIGRATION)?;
     }
 
     if current_version < 2 {
-        connection.execute_batch(DOWNLOAD_START_DATE_MIGRATION)?;
-        connection.execute(
-            "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (?1, ?2)",
-            rusqlite::params![2_i64, current_time_ms()],
-        )?;
+        apply_migration(connection, 2, DOWNLOAD_START_DATE_MIGRATION)?;
     }
 
+    Ok(())
+}
+
+fn apply_migration(
+    connection: &mut Connection,
+    version: i64,
+    migration: &str,
+) -> Result<(), rusqlite::Error> {
+    let transaction = connection.transaction()?;
+    transaction.execute_batch(migration)?;
+    transaction.execute(
+        "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (?1, ?2)",
+        rusqlite::params![version, current_time_ms()],
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -53,13 +60,13 @@ fn current_time_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::migrate;
+    use super::{apply_migration, migrate};
     use rusqlite::Connection;
 
     #[test]
     fn creates_backtest_and_live_storage() {
-        let connection = Connection::open_in_memory().expect("open in-memory database");
-        migrate(&connection).expect("apply initial migration");
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        migrate(&mut connection).expect("apply initial migration");
 
         let table_count: i64 = connection
             .query_row(
@@ -89,6 +96,37 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version");
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn rolls_back_failed_migration() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        migrate(&mut connection).expect("apply initial migrations");
+
+        let result = apply_migration(
+            &mut connection,
+            3,
+            "CREATE TABLE migration_probe (id INTEGER PRIMARY KEY);
+             THIS IS NOT VALID SQL;",
+        );
+        assert!(result.is_err());
+
+        let probe_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'migration_probe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check rollback table");
+        assert_eq!(probe_count, 0);
+
+        let version: i64 = connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .expect("read schema version after failed migration");
         assert_eq!(version, 2);
     }
 }

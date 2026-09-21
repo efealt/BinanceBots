@@ -35,7 +35,9 @@ impl CaptureOptions {
         let mut interval = DEFAULT_INTERVAL.to_string();
         let mut market_type = MarketType::Spot;
         let mut duration_seconds = DEFAULT_DURATION_SECONDS;
-        let mut database_path = PathBuf::from(DEFAULT_DATABASE);
+        let mut database_path = std::env::var_os("BINANCE_GRID_DATABASE_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_DATABASE));
         let mut index = 0;
 
         while index < args.len() {
@@ -184,7 +186,7 @@ fn usage() -> &'static str {
      --interval 1m|5m|1h             default: 1m\n\
      --market-type spot|usd_m_perpetual  default: spot\n\
      --duration-seconds N             default: 60\n\
-     --database PATH                  default: data/binance_grid.sqlite3"
+     --database PATH                  default: BINANCE_GRID_DATABASE_PATH or data/binance_grid.sqlite3"
 }
 
 #[derive(Debug, Error)]

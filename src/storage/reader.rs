@@ -20,14 +20,14 @@ impl StorageReader {
             std::fs::create_dir_all(parent)?;
         }
 
-        let connection = Connection::open(&self.database_path)?;
+        let mut connection = Connection::open(&self.database_path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;",
         )?;
-        super::schema::migrate(&connection)?;
+        super::schema::migrate(&mut connection)?;
         Ok(())
     }
 

@@ -211,14 +211,14 @@ impl SqliteStore {
             std::fs::create_dir_all(parent)?;
         }
 
-        let connection = Connection::open(&spec.database_path)?;
+        let mut connection = Connection::open(&spec.database_path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;",
         )?;
-        schema::migrate(&connection)?;
+        schema::migrate(&mut connection)?;
 
         let instrument_id = ensure_instrument(&connection, &spec.key)?;
         connection.execute(

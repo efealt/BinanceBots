@@ -35,12 +35,12 @@ Prepare BinanceGrid for its first Render deployment without changing trading str
 
 ### Phase 3 — Make the Rust application Render-ready
 
-- [ ] Replace the hardcoded `127.0.0.1:8080` server binding with deployment-safe configuration that uses Render's `PORT` and binds externally while preserving a sensible local default.
-- [ ] Make the SQLite database path configurable by environment variable while preserving `data/binance_grid.sqlite3` as the local default.
-- [ ] Ensure the configured database parent directory is created when needed.
-- [ ] Harden schema migrations so each migration and its version record succeed atomically or roll back together.
-- [ ] Verify the existing health endpoint and static UI still work with the configuration changes.
-- [ ] Keep database files and environment/secrets files ignored by Git.
+- [x] Replace the hardcoded `127.0.0.1:8080` server binding with deployment-safe configuration that uses Render's `PORT` and binds externally while preserving a sensible local default.
+- [x] Make the SQLite database path configurable by environment variable while preserving `data/binance_grid.sqlite3` as the local default.
+- [x] Ensure the configured database parent directory is created when needed.
+- [x] Harden schema migrations so each migration and its version record succeed atomically or roll back together.
+- [x] Verify the existing health endpoint and static UI still work with the configuration changes.
+- [x] Keep database files and environment/secrets files ignored by Git.
 
 **Exit:** The same codebase can run locally and on Render using environment configuration, and a failed migration cannot leave a partially recorded schema update.
 
