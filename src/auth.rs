@@ -16,7 +16,7 @@ use std::{
 use std::io::Read;
 use thiserror::Error;
 
-const SESSION_COOKIE: &str = "binance_grid_session";
+const SESSION_COOKIE: &str = "session";
 const SESSION_TTL_SECONDS: u64 = 12 * 60 * 60;
 
 pub struct AuthState {
@@ -244,7 +244,7 @@ fn login_response(status: StatusCode, invalid: bool) -> Response {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>Sign in · Binance Grid</title>
+<title>Secure Access</title>
 <style>
 :root {{ font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color-scheme: dark; background:#0b0f14; color:#eef3f8; }}
 * {{ box-sizing:border-box; }}
@@ -264,7 +264,7 @@ button {{ width:100%; margin-top:22px; border:0; border-radius:10px; padding:12p
 </head>
 <body>
 <main>
-<div class="brand"><span class="mark">BG</span><div><h1>Binance Grid</h1><small>Private quant console</small></div></div>
+<div class="brand"><span class="mark">SA</span><div><h1>Secure Access</h1><small>Private workspace</small></div></div>
 <form method="post" action="/login">
 <label>Username<input name="username" autocomplete="username" required autofocus></label>
 <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
@@ -300,9 +300,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_static("theme=dark; binance_grid_session=abc-123; x=1"),
+            HeaderValue::from_static("theme=dark; session=abc-123; x=1"),
         );
         assert_eq!(session_token(&headers).as_deref(), Some("abc-123"));
-        assert_eq!(SESSION_COOKIE, "binance_grid_session");
+        assert_eq!(SESSION_COOKIE, "session");
     }
 }
