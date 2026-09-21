@@ -21,6 +21,6 @@ pub async fn health() -> Json<HealthResponse> {
 }
 
 #[derive(Serialize)]
-struct HealthResponse {
+pub struct HealthResponse {
     status: &'static str,
 }

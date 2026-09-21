@@ -13,8 +13,8 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use std::io::Read;
 use thiserror::Error;
-use uuid::Uuid;
 
 const SESSION_COOKIE: &str = "binance_grid_session";
 const SESSION_TTL_SECONDS: u64 = 12 * 60 * 60;
@@ -65,11 +65,13 @@ impl AuthState {
             && constant_time_eq(self.password.as_bytes(), password.as_bytes())
     }
 
-    fn create_session(&self) -> String {
-        let token = Uuid::new_v4().to_string();
+    fn create_session(&self) -> Result<String, std::io::Error> {
+        let mut random = [0_u8; 32];
+        std::fs::File::open("/dev/urandom")?.read_exact(&mut random)?;
+        let token = random.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
         let expiry = Instant::now() + Duration::from_secs(SESSION_TTL_SECONDS);
         self.sessions_lock().insert(token.clone(), expiry);
-        token
+        Ok(token)
     }
 
     fn session_valid(&self, token: &str) -> bool {
@@ -180,7 +182,10 @@ async fn login(
         return login_response(StatusCode::UNAUTHORIZED, true);
     }
 
-    let token = state.create_session();
+    let token = match state.create_session() {
+        Ok(token) => token,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "could not create session").into_response(),
+    };
     let mut response = Redirect::to("/").into_response();
     if let Ok(cookie) = HeaderValue::from_str(&state.session_cookie(&token)) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
