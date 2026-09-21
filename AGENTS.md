@@ -25,6 +25,14 @@
 - Visual validation must test whether the rendered result is meaningful for the user's stated analytical task, not only whether the page loads, data counts exist, or JavaScript produces no errors. If the visual result is wrong, fix it before reporting completion.
 - Keep API keys and other secrets in environment variables or ignored local storage. Never commit, print, or expose them in the UI.
 
+## Deployment and access rules
+
+- Render is the intended always-on production host; preserve local development defaults while keeping production-specific paths, ports, credentials, and secrets environment-configurable.
+- Browser sessions are clients only. Long-running market feeds, bot runtimes, and other server work must remain backend-owned and must not depend on the browser staying open.
+- Preserve a strict boundary between a read-only diagnostic observer surface and the authenticated control/trading surface.
+- Observer access must never expose secrets or private authentication material and must never create, modify, start, stop, delete, place, cancel, or otherwise mutate application or trading state.
+- Every state-changing or trading-capable action must be protected server-side by the authenticated control boundary; hiding controls in the browser is not authorization.
+
 ## Initial tech stack
 
 - Rust stable with Tokio for the asynchronous runtime.
