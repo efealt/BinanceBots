@@ -403,13 +403,13 @@ fn parse_klines(
             return Err(ArchiveDownloadError::InvalidKline { row: row_index + 1 });
         }
         let kline = HistoricalKline {
-            open_time_ms: parse_field(&record, 0, row_index)?,
+            open_time_ms: normalize_archive_timestamp_ms(parse_field(&record, 0, row_index)?),
             open_price: parse_field(&record, 1, row_index)?,
             high_price: parse_field(&record, 2, row_index)?,
             low_price: parse_field(&record, 3, row_index)?,
             close_price: parse_field(&record, 4, row_index)?,
             base_volume: parse_field(&record, 5, row_index)?,
-            close_time_ms: parse_field(&record, 6, row_index)?,
+            close_time_ms: normalize_archive_timestamp_ms(parse_field(&record, 6, row_index)?),
             quote_volume: parse_field(&record, 7, row_index)?,
             trade_count: parse_field(&record, 8, row_index)?,
             taker_buy_base_volume: parse_field(&record, 9, row_index)?,
@@ -424,6 +424,15 @@ fn parse_klines(
         return Err(ArchiveDownloadError::NoKlines);
     }
     Ok(rows)
+}
+
+fn normalize_archive_timestamp_ms(timestamp: i64) -> i64 {
+    const MICROSECOND_TIMESTAMP_THRESHOLD: i64 = 100_000_000_000_000;
+    if timestamp >= MICROSECOND_TIMESTAMP_THRESHOLD {
+        timestamp / 1_000
+    } else {
+        timestamp
+    }
 }
 
 fn parse_field<T: std::str::FromStr>(
@@ -448,5 +457,28 @@ impl DownloadRunPreparation {
             requested_start_time_ms: self.requested_start_time_ms,
             imported_urls: Default::default(),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_archive_timestamp_ms;
+
+    #[test]
+    fn archive_timestamp_keeps_milliseconds_unchanged() {
+        assert_eq!(normalize_archive_timestamp_ms(1_789_776_000_000), 1_789_776_000_000);
+    }
+
+    #[test]
+    fn archive_timestamp_converts_microseconds_to_milliseconds() {
+        assert_eq!(
+            normalize_archive_timestamp_ms(1_789_776_000_000_000),
+            1_789_776_000_000
+        );
+        assert_eq!(
+            normalize_archive_timestamp_ms(1_789_776_059_999_999),
+            1_789_776_059_999
+        );
     }
 }
