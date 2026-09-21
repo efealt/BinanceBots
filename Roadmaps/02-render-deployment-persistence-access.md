@@ -30,12 +30,12 @@ Deploy BinanceGrid to Render, prove that the application and SQLite data persist
 
 ### Phase 2 — Attach and use persistent SQLite storage
 
-- [ ] Attach a Render persistent disk to the Web Service.
-- [ ] Choose a stable mount path and configure the application's database-path environment variable to point to the disk.
-- [ ] Redeploy/restart and verify SQLite initializes and migrations apply on the persistent disk.
-- [ ] Confirm the application can read and write the production database.
+- [x] Attach a Render persistent disk to the Web Service.
+- [x] Choose a stable mount path and configure the application's database-path environment variable to point to the disk.
+- [x] Redeploy/restart and verify SQLite initializes and migrations apply on the persistent disk.
+- [x] Confirm the application can read and write the production database.
 
-**Exit:** The live Render service is using SQLite on the persistent disk rather than ephemeral service storage.
+**Verification (2026-09-21):** Render disk mounted at `/var/data` (1 GB); `BINANCE_GRID_DATABASE_PATH=/var/data/binance_grid.sqlite3`; redeploy `dep-daoodnbbc2fs73889br0` reached `live`; startup completed database initialization/migrations before the server bound; live GETs to `/api/data/downloads` and `/api/data/datasets` returned HTTP 200 from the production database.\n\n**Exit:** The live Render service is using SQLite on the persistent disk rather than ephemeral service storage.
 
 ### Phase 3 — Prove persistence with the downloader
 
