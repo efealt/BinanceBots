@@ -138,19 +138,26 @@ pub async fn require_auth(
         return next.run(request).await;
     }
 
+    let path = request.uri().path().to_string();
     let authenticated = session_token(request.headers())
         .as_deref()
         .is_some_and(|token| state.session_valid(token));
 
     if authenticated {
-        return next.run(request).await;
+        let mut response = next.run(request).await;
+        if should_disable_cache(&path) {
+            apply_no_store_headers(&mut response);
+        }
+        return response;
     }
 
-    if request.uri().path().starts_with("/api/") {
-        return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
-    }
-
-    Redirect::to("/login").into_response()
+    let mut response = if path.starts_with("/api/") {
+        (StatusCode::UNAUTHORIZED, "authentication required").into_response()
+    } else {
+        Redirect::to("/login").into_response()
+    };
+    apply_no_store_headers(&mut response);
+    response
 }
 
 async fn login_page(State(state): State<Arc<AuthState>>, headers: HeaderMap) -> Response {
@@ -196,9 +203,7 @@ async fn login(
     if let Ok(cookie) = HeaderValue::from_str(&state.session_cookie(&token)) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    apply_no_store_headers(&mut response);
     response
 }
 
@@ -211,9 +216,11 @@ async fn logout(State(state): State<Arc<AuthState>>, headers: HeaderMap) -> Resp
     if let Ok(cookie) = HeaderValue::from_str(&state.clear_cookie()) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    apply_no_store_headers(&mut response);
+    response.headers_mut().insert(
+        "clear-site-data",
+        HeaderValue::from_static("\"cache\""),
+    );
     response
 }
 
@@ -280,6 +287,23 @@ fn constant_time_eq(expected: &[u8], supplied: &[u8]) -> bool {
     diff == 0
 }
 
+fn should_disable_cache(path: &str) -> bool {
+    path == "/" || path.ends_with(".html") || path.starts_with("/api/")
+}
+
+fn apply_no_store_headers(response: &mut Response) {
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store, max-age=0"),
+    );
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    response
+        .headers_mut()
+        .insert(header::EXPIRES, HeaderValue::from_static("0"));
+}
+
 fn login_response(status: StatusCode, invalid: bool) -> Response {
     let error = if invalid {
         r#"<p class="error" role="alert">Invalid username or password.</p>"#
@@ -326,9 +350,7 @@ button {{ width:100%; margin-top:22px; border:0; border-radius:10px; padding:12p
 </html>"#
     );
     let mut response = (status, Html(html)).into_response();
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    apply_no_store_headers(&mut response);
     response
 }
 

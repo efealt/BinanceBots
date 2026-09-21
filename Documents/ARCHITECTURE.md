@@ -74,6 +74,8 @@ pages + APIs + WebSockets + diagnostics + controls
 - The full protected router includes application pages/static assets, `/api/data/...`, `/api/market/...`, `/api/security/...`, and the market WebSocket handshake. `/api/health`, `/login`, and `/logout` are outside that protected router; only the login/session routes perform authentication work and expose no application data.
 - Authentication activity is persisted in SQLite in `auth_audit_events`. Only `login_success`, `login_failed`, and `logout` are recorded, with UTC timestamp, source IP when supplied by the Render proxy, and user-agent. Passwords, session tokens, and page navigation are never written to this audit table.
 - The authenticated Security page reads the newest audit events through `/api/security/auth-events`; unauthenticated users cannot read the audit history.
+- Protected HTML and API responses are sent with `Cache-Control: private, no-store, max-age=0` plus legacy no-cache headers so authenticated application data is not reused from the browser HTTP cache. Static JS/CSS assets keep normal caching behavior to avoid unnecessary bandwidth.
+- Logout invalidates the server session, expires the session cookie, and sends `Clear-Site-Data: "cache"` so cached origin content is discarded before the user continues unauthenticated.
 - This full-private boundary is the target access model for the hosted application; the active Render roadmap tracks its implementation and verification.
 
 ## Live and paper trading
