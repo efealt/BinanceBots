@@ -1,11 +1,43 @@
 # Binance Grid Architecture
 
 Status: living document  
-Last updated: 2026-09-17
+Last updated: 2026-09-21
 
 ## Core decision
 
 The live and paper trading paths run on live market data and keep their working state in memory. SQLite is not part of their hot path. A separate capture process may persist public market data asynchronously for research and later reconstruction.
+
+Render is the intended always-on production deployment target. The hosted Rust backend owns long-running work; browser sessions are clients of that backend and must never own or determine the lifetime of a bot runtime.
+
+## Deployment and persistence
+
+```text
+GitHub main → Render Web Service → Rust/Axum backend
+                                  ↓
+                         persistent SQLite disk
+```
+
+- Render is the intended production host for the always-on application.
+- Production SQLite lives on a Render persistent disk. It must not depend on Render's ephemeral service filesystem for durable state.
+- Local development keeps a separate local SQLite database. Local and production databases may contain different data while sharing the same migration-defined schema.
+- Deployment configuration such as the listening port, database path, credentials, and other secrets belongs in environment configuration rather than source code.
+- Closing, refreshing, or disconnecting a browser must not stop backend market feeds, bot runtimes, or other server-owned work.
+
+## Access boundary
+
+The hosted application has two security classes:
+
+```text
+Read-only observer surface → diagnostics only
+Authenticated control surface → state changes / trading controls
+```
+
+- A read-only observer surface may be reachable without control credentials so the deployed system can be inspected and diagnosed remotely.
+- Observer access must never create, modify, start, stop, delete, place, cancel, or otherwise mutate application or trading state.
+- Observer access must never expose API keys, secrets, credentials, signing material, or other private authentication data.
+- Any endpoint or UI action that changes application state or can affect trading belongs to the authenticated control surface and must be protected server-side.
+- Hiding controls in the browser is not an authorization boundary; the backend must enforce the separation.
+- The observer/control split must remain usable for future live bots so diagnostics can be inspected without granting trading authority.
 
 ## Live and paper trading
 
@@ -15,6 +47,7 @@ Live market data → in-memory bot runtimes → live or paper executor → bot s
 
 - Each bot is an independent in-memory runtime with its own bot ID, strategy, symbol, and state.
 - One grid bot runs one symbol. Multiple bots may run at the same time.
+- Bot runtimes are backend-owned and independent of any browser session.
 - Live and paper use the same live market data and strategy engine.
 - Only execution differs: exchange orders for live trading, simulated fills for paper trading.
 - Grid decisions, order handling, position state, and UI reads must not wait on SQLite.
