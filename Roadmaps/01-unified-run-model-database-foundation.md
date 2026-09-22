@@ -13,8 +13,11 @@ Create the canonical persistence model that Backtest, Paper, and Live will all u
 - Equivalent runs can share a comparison/experiment identifier so later replay results can be aligned.
 - Persist the same core concepts for all modes: run, decision, order intent, order, fill, position/inventory, and equity/PnL snapshot.
 - Keep strategy-specific information in version/parameter/metadata fields rather than adding strategy-specific columns to the canonical tables.
-- Use UTC epoch milliseconds for event/run timestamps, consistent with the existing database.
+- Use UTC epoch milliseconds consistently, but preserve distinct time semantics where they exist: strategy/event time, exchange time when supplied, system receive time, and persistence/write time. Later latency/comparison work must not infer one from another.
+- Prices, quantities, fees, balances, PnL, and other monetary/trading values must use an exact deterministic representation suitable for Binance execution records; do not rely on floating-point `REAL` as the canonical persisted trading value.
 - Preserve raw run records. Later comparison/calibration work must not rewrite historical Paper/Live observations.
+- Order lifecycle history is append/audit oriented: later status changes must not erase the earlier order-state sequence.
+- Paper/Live run history has no normal runtime delete path. Database cascade behavior may exist for controlled maintenance/tests, but ordinary application behavior preserves completed/raw observations.
 - No UI, API, simulator, strategy, Paper runtime, Binance private-account connection, or real order submission belongs in this roadmap.
 
 ## Sequential phases
@@ -23,8 +26,11 @@ Create the canonical persistence model that Backtest, Paper, and Live will all u
 
 - [ ] Define the required identity and lifecycle fields for a run: `run_id`, mode, status, strategy identifier/version, strategy parameters, instrument, start/end timestamps, initial capital/configuration, data-source metadata, execution-assumption metadata, and optional comparison/experiment identifier.
 - [ ] Define canonical event identities and ordering so decisions, intents, orders, fills, positions, and equity snapshots can be reconstructed in chronological order.
+- [ ] Define timestamp semantics explicitly for each record: decision/event time, exchange time when applicable, system receive time, and persisted/write time. Keep unavailable timestamps nullable rather than substituting another clock.
 - [ ] Define which fields are common across all modes and which fields may remain nullable until a later mode supplies them, such as exchange order IDs in Live.
 - [ ] Define lifecycle/status values for runs and orders before encoding them as SQLite constraints.
+- [ ] Define the exact persisted numeric representation for price, quantity, fee, capital, balance, PnL, and related trading values so round-tripping is deterministic and does not depend on binary floating-point.
+- [ ] Define order-state persistence as an append-only lifecycle/event sequence rather than destructive status replacement.
 - [ ] Record the final contract inside the Phase 1 implementation change before creating the migration.
 
 **Exit:** One explicit mode-neutral persistence contract exists and contains no separate Backtest/Paper/Live result schemas.
@@ -36,8 +42,10 @@ Create the canonical persistence model that Backtest, Paper, and Live will all u
 - [ ] Create canonical tables for decisions, order intents, orders, fills, position/inventory snapshots, and equity/PnL snapshots.
 - [ ] Add the comparison/experiment linkage required to associate equivalent runs across modes.
 - [ ] Add foreign keys, mode/status checks, uniqueness rules, and chronological/query indexes required for deterministic run reconstruction.
+- [ ] Encode trading numerics using the exact representation selected in Phase 1.1; canonical run/order/fill values must not be persisted as lossy floating-point trading state.
+- [ ] Store order lifecycle/state transitions in append-oriented records so the full sequence from intent/submission through partial fill/fill/cancel/reject remains reconstructable.
 - [ ] Keep Live-only exchange identifiers nullable so the same order/fill structure remains usable by Backtest and Paper.
-- [ ] Ensure deleting a run removes only its run-owned event/result records and cannot delete the shared instrument or historical market datasets.
+- [ ] Define foreign-key cascade behavior for controlled maintenance/tests so removing a run cannot delete the shared instrument or historical market datasets, while exposing no normal runtime delete path for Paper/Live run history.
 - [ ] Register the migration in the existing atomic migration runner.
 
 **Exit:** A fresh database and an existing migrated database both reach the new schema version with the complete canonical run model.
@@ -55,9 +63,10 @@ Create the canonical persistence model that Backtest, Paper, and Live will all u
 
 - [ ] Add storage operations to create a run and assign/return its `run_id`.
 - [ ] Add append/write operations for decisions, order intents, orders/order-state changes, fills, position snapshots, and equity/PnL snapshots.
-- [ ] Preserve caller-supplied event timestamps; storage must not replace strategy/exchange event time with database-write time.
+- [ ] Preserve caller-supplied strategy/event and exchange timestamps and record system receive/write timestamps separately; storage must never replace one clock with another.
 - [ ] Make multi-row state transitions transactional where partial persistence would create an impossible trading history.
 - [ ] Add run lifecycle operations for start/running/completed/failed/stopped states without deleting prior events.
+- [ ] Add order lifecycle writes as append-only state transitions/events; never mutate away the historical path of an order.
 - [ ] Keep these writes backend/storage-only; do not expose them through public application APIs in this phase.
 
 **Exit:** A synthetic run can be persisted from creation through completion using only canonical storage operations.
@@ -78,9 +87,11 @@ Create the canonical persistence model that Backtest, Paper, and Live will all u
 - [ ] Verify migration rollback remains atomic if the new migration fails partway through.
 - [ ] Add storage tests that create equivalent `backtest`, `paper`, and `live` run records through the same API.
 - [ ] Verify invalid mode/status/foreign-key combinations are rejected.
-- [ ] Verify order → fill → position/equity relationships survive close/reopen of the SQLite database.
+- [ ] Verify exact trading numerics round-trip through SQLite without precision drift.
+- [ ] Verify event/exchange/receive/write timestamps retain their distinct values through persistence and reconstruction.
+- [ ] Verify full append-only order lifecycle history survives close/reopen of the SQLite database together with order → fill → position/equity relationships.
 - [ ] Verify comparison/experiment lookup returns the linked runs while preserving each run's independent raw records.
-- [ ] Verify deleting a run cascades only through run-owned records and leaves shared market/historical data intact.
+- [ ] Verify controlled run cleanup cascades only through run-owned records and leaves shared market/historical data intact, while the normal Paper/Live storage API exposes no run-deletion operation.
 
 **Exit:** The canonical model is migration-safe, persistence-safe, mode-neutral, and proven through the same storage API for Backtest, Paper, and Live.
 
