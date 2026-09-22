@@ -54,9 +54,9 @@ impl MarketKey {
             ));
         }
 
-        if !matches!(interval.as_str(), "1m" | "5m" | "1h") {
+        if !matches!(interval.as_str(), "1m" | "5m" | "1h" | "1d") {
             return Err(MarketError::InvalidSelection(
-                "interval must be 1m, 5m, or 1h".into(),
+                "interval must be 1m, 5m, 1h, or 1d".into(),
             ));
         }
 
@@ -117,7 +117,7 @@ pub struct MarketTrade {
     pub is_buyer_maker: bool,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeedStatus {
     Loading,

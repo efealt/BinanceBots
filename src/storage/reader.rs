@@ -504,6 +504,43 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn ensure_market_instrument(
+        &self,
+        symbol: &str,
+        market_type: &str,
+    ) -> Result<i64, StorageError> {
+        let symbol = symbol.trim().to_ascii_uppercase();
+        let market_type = market_type.trim().to_ascii_lowercase();
+        if symbol.is_empty() || !symbol.chars().all(|character| character.is_ascii_alphanumeric()) {
+            return Err(StorageError::InvalidTradingValue {
+                field: "symbol",
+                value: symbol,
+            });
+        }
+        if !matches!(market_type.as_str(), "spot" | "usd_m_perpetual") {
+            return Err(StorageError::InvalidTradingValue {
+                field: "market_type",
+                value: market_type,
+            });
+        }
+
+        let connection = self.open_write()?;
+        connection.execute(
+            "INSERT INTO market_instruments (venue, market_type, symbol, created_at_ms)
+             VALUES ('binance', ?1, ?2, ?3)
+             ON CONFLICT (venue, market_type, symbol) DO NOTHING",
+            params![market_type, symbol, super::now_ms()],
+        )?;
+        connection
+            .query_row(
+                "SELECT instrument_id FROM market_instruments
+                 WHERE venue = 'binance' AND market_type = ?1 AND symbol = ?2",
+                params![market_type, symbol],
+                |row| row.get(0),
+            )
+            .map_err(StorageError::from)
+    }
+
     pub fn historical_dataset_info(&self, dataset_id: i64) -> Result<HistoricalDatasetInfo, StorageError> {
         let connection = self.open()?;
         connection

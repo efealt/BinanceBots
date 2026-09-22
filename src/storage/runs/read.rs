@@ -14,6 +14,30 @@ impl StorageReader {
             .ok_or(StorageError::TradingRunNotFound(run_id))
     }
 
+    pub fn trading_runs_by_mode(
+        &self,
+        mode: RunMode,
+        limit: usize,
+    ) -> Result<Vec<TradingRun>, StorageError> {
+        let limit: i64 = limit.try_into().map_err(|_| StorageError::ValueTooLarge)?;
+        let connection = self.open()?;
+        let sql = format!("{RUN_SELECT_BASE} WHERE mode = ?1 ORDER BY run_id DESC LIMIT ?2");
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement.query_map(params![mode.as_str(), limit], map_trading_run)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn unfinished_trading_runs(
+        &self,
+        mode: RunMode,
+    ) -> Result<Vec<TradingRun>, StorageError> {
+        let connection = self.open()?;
+        let sql = format!("{RUN_SELECT_BASE} WHERE mode = ?1 AND status IN ('created', 'running') ORDER BY run_id");
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement.query_map(params![mode.as_str()], map_trading_run)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn trading_runs_by_comparison_id(
         &self,
         comparison_id: &str,

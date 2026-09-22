@@ -7,7 +7,7 @@ pub use strategies::{GridAnchor, StaticGridConfig, StaticGridStrategy};
 pub use portfolio::PortfolioState;
 pub use simulation::{PendingOrder, SimulatedExecution, SimulatedFill};
 pub use types::{
-    ExecutionAssumptions, LimitFillPolicy, MarketCandle, PortfolioView, Strategy,
+    ExecutionAssumptions, LimitFillPolicy, MarketCandle, PortfolioView, Strategy, TradingInterval,
     StrategyContext, StrategyDecision, StrategyOrderIntent, StrategyOutput, StrategyStartContext,
 };
 

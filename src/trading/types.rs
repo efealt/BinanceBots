@@ -2,6 +2,50 @@ use crate::storage::{OrderSide, OrderType, TimeInForce};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TradingInterval {
+    OneMinute,
+    OneHour,
+    OneDay,
+}
+
+impl TradingInterval {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OneMinute => "1m",
+            Self::OneHour => "1h",
+            Self::OneDay => "1d",
+        }
+    }
+
+    pub fn duration_ms(self) -> i64 {
+        match self {
+            Self::OneMinute => 60_000,
+            Self::OneHour => 3_600_000,
+            Self::OneDay => 86_400_000,
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "1m" => Some(Self::OneMinute),
+            "1h" => Some(Self::OneHour),
+            "1d" => Some(Self::OneDay),
+            _ => None,
+        }
+    }
+
+    pub fn bucket_open_ms(self, timestamp_ms: i64) -> i64 {
+        timestamp_ms.div_euclid(self.duration_ms()) * self.duration_ms()
+    }
+
+    pub fn next_bucket_open_ms(self, timestamp_ms: i64) -> i64 {
+        let duration = self.duration_ms();
+        timestamp_ms.div_euclid(duration).saturating_add(1).saturating_mul(duration)
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct MarketCandle {
     pub open_time_ms: i64,

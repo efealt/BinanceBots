@@ -7,50 +7,16 @@ use crate::{
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState, PortfolioView,
         SimulatedExecution, Strategy, StrategyContext, StrategyOutput, StrategyStartContext,
+        TradingInterval,
     },
 };
-use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use thiserror::Error;
 
 const EQUITY_BATCH_SIZE: usize = 2_048;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReplayInterval {
-    OneMinute,
-    OneHour,
-    OneDay,
-}
-
-impl ReplayInterval {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::OneMinute => "1m",
-            Self::OneHour => "1h",
-            Self::OneDay => "1d",
-        }
-    }
-
-    pub fn duration_ms(self) -> i64 {
-        match self {
-            Self::OneMinute => 60_000,
-            Self::OneHour => 3_600_000,
-            Self::OneDay => 86_400_000,
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "1m" => Some(Self::OneMinute),
-            "1h" => Some(Self::OneHour),
-            "1d" => Some(Self::OneDay),
-            _ => None,
-        }
-    }
-}
-
+pub type ReplayInterval = TradingInterval;
 
 #[derive(Clone, Debug)]
 pub struct BacktestRunConfig {

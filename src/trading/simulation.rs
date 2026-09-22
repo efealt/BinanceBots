@@ -145,6 +145,10 @@ impl SimulatedExecution {
         Ok(fills)
     }
 
+    pub fn pending_orders(&self) -> &[PendingOrder] {
+        &self.pending
+    }
+
     pub fn expire_all(&mut self) -> Vec<PendingOrder> {
         self.pending.drain(..).collect()
     }
