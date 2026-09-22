@@ -1,5 +1,5 @@
 use crate::{
-    market::{Candle, FeedStatus, MarketError, MarketKey, MarketService, MarketType},
+    market::{Candle, FeedStatus, MarketError, MarketKey, MarketService, MarketSnapshot, MarketType},
     storage::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderStateInput, OrderStatus, OrderType,
@@ -78,21 +78,44 @@ pub struct PaperRuntimeEvent {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct PaperBaseCandleView {
+    pub open_time_ms: i64,
+    pub close_time_ms: i64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: f64,
+    pub is_closed: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct PaperSnapshot {
     pub run_id: i64,
+    pub comparison_id: Option<String>,
     pub mode: String,
     pub runtime_status: String,
     pub canonical_status: String,
+    pub runtime_active: bool,
+    pub created_at_ms: i64,
+    pub started_at_ms: Option<i64>,
+    pub ended_at_ms: Option<i64>,
     pub symbol: String,
     pub market_type: String,
     pub replay_interval: String,
     pub strategy_id: String,
     pub strategy_version: String,
     pub strategy_params: Value,
+    pub run_config: Value,
+    pub data_source: Value,
     pub execution_assumptions: Value,
     pub initial_capital: String,
     pub arming_boundary_ms: i64,
     pub feed_status: FeedStatus,
+    pub best_bid: Option<f64>,
+    pub best_ask: Option<f64>,
+    pub mid_price: Option<f64>,
+    pub latest_base_candle: Option<PaperBaseCandleView>,
     pub portfolio: PortfolioView,
     pub open_orders: Vec<PaperOpenOrderView>,
     pub recent_fills: Vec<PaperFillView>,
@@ -216,19 +239,30 @@ impl PaperManager {
 
         let initial_snapshot = PaperSnapshot {
             run_id: run.run_id,
+            comparison_id: run.comparison_id.clone(),
             mode: "paper".into(),
             runtime_status: "arming".into(),
             canonical_status: "created".into(),
+            runtime_active: true,
+            created_at_ms: run.created_at_ms,
+            started_at_ms: run.started_at_ms,
+            ended_at_ms: run.ended_at_ms,
             symbol: symbol.clone(),
             market_type: config.market_type.as_str().into(),
             replay_interval: config.replay_interval.as_str().into(),
             strategy_id,
             strategy_version,
             strategy_params,
+            run_config: run.run_config.clone(),
+            data_source: run.data_source.clone(),
             execution_assumptions: execution_json,
             initial_capital: config.initial_capital.as_str().to_string(),
             arming_boundary_ms: boundary,
             feed_status: market_snapshot.status,
+            best_bid: market_snapshot.quote.best_bid,
+            best_ask: market_snapshot.quote.best_ask,
+            mid_price: market_snapshot.quote.mid_price,
+            latest_base_candle: market_snapshot.candles.last().map(paper_base_candle),
             portfolio: core.portfolio.view(),
             open_orders: Vec::new(),
             recent_fills: Vec::new(),
@@ -380,10 +414,10 @@ impl PaperManager {
             .and_then(|value| value.as_str().parse::<f64>().ok())
             .unwrap_or(initial);
 
+        let recent_fill_start = fills.len().saturating_sub(MAX_RECENT_RUNTIME_FILLS);
         let recent_fills = fills
             .into_iter()
-            .rev()
-            .take(MAX_RECENT_RUNTIME_FILLS)
+            .skip(recent_fill_start)
             .map(|fill| PaperFillView {
                 event_time_ms: fill.event_time_ms,
                 order_id: fill.order_id,
@@ -400,21 +434,35 @@ impl PaperManager {
             })
             .collect::<Vec<_>>();
 
+        let persisted_arming_boundary_ms =
+            json_i64(&run.data_source, "arming_boundary_ms").unwrap_or(run.created_at_ms);
+
         Ok(PaperSnapshot {
             run_id,
+            comparison_id: run.comparison_id,
             mode: "paper".into(),
             runtime_status: run.status.as_str().into(),
             canonical_status: run.status.as_str().into(),
+            runtime_active: false,
+            created_at_ms: run.created_at_ms,
+            started_at_ms: run.started_at_ms,
+            ended_at_ms: run.ended_at_ms,
             symbol: json_string(&run.data_source, "symbol"),
             market_type: json_string(&run.data_source, "market_type"),
             replay_interval: json_string(&run.data_source, "replay_interval"),
             strategy_id: run.strategy_id,
             strategy_version: run.strategy_version,
             strategy_params: run.strategy_params,
+            run_config: run.run_config,
+            data_source: run.data_source,
             execution_assumptions: run.execution_assumptions,
             initial_capital: run.initial_capital.as_str().to_string(),
-            arming_boundary_ms: json_i64(&run.data_source, "arming_boundary_ms").unwrap_or(run.created_at_ms),
+            arming_boundary_ms: persisted_arming_boundary_ms,
             feed_status: FeedStatus::Loading,
+            best_bid: None,
+            best_ask: None,
+            mid_price: None,
+            latest_base_candle: None,
             portfolio: PortfolioView {
                 cash,
                 position_quantity,
@@ -475,6 +523,8 @@ impl PaperManager {
                                 self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                     snapshot.runtime_status = "stopped".into();
                                     snapshot.canonical_status = "stopped".into();
+                                    snapshot.runtime_active = false;
+                                    snapshot.ended_at_ms = Some(now);
                                     snapshot.updated_at_ms = now;
                                     push_runtime_event(snapshot, now, "stopped", "Paper run stopped by user.");
                                 }).await;
@@ -497,7 +547,7 @@ impl PaperManager {
                     };
 
                     self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
-                        snapshot.feed_status = market_snapshot.status;
+                        apply_market_snapshot(snapshot, &market_snapshot);
                         snapshot.updated_at_ms = now;
                     }).await;
 
@@ -533,6 +583,7 @@ impl PaperManager {
                                         self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                             snapshot.runtime_status = "running".into();
                                             snapshot.canonical_status = "running".into();
+                                            snapshot.started_at_ms = Some(boundary);
                                             snapshot.updated_at_ms = now;
                                             push_runtime_event(
                                                 snapshot,
@@ -703,6 +754,8 @@ impl PaperManager {
         self.update_snapshot(handle, portfolio, open_orders, |snapshot| {
             snapshot.runtime_status = "failed".into();
             snapshot.canonical_status = "failed".into();
+            snapshot.runtime_active = false;
+            snapshot.ended_at_ms = Some(now);
             snapshot.updated_at_ms = now;
             push_runtime_event(snapshot, now, "failed", &reason);
         }).await;
@@ -1183,6 +1236,27 @@ fn optional_positive_exact(value: f64) -> Result<Option<ExactDecimal>, PaperErro
     } else {
         Ok(None)
     }
+}
+
+fn paper_base_candle(candle: &Candle) -> PaperBaseCandleView {
+    PaperBaseCandleView {
+        open_time_ms: candle.open_time,
+        close_time_ms: candle.close_time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        is_closed: candle.is_closed,
+    }
+}
+
+fn apply_market_snapshot(snapshot: &mut PaperSnapshot, market: &MarketSnapshot) {
+    snapshot.feed_status = market.status;
+    snapshot.best_bid = market.quote.best_bid;
+    snapshot.best_ask = market.quote.best_ask;
+    snapshot.mid_price = market.quote.mid_price;
+    snapshot.latest_base_candle = market.candles.last().map(paper_base_candle);
 }
 
 fn market_candle(candle: &Candle) -> MarketCandle {
@@ -2241,6 +2315,147 @@ mod tests {
 
         drop(storage);
         cleanup_database(&path);
+    }
+
+    #[test]
+    fn persisted_snapshot_restores_canonical_config_and_financial_state_without_browser_state() {
+        let path = temp_database("snapshot-contract");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core_with_strategy(
+            Arc::clone(&storage),
+            "snapshotcontract",
+            Box::new(MarketOrderOnStart),
+            ExecutionAssumptions::default(),
+        );
+        let run_id = core.run_id;
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+        let candle = MarketCandle {
+            open_time_ms: 60_000,
+            close_time_ms: 119_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.5,
+            volume: 1.0,
+        };
+        core.process_candle(&candle).unwrap();
+        core.stop(120_000, "user_stop").unwrap();
+        drop(core);
+
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::new()),
+        };
+        let snapshot = manager.persisted_snapshot(run_id).unwrap();
+
+        assert_eq!(snapshot.run_id, run_id);
+        assert_eq!(snapshot.mode, "paper");
+        assert_eq!(snapshot.canonical_status, "stopped");
+        assert!(!snapshot.runtime_active);
+        assert_eq!(snapshot.started_at_ms, Some(60_000));
+        assert_eq!(snapshot.ended_at_ms, Some(120_000));
+        assert_eq!(snapshot.strategy_id, "test-paper-market-order");
+        assert_eq!(snapshot.run_config.get("test").and_then(Value::as_str), Some("phase_4_3"));
+        assert_eq!(snapshot.data_source.get("kind").and_then(Value::as_str), Some("test"));
+        assert_eq!(snapshot.recent_fills.len(), 1);
+        assert_eq!(snapshot.recent_fills[0].order_id, 1);
+        assert!((snapshot.portfolio.position_quantity - 2.0).abs() < 1e-12);
+        assert!((snapshot.portfolio.equity - 1001.0).abs() < 1e-12);
+        assert_eq!(snapshot.feed_status, FeedStatus::Loading);
+        assert!(snapshot.best_bid.is_none());
+        assert!(snapshot.latest_base_candle.is_none());
+
+        drop(manager);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn market_snapshot_fields_are_synchronized_for_ui_refresh_state() {
+        let mut snapshot = PaperSnapshot {
+            run_id: 1,
+            comparison_id: None,
+            mode: "paper".into(),
+            runtime_status: "running".into(),
+            canonical_status: "running".into(),
+            runtime_active: true,
+            created_at_ms: 1,
+            started_at_ms: Some(2),
+            ended_at_ms: None,
+            symbol: "BTCUSDT".into(),
+            market_type: "spot".into(),
+            replay_interval: "1m".into(),
+            strategy_id: "static-grid-fixture".into(),
+            strategy_version: "1".into(),
+            strategy_params: json!({}),
+            run_config: json!({}),
+            data_source: json!({}),
+            execution_assumptions: json!({}),
+            initial_capital: "1000".into(),
+            arming_boundary_ms: 60_000,
+            feed_status: FeedStatus::Loading,
+            best_bid: None,
+            best_ask: None,
+            mid_price: None,
+            latest_base_candle: None,
+            portfolio: PortfolioState::new(1000.0).unwrap().view(),
+            open_orders: Vec::new(),
+            recent_fills: Vec::new(),
+            recent_events: Vec::new(),
+            latest_replay_candle: None,
+            last_base_candle_open_ms: None,
+            updated_at_ms: 0,
+        };
+
+        let current = Candle {
+            open_time: 120_000,
+            close_time: 179_999,
+            open: 100.0,
+            high: 102.0,
+            low: 99.0,
+            close: 101.0,
+            volume: 3.0,
+            is_closed: false,
+        };
+        let market = MarketSnapshot {
+            symbol: "BTCUSDT".into(),
+            interval: "1m".into(),
+            status: FeedStatus::Live,
+            candles: vec![current.clone()],
+            quote: crate::market::MarketQuote {
+                update_id: Some(7),
+                best_bid: Some(100.9),
+                best_bid_quantity: Some(2.0),
+                best_ask: Some(101.1),
+                best_ask_quantity: Some(3.0),
+                spread: Some(0.2),
+                mid_price: Some(101.0),
+            },
+            order_book: crate::market::OrderBookSnapshot::default(),
+            trades: Vec::new(),
+        };
+
+        apply_market_snapshot(&mut snapshot, &market);
+        assert_eq!(snapshot.feed_status, FeedStatus::Live);
+        assert_eq!(snapshot.best_bid, Some(100.9));
+        assert_eq!(snapshot.best_ask, Some(101.1));
+        assert_eq!(snapshot.mid_price, Some(101.0));
+        let candle = snapshot.latest_base_candle.expect("latest base candle");
+        assert_eq!(candle.open_time_ms, 120_000);
+        assert!(!candle.is_closed);
+        assert_eq!(candle.close, 101.0);
     }
 
     #[test]

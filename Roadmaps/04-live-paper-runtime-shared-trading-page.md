@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.4 + 4.5A COMPLETE
+Status: IN PROGRESS — 4.1–4.4 + 4.5A–4.5B COMPLETE
 
 ## Prerequisite
 
@@ -121,8 +121,8 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.5B — Complete snapshot contract
 
-- [ ] Return run status, strategy/config, market, position, cash/equity/PnL, fees, open orders, recent fills, and feed health.
-- [ ] Make the snapshot sufficient to rebuild the Trading page after refresh without relying on browser state.
+- [x] Return run status, strategy/config, market, position, cash/equity/PnL, fees, open orders, recent fills, and feed health.
+- [x] Make the snapshot sufficient to rebuild the Trading page after refresh without relying on browser state.
 
 **Checkpoint:** One authenticated snapshot contains the complete current Paper state required by the UI.
 

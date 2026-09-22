@@ -271,6 +271,29 @@ Focused tests verify the mode gate, including case/whitespace handling, and prov
 
 Phase 4.5A does not certify the completeness of the snapshot payload or the WebSocket reconnect contract; those remain 4.5B and 4.5C.
 
+## Phase 4.5B Complete Paper snapshot contract
+
+`GET /api/trading/runs/{run_id}` now exposes one backend-owned snapshot sufficient to rebuild the current Paper monitoring state after a browser refresh.
+
+The snapshot contains:
+
+- canonical run identity/status plus `created_at_ms`, `started_at_ms`, `ended_at_ms`, and whether the runtime is currently active;
+- strategy ID/version/parameters, canonical `run_config`, `data_source`, initial capital, and exact recorded execution assumptions;
+- market identity and replay interval;
+- backend feed status, best bid/ask, mid price, and the latest 1-minute base candle including whether it is closed;
+- latest completed replay candle and last processed base-candle timestamp;
+- current portfolio state: position quantity, average entry, cash, equity, realized/unrealized PnL, and fees;
+- complete current in-memory open simulated orders for an active Paper runtime;
+- recent fills and runtime events.
+
+The browser does not contribute any state to this snapshot. During an active run, market fields are refreshed directly from the backend Binance market service on each Paper poll. For persisted terminal runs, canonical config, timestamps, financial state, and recent fills are reconstructed from SQLite; `runtime_active=false` makes clear that no live runtime/feed state is being claimed.
+
+Persisted recent fills are returned in chronological order, matching the active-runtime convention.
+
+Focused tests verify canonical/config/financial reconstruction without browser state and live market-field synchronization from a backend market snapshot.
+
+Phase 4.5B does not define live-stream sequencing or reconnect de-duplication; that remains 4.5C.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
