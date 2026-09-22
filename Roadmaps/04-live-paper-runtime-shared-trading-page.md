@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: PLANNED
+Status: IN PROGRESS — 4.1 COMPLETE
 
 ## Prerequisite
 
@@ -31,10 +31,10 @@ The browser is an operator/monitor only. The Paper runtime belongs to the backen
 
 Build the runtime foundation before building the page.
 
-- [ ] Add a backend Paper-run manager keyed by canonical `run_id`.
-- [ ] Reuse the existing `Strategy`, portfolio state, simulated execution, and persistence contracts rather than creating Paper-specific strategy logic.
-- [ ] Define explicit Paper lifecycle states using the canonical run lifecycle: created → running → completed/stopped/failed.
-- [ ] Keep runtime state isolated per run so the architecture does not depend on one global bot, even if UI/resource policy initially limits active runs.
+- [x] Add a backend Paper-run manager keyed by canonical `run_id`.
+- [x] Reuse the existing `Strategy`, portfolio state, simulated execution, and persistence contracts rather than creating Paper-specific strategy logic.
+- [x] Define explicit Paper lifecycle states using the canonical run lifecycle: created → running → completed/stopped/failed.
+- [x] Keep runtime state isolated per run so the architecture does not depend on one global bot, even if UI/resource policy initially limits active runs.
 
 **Checkpoint:** A Paper run has a clear backend lifecycle and uses the same core trading contracts as Backtest.
 

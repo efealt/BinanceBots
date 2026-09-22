@@ -158,6 +158,19 @@ Dense 1-minute runs keep all records available and use zoomable ECharts views ra
 
 Automated verification covers the analysis math, JavaScript syntax, Rust storage/read paths, the existing Rust suite, and the full frozen XAGUSDT regression. The analysis implementation is deployed live on Render, and the authenticated production visual output was reviewed and accepted as sufficient for Backtest analysis.
 
+## Phase 4.1 Paper runtime contract
+
+Phase 4.1 establishes the backend-owned Paper run contract without changing any strategy rules.
+
+- `PaperManager` is created by the server and owns in-memory Paper runtime handles keyed by the canonical `run_id`.
+- Each run has isolated runtime state. There is no single global strategy/portfolio object shared across runs.
+- `PaperRunCore` reuses the existing mode-neutral `Strategy` trait, `PortfolioState`, `SimulatedExecution`, and canonical trading-run persistence rather than creating Paper-specific strategy or accounting implementations.
+- Canonical Paper runs use the existing lifecycle/status model: `created`, `running`, and terminal `completed` / `stopped` / `failed`.
+- Strategy implementations remain under `src/trading/strategies/`; Paper runtime orchestration is outside those strategy modules.
+- Phase 4.1 does not by itself certify the real-time candle clock, recovery policy, control API/live stream, or Trading page. Those remain separate Phase 4 checkpoints.
+
+Focused tests verify canonical Paper lifecycle persistence and isolation between separate Paper run cores.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

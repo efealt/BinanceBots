@@ -1185,4 +1185,124 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("expected 60000"));
     }
+
+    struct NoOpStrategy;
+
+    impl Strategy for NoOpStrategy {
+        fn id(&self) -> &str {
+            "test-paper-noop"
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn parameters(&self) -> Value {
+            json!({})
+        }
+
+        fn on_candle(&mut self, _context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput::default())
+        }
+    }
+
+    fn temp_database(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "binance-grid-paper-{label}-{}-{}.sqlite3",
+            std::process::id(),
+            system_now_ms()
+        ))
+    }
+
+    fn cleanup_database(path: &std::path::Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    fn test_core(storage: Arc<StorageReader>, label: &str) -> PaperRunCore {
+        let instrument_id = storage
+            .ensure_market_instrument(&format!("{}USDT", label.to_ascii_uppercase()), "spot")
+            .unwrap();
+        let run = storage
+            .create_trading_run(&TradingRunSpec {
+                comparison_id: Some(format!("phase-4-1-{label}")),
+                mode: RunMode::Paper,
+                strategy_id: "test-paper-noop".into(),
+                strategy_version: "1".into(),
+                strategy_params: json!({}),
+                instrument_id,
+                initial_capital: ExactDecimal::new("1000").unwrap(),
+                run_config: json!({"test": "phase_4_1"}),
+                data_source: json!({"kind": "test"}),
+                execution_assumptions: serde_json::to_value(ExecutionAssumptions::default()).unwrap(),
+            })
+            .unwrap();
+
+        PaperRunCore {
+            run_id: run.run_id,
+            storage,
+            strategy: Box::new(NoOpStrategy),
+            portfolio: PortfolioState::new(1000.0).unwrap(),
+            execution: SimulatedExecution::new(ExecutionAssumptions::default()).unwrap(),
+        }
+    }
+
+    #[test]
+    fn paper_core_uses_canonical_run_lifecycle() {
+        let path = temp_database("lifecycle");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "lifecycle");
+
+        assert_eq!(storage.trading_run(core.run_id).unwrap().status, RunStatus::Created);
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+        assert_eq!(storage.trading_run(core.run_id).unwrap().status, RunStatus::Running);
+
+        core.stop(120_000, "phase_4_1_test_stop").unwrap();
+        let history = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(history.run.status, RunStatus::Stopped);
+        assert_eq!(
+            history.status_events.iter().map(|event| event.status).collect::<Vec<_>>(),
+            vec![RunStatus::Created, RunStatus::Running, RunStatus::Stopped]
+        );
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn paper_run_cores_keep_state_isolated_by_run() {
+        let path = temp_database("isolation");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut first = test_core(Arc::clone(&storage), "first");
+        let second = test_core(Arc::clone(&storage), "second");
+
+        assert_ne!(first.run_id, second.run_id);
+        first
+            .portfolio
+            .apply_fill(crate::storage::OrderSide::Buy, 2.0, 100.0, 1.0)
+            .unwrap();
+
+        assert_eq!(first.portfolio.view().position_quantity, 2.0);
+        assert_eq!(second.portfolio.view().position_quantity, 0.0);
+        assert_eq!(second.portfolio.view().cash, 1000.0);
+
+        drop(first);
+        drop(second);
+        drop(storage);
+        cleanup_database(&path);
+    }
 }
