@@ -69,6 +69,12 @@ The Data Downloader imports Binance public 1-minute ZIP archives into SQLite.
 
 Backtest reads stored historical data and can display 1-minute data or UTC-aggregated 1-hour/1-day views. Research diagnostics are computed from the stored series and rendered in the browser.
 
+## Backtest engine
+
+The backend now has a deterministic historical replay engine built on the canonical trading-run model. A completed historical candle becomes visible to a strategy only at its close; orders created from that candle cannot fill from that same candle. The engine processes previously eligible simulated orders before the next strategy decision, keeps deterministic portfolio/order state, and persists decisions, intents, order states, fills, position snapshots, and equity snapshots through the shared Phase 1 storage contract.
+
+The strategy interface is mode-neutral and the simulated execution component is reusable by later Paper mode. Execution assumptions are explicit run metadata and currently support fees, spread/slippage, latency, touch vs trade-through limit fills, and deterministic partial fills. The Phase 2 engine itself contains no trading strategy.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

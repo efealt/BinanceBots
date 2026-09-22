@@ -1,9 +1,11 @@
 mod api;
+mod backtest;
 mod auth;
 mod collector;
 mod downloader;
 mod market;
 mod storage;
+mod trading;
 
 use axum::{Router, middleware};
 use market::MarketService;

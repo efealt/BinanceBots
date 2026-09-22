@@ -1,10 +1,13 @@
-name: Storage tests
+name: Core trading tests
 
 on:
   push:
     branches: [main]
     paths:
       - "src/storage/**"
+      - "src/backtest.rs"
+      - "src/backtest/**"
+      - "src/trading/**"
       - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"

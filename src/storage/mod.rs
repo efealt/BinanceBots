@@ -66,7 +66,7 @@ pub enum StorageError {
 
 pub use reader::{
     AuthAuditEvent, DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation,
-    HistoricalKline, OhlcvCandle, StorageReader,
+    HistoricalDatasetInfo, HistoricalKline, OhlcvCandle, StorageReader,
 };
 pub use runs::*;
 

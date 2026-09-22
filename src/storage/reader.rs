@@ -504,6 +504,67 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn historical_dataset_info(&self, dataset_id: i64) -> Result<HistoricalDatasetInfo, StorageError> {
+        let connection = self.open()?;
+        connection
+            .query_row(
+                "SELECT d.dataset_id, d.instrument_id, i.venue, i.symbol, i.market_type,
+                        d.interval, d.source, d.start_time_ms, d.end_time_ms
+                 FROM historical_datasets d
+                 JOIN market_instruments i ON i.instrument_id = d.instrument_id
+                 WHERE d.dataset_id = ?1 AND d.dataset_kind = 'traded_kline'",
+                params![dataset_id],
+                |row| {
+                    Ok(HistoricalDatasetInfo {
+                        dataset_id: row.get(0)?,
+                        instrument_id: row.get(1)?,
+                        venue: row.get(2)?,
+                        symbol: row.get(3)?,
+                        market_type: row.get(4)?,
+                        interval: row.get(5)?,
+                        source: row.get(6)?,
+                        start_time_ms: row.get(7)?,
+                        end_time_ms: row.get(8)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or(StorageError::DatasetNotFound(dataset_id))
+    }
+
+    pub fn ohlcv_series_between(
+        &self,
+        dataset_id: i64,
+        start_time_ms: Option<i64>,
+        end_time_ms: Option<i64>,
+    ) -> Result<Vec<OhlcvCandle>, StorageError> {
+        if let (Some(start), Some(end)) = (start_time_ms, end_time_ms)
+            && start > end
+        {
+            return Err(StorageError::InvalidTradingValue {
+                field: "historical_range",
+                value: format!("{start}>{end}"),
+            });
+        }
+        self.historical_dataset_info(dataset_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT open_time_ms, close_time_ms, open_price, high_price, low_price,
+                    close_price, base_volume, quote_volume, trade_count,
+                    taker_buy_base_volume, taker_buy_quote_volume
+             FROM historical_ohlcv
+             WHERE dataset_id = ?1
+               AND (?2 IS NULL OR open_time_ms >= ?2)
+               AND (?3 IS NULL OR close_time_ms <= ?3)
+             ORDER BY open_time_ms, close_time_ms",
+        )?;
+        let rows = statement.query_map(
+            params![dataset_id, start_time_ms, end_time_ms],
+            map_candle,
+        )?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn ohlcv_series(&self, dataset_id: i64) -> Result<Vec<OhlcvCandle>, StorageError> {
         let connection = self.open()?;
         let exists: Option<i64> = connection
@@ -558,7 +619,20 @@ pub struct AuthAuditEvent {
     pub user_agent: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
+pub struct HistoricalDatasetInfo {
+    pub dataset_id: i64,
+    pub instrument_id: i64,
+    pub venue: String,
+    pub symbol: String,
+    pub market_type: String,
+    pub interval: String,
+    pub source: String,
+    pub start_time_ms: i64,
+    pub end_time_ms: i64,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct DatasetSummary {
     pub dataset_id: i64,
     pub venue: String,
@@ -622,7 +696,7 @@ pub struct HistoricalKline {
     pub taker_buy_quote_volume: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 pub struct OhlcvCandle {
     pub open_time_ms: i64,
     pub close_time_ms: i64,
