@@ -6,7 +6,7 @@ pub use portfolio::PortfolioState;
 pub use simulation::{PendingOrder, SimulatedExecution, SimulatedFill};
 pub use types::{
     ExecutionAssumptions, LimitFillPolicy, MarketCandle, PortfolioView, Strategy,
-    StrategyContext, StrategyDecision, StrategyOrderIntent, StrategyOutput,
+    StrategyContext, StrategyDecision, StrategyOrderIntent, StrategyOutput, StrategyStartContext,
 };
 
 pub fn decimal_string(value: f64) -> Result<String, String> {

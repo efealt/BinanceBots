@@ -25,6 +25,13 @@ pub struct PortfolioView {
 }
 
 #[derive(Clone, Debug)]
+pub struct StrategyStartContext<'a> {
+    pub now_ms: i64,
+    pub previous_candle: Option<&'a MarketCandle>,
+    pub portfolio: PortfolioView,
+}
+
+#[derive(Clone, Debug)]
 pub struct StrategyContext<'a> {
     pub now_ms: i64,
     pub candle: &'a MarketCandle,
@@ -60,6 +67,14 @@ pub trait Strategy {
     fn id(&self) -> &str;
     fn version(&self) -> &str;
     fn parameters(&self) -> Value;
+
+    fn on_start(
+        &mut self,
+        _context: &StrategyStartContext<'_>,
+    ) -> Result<StrategyOutput, String> {
+        Ok(StrategyOutput::default())
+    }
+
     fn on_candle(&mut self, context: &StrategyContext<'_>) -> Result<StrategyOutput, String>;
 }
 

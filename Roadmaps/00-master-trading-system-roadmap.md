@@ -46,19 +46,19 @@ Implemented the canonical Backtest/Paper/Live persistence contract, exact tradin
 
 ### Phase 2 — Backtest engine — COMPLETE
 
-Implemented the deterministic historical clock, mode-neutral strategy interface, portfolio/order state, reusable simulated-execution component, bounded historical dataset reads, canonical run persistence, and failure lifecycle on top of Phase 1.
+Implemented the deterministic historical clock, mode-neutral strategy interface, pre-first-candle `on_start` hook, portfolio/order state, reusable simulated-execution component, bounded historical dataset reads, canonical run persistence, and failure lifecycle on top of Phase 1.
 
-The historical clock is authoritative: strategy decisions, order creation, fills, and state transitions occur only from information available at that simulated time. Same-timestamp ordering must be deterministic and explicit.
+The historical clock is authoritative. Resting orders that existed before a candle is processed may fill from that candle's OHLC range. Normal candle-close strategy logic sees the candle only after it is complete, and any new order created from that completed candle cannot retroactively fill from the candle's earlier open/high/low. A pre-first-candle `on_start` hook allows initial resting orders, such as a grid, to be placed before the first active candle is processed using only information already available at that boundary. Same-timestamp ordering remains deterministic and explicit.
 
 Execution assumptions are run configuration, not hidden strategy behavior. The simulator is designed to support fees, spread/slippage, latency, limit-order fill rules, partial fills, and conservative scenarios without changing strategy logic. Paper will reuse this same simulated-execution component later.
 
-**Exit achieved:** A deterministic backend Backtest run consumes stored Binance data, drives a strategy through the shared interface, reconstructs portfolio/order state, and persists a complete run through the Phase 1 canonical model. Automated verification covers no-same-candle fills, deterministic replay, fees/slippage, limit policies, latency, partial fills, accounting, and failed-run preservation.
+**Exit achieved:** A deterministic backend Backtest run consumes stored Binance data, drives a strategy through the shared interface, reconstructs portfolio/order state, and persists a complete run through the Phase 1 canonical model. Automated verification covers resting-order intrabar fills, prevention of retroactive same-candle fills, deterministic replay, fees/slippage, limit policies, latency, partial fills, accounting, and failed-run preservation.
 
 ### Phase 3 — Minimal grid strategy test fixture
 
 Implement one deliberately simple grid strategy through the Phase 2 shared strategy interface.
 
-Its purpose is only to prove signals, order intents, simulated fills, state transitions, persistence, reproducibility, and the Backtest engine end to end. It must not contain Backtest-specific shortcuts that prevent the same strategy code from being used later in Paper and Live.
+Its purpose is only to prove signals, order intents, simulated fills, state transitions, persistence, reproducibility, and the Backtest engine end to end. The initial grid should be created through the shared `on_start` hook so those orders are resting before the first active candle is processed. It must not contain Backtest-specific shortcuts that prevent the same strategy code from being used later in Paper and Live.
 
 **Exit:** The simple grid runs end to end in Backtest using the shared engine and canonical storage model, with no mode-specific strategy implementation.
 

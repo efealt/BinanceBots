@@ -565,6 +565,30 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn ohlcv_previous_candle(
+        &self,
+        dataset_id: i64,
+        before_open_time_ms: i64,
+    ) -> Result<Option<OhlcvCandle>, StorageError> {
+        self.historical_dataset_info(dataset_id)?;
+        let connection = self.open()?;
+        connection
+            .query_row(
+                "SELECT open_time_ms, close_time_ms, open_price, high_price, low_price,
+                        close_price, base_volume, quote_volume, trade_count,
+                        taker_buy_base_volume, taker_buy_quote_volume
+                 FROM historical_ohlcv
+                 WHERE dataset_id = ?1
+                   AND close_time_ms < ?2
+                 ORDER BY close_time_ms DESC, open_time_ms DESC
+                 LIMIT 1",
+                params![dataset_id, before_open_time_ms],
+                map_candle,
+            )
+            .optional()
+            .map_err(StorageError::from)
+    }
+
     pub fn ohlcv_series(&self, dataset_id: i64) -> Result<Vec<OhlcvCandle>, StorageError> {
         let connection = self.open()?;
         let exists: Option<i64> = connection

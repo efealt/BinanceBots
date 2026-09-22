@@ -71,7 +71,9 @@ Backtest reads stored historical data and can display 1-minute data or UTC-aggre
 
 ## Backtest engine
 
-The backend now has a deterministic historical replay engine built on the canonical trading-run model. A completed historical candle becomes visible to a strategy only at its close; orders created from that candle cannot fill from that same candle. The engine processes previously eligible simulated orders before the next strategy decision, keeps deterministic portfolio/order state, and persists decisions, intents, order states, fills, position snapshots, and equity snapshots through the shared Phase 1 storage contract.
+The backend now has a deterministic historical replay engine built on the canonical trading-run model. A completed historical candle becomes visible to normal `on_candle` strategy logic only at its close. Orders that were already resting before a candle is processed may fill from that candle's OHLC range; orders created from that candle's completed information cannot retroactively use its earlier open/high/low. The engine processes eligible resting orders before the candle-close strategy decision, keeps deterministic portfolio/order state, and persists decisions, intents, order states, fills, position snapshots, and equity snapshots through the shared Phase 1 storage contract.
+
+Before the first active backtest candle is processed, the strategy receives an `on_start` hook. It may see the immediately preceding completed candle when one exists and may place initial resting orders at the first active candle's open-time boundary. This supports grid initialization without granting access to the first active candle's future high/low/close.
 
 The strategy interface is mode-neutral and the simulated execution component is reusable by later Paper mode. Execution assumptions are explicit run metadata and currently support fees, spread/slippage, latency, touch vs trade-through limit fills, and deterministic partial fills. The Phase 2 engine itself contains no trading strategy.
 

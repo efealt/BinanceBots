@@ -3,7 +3,7 @@ use crate::{
     storage::{OrderSide, OrderType, RunStatus, StorageReader, TimeInForce},
     trading::{
         ExecutionAssumptions, LimitFillPolicy, MarketCandle, SimulatedExecution, StrategyDecision,
-        StrategyOrderIntent, StrategyOutput,
+        StrategyOrderIntent, StrategyOutput, StrategyStartContext,
     },
 };
 use rusqlite::{Connection, params};
@@ -99,6 +99,47 @@ impl Strategy for OneShotMarket {
     }
 }
 
+struct StartGrid;
+
+impl Strategy for StartGrid {
+    fn id(&self) -> &str { "test-start-grid" }
+    fn version(&self) -> &str { "1" }
+    fn parameters(&self) -> serde_json::Value { json!({}) }
+
+    fn on_start(
+        &mut self,
+        context: &StrategyStartContext<'_>,
+    ) -> Result<StrategyOutput, String> {
+        let previous = context
+            .previous_candle
+            .ok_or_else(|| "expected previous completed candle".to_string())?;
+        if (previous.close - 101.0).abs() > 1e-12 {
+            return Err(format!("unexpected previous close: {}", previous.close));
+        }
+        Ok(StrategyOutput {
+            decisions: vec![StrategyDecision {
+                decision_type: "initialize_grid".into(),
+                payload: json!({"reference_close": previous.close}),
+            }],
+            order_intents: vec![StrategyOrderIntent {
+                intent_key: Some("initial-grid-buy".into()),
+                side: OrderSide::Buy,
+                order_type: OrderType::Limit,
+                time_in_force: Some(TimeInForce::Gtc),
+                price: Some(105.0),
+                quantity: 1.0,
+                stop_price: None,
+                reduce_only: false,
+                metadata: json!({"source": "on_start"}),
+            }],
+        })
+    }
+
+    fn on_candle(&mut self, _context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+        Ok(StrategyOutput::default())
+    }
+}
+
 struct FailingStrategy;
 
 impl Strategy for FailingStrategy {
@@ -151,6 +192,30 @@ fn market_order_fills_only_on_later_candle_and_applies_costs() {
     assert_eq!(history.run.status, RunStatus::Completed);
     assert!((result.final_portfolio.equity - 1000.614725).abs() < 1e-9);
     assert_eq!(history.equity.last().unwrap().equity.as_str(), "1000.614725");
+
+    cleanup(&path);
+}
+
+#[test]
+fn resting_start_order_can_fill_inside_first_active_candle() {
+    let path = temp_database("start-grid");
+    let (reader, dataset_id) = seed_dataset(&path);
+    let engine = BacktestEngine::new(Arc::clone(&reader));
+    let mut config = basic_config(dataset_id, "start-grid");
+    config.start_time_ms = Some(60_000);
+    config.end_time_ms = Some(119_999);
+
+    let result = engine.run(&config, &mut StartGrid).expect("run start-grid backtest");
+    assert_eq!(result.candles_processed, 1);
+
+    let history = reader.trading_run_history(result.run_id).unwrap();
+    assert_eq!(history.decisions.len(), 1);
+    assert_eq!(history.decisions[0].event.event_time_ms, 60_000);
+    assert_eq!(history.order_intents.len(), 1);
+    assert_eq!(history.order_intents[0].event.event_time_ms, 60_000);
+    assert_eq!(history.fills.len(), 1);
+    assert_eq!(history.fills[0].event.event_time_ms, 119_999);
+    assert_eq!(history.fills[0].price.as_str(), "105");
 
     cleanup(&path);
 }

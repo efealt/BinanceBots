@@ -6,7 +6,7 @@ use crate::{
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState, PortfolioView,
-        SimulatedExecution, Strategy, StrategyContext,
+        SimulatedExecution, Strategy, StrategyContext, StrategyOutput, StrategyStartContext,
     },
 };
 use serde::Serialize;
@@ -77,6 +77,10 @@ impl BacktestEngine {
 
         let first = &candles[0];
         let last = candles.last().expect("non-empty candles");
+        let previous_candle = self
+            .storage
+            .ohlcv_previous_candle(config.dataset_id, first.open_time_ms)?
+            .map(|candle| market_candle_from_storage(&candle));
         let strategy_params = strategy.parameters();
         let execution_json = serde_json::to_value(&config.execution)
             .map_err(|error| BacktestError::InvalidConfig(error.to_string()))?;
@@ -126,6 +130,7 @@ impl BacktestEngine {
             run.run_id,
             &dataset,
             &candles,
+            previous_candle.as_ref(),
             strategy,
             &mut portfolio,
             &mut execution,
@@ -182,22 +187,31 @@ impl BacktestEngine {
         run_id: i64,
         _dataset: &HistoricalDatasetInfo,
         candles: &[crate::storage::OhlcvCandle],
+        previous_candle: Option<&MarketCandle>,
         strategy: &mut S,
         portfolio: &mut PortfolioState,
         execution: &mut SimulatedExecution,
         failure_time: &mut i64,
     ) -> Result<(), BacktestError> {
+        let first = candles.first().expect("execute receives non-empty candles");
+        let start_context = StrategyStartContext {
+            now_ms: first.open_time_ms,
+            previous_candle,
+            portfolio: portfolio.view(),
+        };
+        let start_output = strategy
+            .on_start(&start_context)
+            .map_err(BacktestError::Strategy)?;
+        self.persist_strategy_output(
+            run_id,
+            first.open_time_ms,
+            start_output,
+            execution,
+        )?;
+
         for candle in candles {
             *failure_time = candle.close_time_ms;
-            let market_candle = MarketCandle {
-                open_time_ms: candle.open_time_ms,
-                close_time_ms: candle.close_time_ms,
-                open: candle.open_price,
-                high: candle.high_price,
-                low: candle.low_price,
-                close: candle.close_price,
-                volume: candle.base_volume,
-            };
+            let market_candle = market_candle_from_storage(candle);
 
             let fills = execution
                 .process_candle(&market_candle)
@@ -260,57 +274,12 @@ impl BacktestEngine {
                 .on_candle(&context)
                 .map_err(BacktestError::Strategy)?;
 
-            for decision in output.decisions {
-                self.storage.record_decision(&DecisionInput {
-                    run_id,
-                    times: EventTimes::new(market_candle.close_time_ms),
-                    decision_type: decision.decision_type,
-                    payload: decision.payload,
-                })?;
-            }
-
-            for intent in output.order_intents {
-                validate_intent(&intent)?;
-                let persisted_intent = self.storage.record_order_intent(&OrderIntentInput {
-                    run_id,
-                    times: EventTimes::new(market_candle.close_time_ms),
-                    intent_key: intent.intent_key.clone(),
-                    side: intent.side,
-                    order_type: intent.order_type,
-                    time_in_force: intent.time_in_force,
-                    price: intent.price.map(exact).transpose()?,
-                    quantity: exact(intent.quantity)?,
-                    stop_price: intent.stop_price.map(exact).transpose()?,
-                    reduce_only: intent.reduce_only,
-                    metadata: intent.metadata.clone(),
-                })?;
-                let order = self.storage.create_trading_order(&CreateOrderInput {
-                    run_id,
-                    times: EventTimes::new(market_candle.close_time_ms),
-                    intent_event_id: Some(persisted_intent.event.event_id),
-                    client_order_id: None,
-                    exchange_order_id: None,
-                    side: intent.side,
-                    order_type: intent.order_type,
-                    time_in_force: intent.time_in_force,
-                    price: intent.price.map(exact).transpose()?,
-                    quantity: exact(intent.quantity)?,
-                    stop_price: intent.stop_price.map(exact).transpose()?,
-                    metadata: intent.metadata.clone(),
-                })?;
-                self.storage.record_order_state(&OrderStateInput {
-                    order_id: order.order_id,
-                    times: EventTimes::new(market_candle.close_time_ms),
-                    status: OrderStatus::Accepted,
-                    filled_quantity: ExactDecimal::zero(),
-                    average_fill_price: None,
-                    reject_reason: None,
-                    metadata: json!({"simulated": true}),
-                })?;
-                execution
-                    .submit(order.order_id, market_candle.close_time_ms, intent)
-                    .map_err(BacktestError::Simulation)?;
-            }
+            self.persist_strategy_output(
+                run_id,
+                market_candle.close_time_ms,
+                output,
+                execution,
+            )?;
 
             let view = portfolio.view();
             self.storage.record_equity_snapshot(&EquitySnapshotInput {
@@ -325,6 +294,79 @@ impl BacktestEngine {
             })?;
         }
         Ok(())
+    }
+
+    fn persist_strategy_output(
+        &self,
+        run_id: i64,
+        event_time_ms: i64,
+        output: StrategyOutput,
+        execution: &mut SimulatedExecution,
+    ) -> Result<(), BacktestError> {
+        for decision in output.decisions {
+            self.storage.record_decision(&DecisionInput {
+                run_id,
+                times: EventTimes::new(event_time_ms),
+                decision_type: decision.decision_type,
+                payload: decision.payload,
+            })?;
+        }
+
+        for intent in output.order_intents {
+            validate_intent(&intent)?;
+            let persisted_intent = self.storage.record_order_intent(&OrderIntentInput {
+                run_id,
+                times: EventTimes::new(event_time_ms),
+                intent_key: intent.intent_key.clone(),
+                side: intent.side,
+                order_type: intent.order_type,
+                time_in_force: intent.time_in_force,
+                price: intent.price.map(exact).transpose()?,
+                quantity: exact(intent.quantity)?,
+                stop_price: intent.stop_price.map(exact).transpose()?,
+                reduce_only: intent.reduce_only,
+                metadata: intent.metadata.clone(),
+            })?;
+            let order = self.storage.create_trading_order(&CreateOrderInput {
+                run_id,
+                times: EventTimes::new(event_time_ms),
+                intent_event_id: Some(persisted_intent.event.event_id),
+                client_order_id: None,
+                exchange_order_id: None,
+                side: intent.side,
+                order_type: intent.order_type,
+                time_in_force: intent.time_in_force,
+                price: intent.price.map(exact).transpose()?,
+                quantity: exact(intent.quantity)?,
+                stop_price: intent.stop_price.map(exact).transpose()?,
+                metadata: intent.metadata.clone(),
+            })?;
+            self.storage.record_order_state(&OrderStateInput {
+                order_id: order.order_id,
+                times: EventTimes::new(event_time_ms),
+                status: OrderStatus::Accepted,
+                filled_quantity: ExactDecimal::zero(),
+                average_fill_price: None,
+                reject_reason: None,
+                metadata: json!({"simulated": true}),
+            })?;
+            execution
+                .submit(order.order_id, event_time_ms, intent)
+                .map_err(BacktestError::Simulation)?;
+        }
+        Ok(())
+    }
+}
+
+fn market_candle_from_storage(candle: &crate::storage::OhlcvCandle) -> MarketCandle {
+    MarketCandle {
+        open_time_ms: candle.open_time_ms,
+        close_time_ms: candle.close_time_ms,
+        open: candle.open_price,
+        high: candle.high_price,
+        low: candle.low_price,
+        close: candle.close_price,
+        volume: candle.base_volume,
     }
 }
 
