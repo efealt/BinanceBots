@@ -169,6 +169,34 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .backtest-kpi span { color: var(--muted); font-size: 0.68rem; }
 .backtest-kpi strong { margin-top: 6px; overflow: hidden; color: var(--text); font-size: 0.96rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .backtest-result-context { margin-top: 12px; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.backtest-analysis-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border); }
+.backtest-analysis-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.backtest-analysis-heading .eyebrow { margin-bottom: 5px; }
+.backtest-analysis-heading h3 { margin: 0; font-size: 1rem; }
+.backtest-analysis-note { margin: 10px 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.55; }
+.backtest-analysis-status { margin: 14px 0; color: var(--muted); font-size: 0.72rem; }
+.backtest-run-summary { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.backtest-summary-item { min-width: 0; padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-raised); }
+.backtest-summary-item span, .backtest-summary-item strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backtest-summary-item span { color: var(--muted); font-size: 0.62rem; }
+.backtest-summary-item strong { margin-top: 5px; color: var(--text); font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.backtest-analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.backtest-analysis-chart-card { min-width: 0; margin-top: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-raised); }
+.backtest-analysis-chart-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.backtest-analysis-chart-heading strong, .backtest-analysis-chart-heading span { display: block; }
+.backtest-analysis-chart-heading strong { font-size: 0.82rem; }
+.backtest-analysis-chart-heading span { margin-top: 4px; color: var(--muted); font-size: 0.66rem; }
+.backtest-analysis-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; color: var(--muted); font-size: 0.64rem; }
+.backtest-analysis-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.analysis-key { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.analysis-key--price { background: var(--accent); }
+.analysis-key--buy-level { width: 14px; height: 2px; border-radius: 0; background: var(--bid); }
+.analysis-key--sell-level { width: 14px; height: 2px; border-radius: 0; background: var(--ask); }
+.analysis-key--buy-fill { background: var(--bid); }
+.analysis-key--sell-fill { background: var(--ask); }
+.backtest-analysis-chart { width: 100%; height: 330px; margin-top: 8px; }
+.backtest-analysis-chart--price { height: 460px; }
+
 .backtest-fill-audit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
 .backtest-fill-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
 .backtest-fill-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
@@ -420,6 +448,8 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 #rest-candle-table[hidden], #websocket-event-table[hidden], #recent-event-empty[hidden] { display: none; }
 
 @media (max-width: 900px) {
+  .backtest-run-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .backtest-analysis-grid { grid-template-columns: 1fr; }
   .backtest-parameter-grid, .backtest-parameter-grid--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .backtest-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-grid, .lower-grid, .backtest-grid, .single-run-grid, .market-workspace { grid-template-columns: 1fr; }
@@ -432,6 +462,10 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 }
 
 @media (max-width: 620px) {
+  .backtest-run-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .backtest-analysis-chart { height: 300px; }
+  .backtest-analysis-chart--price { height: 380px; }
+  .backtest-analysis-heading { align-items: flex-start; flex-direction: column; }
   .backtest-parameter-grid, .backtest-parameter-grid--wide, .backtest-kpi-grid { grid-template-columns: 1fr; }
   .collapsible-panel-heading { align-items: flex-start; }
   .collapsible-panel-actions { flex-wrap: wrap; justify-content: flex-end; }

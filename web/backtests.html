@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Backtest · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=backtest-ui-17" />
+    <link rel="stylesheet" href="/styles.css?v=backtest-analysis-18" />
   </head>
   <body>
     <div class="app-shell">
@@ -275,6 +275,69 @@
               <div id="backtest-kpi-grid" class="backtest-kpi-grid"></div>
               <div id="backtest-result-context" class="backtest-result-context"></div>
 
+              <section class="backtest-analysis-section" aria-labelledby="backtest-analysis-heading">
+                <div class="backtest-analysis-heading">
+                  <div>
+                    <p class="eyebrow">Visual analysis</p>
+                    <h3 id="backtest-analysis-heading">Strategy vs underlying</h3>
+                  </div>
+                  <span class="badge badge--muted">Benchmark · Buy &amp; Hold</span>
+                </div>
+                <p class="backtest-analysis-note">
+                  Buy &amp; Hold invests the same initial capital at the first active replay candle open and holds the underlying continuously. Strategy equity is the persisted backtest equity, so cash/no-exposure periods can stay flat while the benchmark keeps moving.
+                </p>
+                <div id="backtest-run-summary" class="backtest-run-summary"></div>
+                <p id="backtest-analysis-status" class="backtest-analysis-status" role="status">Analysis loads after a completed run.</p>
+
+                <div class="backtest-analysis-chart-card">
+                  <div class="backtest-analysis-chart-heading">
+                    <div>
+                      <strong>Price, grid/order levels &amp; fills</strong>
+                      <span>Underlying price · complete effective replay period</span>
+                    </div>
+                  </div>
+                  <div class="backtest-analysis-legend" aria-label="Price chart legend">
+                    <span><i class="analysis-key analysis-key--price"></i>Underlying OHLC · price</span>
+                    <span><i class="analysis-key analysis-key--buy-level"></i>Buy order level · price</span>
+                    <span><i class="analysis-key analysis-key--sell-level"></i>Sell order level · price</span>
+                    <span><i class="analysis-key analysis-key--buy-fill"></i>Buy fill · price</span>
+                    <span><i class="analysis-key analysis-key--sell-fill"></i>Sell fill · price</span>
+                  </div>
+                  <div id="backtest-analysis-price-chart" class="backtest-analysis-chart backtest-analysis-chart--price"></div>
+                </div>
+
+                <div class="backtest-analysis-grid">
+                  <div class="backtest-analysis-chart-card">
+                    <div class="backtest-analysis-chart-heading">
+                      <div>
+                        <strong>Equity vs Buy &amp; Hold</strong>
+                        <span>Quote-currency equity · same initial capital</span>
+                      </div>
+                    </div>
+                    <div id="backtest-analysis-equity-chart" class="backtest-analysis-chart"></div>
+                  </div>
+                  <div class="backtest-analysis-chart-card">
+                    <div class="backtest-analysis-chart-heading">
+                      <div>
+                        <strong>Drawdown comparison</strong>
+                        <span>Peak-to-current drawdown · %</span>
+                      </div>
+                    </div>
+                    <div id="backtest-analysis-drawdown-chart" class="backtest-analysis-chart"></div>
+                  </div>
+                </div>
+
+                <div class="backtest-analysis-chart-card">
+                  <div class="backtest-analysis-chart-heading">
+                    <div>
+                      <strong>Position &amp; market exposure</strong>
+                      <span>Signed base-asset quantity and gross exposure · % of strategy equity</span>
+                    </div>
+                  </div>
+                  <div id="backtest-analysis-position-chart" class="backtest-analysis-chart"></div>
+                </div>
+              </section>
+
               <div class="backtest-fill-audit">
                 <div class="backtest-section-heading">
                   <div>
@@ -308,6 +371,7 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
     <script src="/chart-overlays.js?v=5"></script>
-    <script src="/backtests.js?v=backtest-ui-17"></script>
+    <script src="/backtest-analysis-math.js?v=1"></script>
+    <script src="/backtests.js?v=backtest-analysis-18"></script>
   </body>
 </html>

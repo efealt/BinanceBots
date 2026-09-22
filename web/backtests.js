@@ -45,6 +45,12 @@ const backtestResultEmpty = document.querySelector("#backtest-result-empty");
 const backtestResultContent = document.querySelector("#backtest-result-content");
 const backtestKpiGrid = document.querySelector("#backtest-kpi-grid");
 const backtestResultContext = document.querySelector("#backtest-result-context");
+const backtestRunSummary = document.querySelector("#backtest-run-summary");
+const backtestAnalysisStatus = document.querySelector("#backtest-analysis-status");
+const backtestAnalysisPriceChart = document.querySelector("#backtest-analysis-price-chart");
+const backtestAnalysisEquityChart = document.querySelector("#backtest-analysis-equity-chart");
+const backtestAnalysisDrawdownChart = document.querySelector("#backtest-analysis-drawdown-chart");
+const backtestAnalysisPositionChart = document.querySelector("#backtest-analysis-position-chart");
 const backtestFillAuditCount = document.querySelector("#backtest-fill-audit-count");
 const backtestFillTableBody = document.querySelector("#backtest-fill-table-body");
 const TIMEFRAME_MS = { "1m": 60_000, "1h": 3_600_000, "1d": 86_400_000 };
@@ -1253,16 +1259,38 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function renderBacktestResult(result) {
-  backtestResultEmpty.hidden = true;
-  backtestResultContent.hidden = false;
-  backtestRunStatusBadge.textContent = "Completed";
-  backtestRunStatusBadge.classList.add("badge--success");
+let backtestAnalysisCharts = [];
+let backtestAnalysisToken = 0;
+let lastBacktestAnalysisModel = null;
 
+function analysisColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
+  return {
+    text: read("--text", "#e8edf5"),
+    muted: read("--muted", "#9ba8ba"),
+    border: read("--border", "#29384a"),
+    surface: read("--surface", "#111b29"),
+    grid: read("--grid", "rgba(148,163,184,0.12)"),
+    accent: read("--accent", "#927df7"),
+    bid: read("--bid", "#36c984"),
+    ask: read("--ask", "#eb6f92"),
+    benchmark: read("--pending", "#e6b450"),
+  };
+}
+
+function disposeBacktestAnalysisCharts() {
+  for (const chart of backtestAnalysisCharts) chart.dispose();
+  backtestAnalysisCharts = [];
+}
+
+function renderBacktestKpis(result, benchmark = null) {
   const kpis = [
-    ["Total return", formatSignedPercent(result.total_return_percent)],
-    ["Final equity", formatDecimal(result.final_equity)],
-    ["Max drawdown", formatSignedPercent(result.max_drawdown_percent)],
+    ["Strategy return", formatSignedPercent(result.total_return_percent)],
+    ["Strategy final equity", formatDecimal(result.final_equity)],
+    ["Buy & Hold return", benchmark ? formatSignedPercent(benchmark.totalReturnPercent) : "Loading…"],
+    ["Buy & Hold final equity", benchmark ? formatDecimal(benchmark.finalEquity) : "Loading…"],
+    ["Strategy max DD", formatSignedPercent(result.max_drawdown_percent)],
     ["Fees", formatDecimal(result.fees_paid, 6)],
     ["Fills", Number(result.fill_count ?? 0).toLocaleString()],
     ["Final position", formatQuantity(result.final_position_quantity)],
@@ -1275,6 +1303,368 @@ function renderBacktestResult(result) {
       <strong>${escapeHtml(value)}</strong>
     </div>
   `).join("");
+}
+
+function humanizeValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : String(value);
+  return String(value).replaceAll("_", " ");
+}
+
+function renderBacktestRunSummary(result) {
+  const params = result.strategy_params || {};
+  const execution = result.execution_assumptions || {};
+  const items = [
+    ["Strategy", `${result.strategy_id} · v${result.strategy_version}`],
+    ["Behavior", "Static initial grid · no replenishment"],
+    ["Anchor", humanizeValue(params.anchor)],
+    ["Fixed anchor", humanizeValue(params.fixed_anchor_price)],
+    ["Spacing", params.spacing_bps == null ? "—" : `${params.spacing_bps} bps`],
+    ["Levels / side", humanizeValue(params.levels_per_side)],
+    ["Qty / order", humanizeValue(params.quantity_per_order)],
+    ["Time in force", String(params.time_in_force || "gtc").toUpperCase()],
+    ["Fee", execution.fee_bps == null ? "—" : `${execution.fee_bps} bps`],
+    ["Spread", execution.spread_bps == null ? "—" : `${execution.spread_bps} bps`],
+    ["Slippage", execution.slippage_bps == null ? "—" : `${execution.slippage_bps} bps`],
+    ["Latency", execution.latency_ms == null ? "—" : `${execution.latency_ms} ms`],
+    ["Limit fill", humanizeValue(execution.limit_fill_policy)],
+    ["Partial fill", execution.partial_fill_ratio == null ? "—" : `${(Number(execution.partial_fill_ratio) * 100).toFixed(0)}%`],
+  ];
+  backtestRunSummary.innerHTML = items.map(([label, value]) => `
+    <div class="backtest-summary-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+}
+
+async function marketCandlesForBacktestResult(result) {
+  let source = null;
+  if (Number(datasetSelect.value) === Number(result.dataset_id) && rawCandles.length) {
+    source = rawCandles;
+  } else {
+    const response = await fetch(`/api/data/ohlcv?dataset_id=${result.dataset_id}`);
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json();
+    source = payload.candles || [];
+  }
+  const replay = aggregateCandles(source, result.replay_interval);
+  const start = Number(result.effective_start_time_ms);
+  const end = Number(result.effective_end_time_ms);
+  return replay.filter((candle) =>
+    Number(candle.open_time_ms) >= start && Number(candle.close_time_ms) <= end
+  );
+}
+
+function analysisTimeLabel(value) {
+  const date = new Date(Number(value));
+  return date.toISOString().replace("T", " ").slice(0, 16);
+}
+
+function commonAnalysisGrid() {
+  return { left: 68, right: 34, top: 54, bottom: 70, containLabel: false };
+}
+
+function commonTimeDataZoom() {
+  return [
+    { type: "inside", filterMode: "none", throttle: 80 },
+    { type: "slider", filterMode: "none", height: 24, bottom: 12 },
+  ];
+}
+
+function renderPriceAnalysisChart(candles, result, analysis, colors) {
+  const chart = echarts.init(backtestAnalysisPriceChart);
+  backtestAnalysisCharts.push(chart);
+  const categories = candles.map((candle) => String(candle.open_time_ms));
+  const categorySet = new Set(categories);
+  const intervalMs = TIMEFRAME_MS[result.replay_interval];
+  const bucketKey = (time) => String(Math.floor(Number(time) / intervalMs) * intervalMs);
+  const candleData = candles.map((candle) => [
+    Number(candle.open_price),
+    Number(candle.close_price),
+    Number(candle.low_price),
+    Number(candle.high_price),
+  ]);
+
+  const orderSegments = (analysis.order_levels || [])
+    .filter((level) => level.price != null)
+    .map((level) => {
+      let start = bucketKey(level.active_from_ms);
+      let end = bucketKey(level.active_to_ms ?? result.effective_end_time_ms);
+      if (!categorySet.has(start)) start = categories[0];
+      if (!categorySet.has(end)) end = categories[categories.length - 1];
+      const price = Number(level.price);
+      const color = level.side === "buy" ? colors.bid : colors.ask;
+      return [
+        { coord: [start, price], lineStyle: { color, width: 1.2, type: "dashed", opacity: 0.82 } },
+        { coord: [end, price] },
+      ];
+    });
+
+  const fillData = (side) => (result.fills || [])
+    .filter((fill) => fill.side === side)
+    .map((fill) => [bucketKey(fill.event_time_ms), Number(fill.price)]);
+
+  chart.setOption({
+    animation: false,
+    textStyle: { color: colors.text },
+    grid: commonAnalysisGrid(),
+    legend: {
+      top: 8,
+      textStyle: { color: colors.muted },
+      data: ["Underlying OHLC · price", "Buy fills · price", "Sell fills · price"],
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross" },
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      textStyle: { color: colors.text },
+    },
+    xAxis: {
+      type: "category",
+      data: categories,
+      boundaryGap: true,
+      axisLine: { lineStyle: { color: colors.border } },
+      axisLabel: { color: colors.muted, formatter: analysisTimeLabel, hideOverlap: true },
+    },
+    yAxis: {
+      scale: true,
+      name: "Price",
+      nameTextStyle: { color: colors.muted },
+      splitLine: { lineStyle: { color: colors.grid } },
+      axisLabel: { color: colors.muted },
+    },
+    dataZoom: commonTimeDataZoom(),
+    series: [
+      {
+        name: "Underlying OHLC · price",
+        type: "candlestick",
+        data: candleData,
+        large: true,
+        largeThreshold: 2000,
+        progressive: 10000,
+        itemStyle: {
+          color: colors.bid,
+          color0: colors.ask,
+          borderColor: colors.bid,
+          borderColor0: colors.ask,
+        },
+        markLine: {
+          silent: true,
+          symbol: ["none", "none"],
+          label: { show: false },
+          data: orderSegments,
+        },
+      },
+      {
+        name: "Buy fills · price",
+        type: "scatter",
+        data: fillData("buy"),
+        symbol: "triangle",
+        symbolSize: 11,
+        itemStyle: { color: colors.bid },
+        z: 5,
+      },
+      {
+        name: "Sell fills · price",
+        type: "scatter",
+        data: fillData("sell"),
+        symbol: "triangle",
+        symbolRotate: 180,
+        symbolSize: 11,
+        itemStyle: { color: colors.ask },
+        z: 5,
+      },
+    ],
+  });
+}
+
+function renderLineAnalysisChart(container, series, yAxisName, colors, extra = {}) {
+  const chart = echarts.init(container);
+  backtestAnalysisCharts.push(chart);
+  chart.setOption({
+    animation: false,
+    textStyle: { color: colors.text },
+    grid: commonAnalysisGrid(),
+    legend: { top: 8, textStyle: { color: colors.muted } },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      textStyle: { color: colors.text },
+    },
+    xAxis: {
+      type: "time",
+      axisLine: { lineStyle: { color: colors.border } },
+      axisLabel: { color: colors.muted },
+    },
+    yAxis: extra.yAxis || {
+      type: "value",
+      scale: true,
+      name: yAxisName,
+      nameTextStyle: { color: colors.muted },
+      splitLine: { lineStyle: { color: colors.grid } },
+      axisLabel: { color: colors.muted },
+    },
+    dataZoom: commonTimeDataZoom(),
+    series,
+  });
+}
+
+function renderBacktestAnalysisCharts(model) {
+  disposeBacktestAnalysisCharts();
+  const colors = analysisColors();
+  const { result, analysis, candles, strategyEquity, benchmark, strategyDrawdown, benchmarkDrawdown, positionExposure } = model;
+
+  renderPriceAnalysisChart(candles, result, analysis, colors);
+
+  renderLineAnalysisChart(backtestAnalysisEquityChart, [
+    {
+      name: "Strategy equity · quote",
+      type: "line",
+      showSymbol: false,
+      data: strategyEquity,
+      lineStyle: { width: 2, color: colors.accent },
+      itemStyle: { color: colors.accent },
+      progressive: 10000,
+    },
+    {
+      name: "Buy & Hold · quote",
+      type: "line",
+      showSymbol: false,
+      data: benchmark.equity,
+      lineStyle: { width: 1.8, color: colors.benchmark },
+      itemStyle: { color: colors.benchmark },
+      progressive: 10000,
+    },
+  ], "Equity", colors);
+
+  renderLineAnalysisChart(backtestAnalysisDrawdownChart, [
+    {
+      name: "Strategy drawdown · %",
+      type: "line",
+      showSymbol: false,
+      data: strategyDrawdown.points,
+      lineStyle: { width: 1.8, color: colors.accent },
+      itemStyle: { color: colors.accent },
+      areaStyle: { opacity: 0.08, color: colors.accent },
+      progressive: 10000,
+    },
+    {
+      name: "Buy & Hold drawdown · %",
+      type: "line",
+      showSymbol: false,
+      data: benchmarkDrawdown.points,
+      lineStyle: { width: 1.6, color: colors.benchmark },
+      itemStyle: { color: colors.benchmark },
+      progressive: 10000,
+    },
+  ], "Drawdown · %", colors);
+
+  renderLineAnalysisChart(backtestAnalysisPositionChart, [
+    {
+      name: "Position quantity · base asset",
+      type: "line",
+      yAxisIndex: 0,
+      showSymbol: false,
+      step: "end",
+      data: positionExposure.position,
+      lineStyle: { width: 1.8, color: colors.bid },
+      itemStyle: { color: colors.bid },
+      progressive: 10000,
+    },
+    {
+      name: "Gross exposure · %",
+      type: "line",
+      yAxisIndex: 1,
+      showSymbol: false,
+      data: positionExposure.exposure,
+      lineStyle: { width: 1.6, color: colors.accent },
+      itemStyle: { color: colors.accent },
+      progressive: 10000,
+    },
+  ], "", colors, {
+    yAxis: [
+      {
+        type: "value",
+        scale: true,
+        name: "Position · base asset",
+        nameTextStyle: { color: colors.muted },
+        splitLine: { lineStyle: { color: colors.grid } },
+        axisLabel: { color: colors.muted },
+      },
+      {
+        type: "value",
+        name: "Exposure · %",
+        nameTextStyle: { color: colors.muted },
+        splitLine: { show: false },
+        axisLabel: { color: colors.muted, formatter: "{value}%" },
+      },
+    ],
+  });
+}
+
+async function loadBacktestAnalysis(result) {
+  const token = ++backtestAnalysisToken;
+  disposeBacktestAnalysisCharts();
+  lastBacktestAnalysisModel = null;
+  backtestAnalysisStatus.textContent = "Loading persisted run analysis and complete underlying replay data…";
+  try {
+    const [analysisResponse, candles] = await Promise.all([
+      fetch(`/api/backtests/runs/${result.run_id}/analysis`),
+      marketCandlesForBacktestResult(result),
+    ]);
+    if (!analysisResponse.ok) throw new Error(await analysisResponse.text());
+    const analysis = await analysisResponse.json();
+    if (token !== backtestAnalysisToken) return;
+    if (!candles.length) throw new Error("No replay candles were available for this run analysis.");
+
+    const strategyEquity = (analysis.equity || []).map((point) => [
+      Number(point.event_time_ms),
+      Number(point.equity),
+    ]);
+    const benchmark = BacktestAnalysisMath.buildBuyAndHold(candles, Number(result.initial_capital));
+    const strategyDrawdown = BacktestAnalysisMath.drawdownSeries(strategyEquity);
+    const benchmarkDrawdown = BacktestAnalysisMath.drawdownSeries(benchmark.equity);
+    const positionExposure = BacktestAnalysisMath.buildPositionExposure(
+      candles,
+      strategyEquity,
+      analysis.positions || [],
+    );
+
+    renderBacktestKpis(result, benchmark);
+    backtestAnalysisStatus.textContent =
+      `${strategyEquity.length.toLocaleString()} persisted equity points · ` +
+      `${candles.length.toLocaleString()} complete replay candles · ` +
+      `${(analysis.order_levels || []).length.toLocaleString()} persisted order levels · ` +
+      `Buy & Hold entry ${formatQuantity(benchmark.entryPrice)} at first active candle open.`;
+
+    lastBacktestAnalysisModel = {
+      result,
+      analysis,
+      candles,
+      strategyEquity,
+      benchmark,
+      strategyDrawdown,
+      benchmarkDrawdown,
+      positionExposure,
+    };
+    renderBacktestAnalysisCharts(lastBacktestAnalysisModel);
+  } catch (error) {
+    if (token !== backtestAnalysisToken) return;
+    backtestAnalysisStatus.textContent = `Visual analysis could not load: ${error.message || "unknown error"}`;
+    disposeBacktestAnalysisCharts();
+  }
+}
+
+function renderBacktestResult(result) {
+  backtestResultEmpty.hidden = true;
+  backtestResultContent.hidden = false;
+  backtestRunStatusBadge.textContent = "Completed";
+  backtestRunStatusBadge.classList.add("badge--success");
+  renderBacktestKpis(result);
+  renderBacktestRunSummary(result);
 
   const preRoll = result.reserved_first_candle_as_preroll
     ? " · first available replay candle reserved as pre-roll"
@@ -1298,6 +1688,8 @@ function renderBacktestResult(result) {
       </tr>
     `).join("")
     : '<tr><td colspan="7" class="backtest-fill-empty">No fills occurred in this run.</td></tr>';
+
+  void loadBacktestAnalysis(result);
 }
 
 function backtestRequestPayload() {
@@ -1572,6 +1964,9 @@ afterHoursOverlayToggle.addEventListener("change", () => updateOverlayPreference
 themeToggle.addEventListener("click", () => {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   setTheme(nextTheme);
+  if (lastBacktestAnalysisModel) {
+    requestAnimationFrame(() => renderBacktestAnalysisCharts(lastBacktestAnalysisModel));
+  }
 });
 
 chart.initialize();
