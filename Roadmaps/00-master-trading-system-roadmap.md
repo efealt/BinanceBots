@@ -44,15 +44,15 @@ Implemented the canonical Backtest/Paper/Live persistence contract, exact tradin
 
 **Exit achieved:** The database can represent and reconstruct equivalent Backtest, Paper, and Live runs before any trading engine writes them.
 
-### Phase 2 — Backtest engine
+### Phase 2 — Backtest engine — COMPLETE
 
-Build the historical clock, shared strategy interface, portfolio/order state, and reusable simulated-execution component on top of downloaded data and the Phase 1 canonical run model.
+Implemented the deterministic historical clock, mode-neutral strategy interface, portfolio/order state, reusable simulated-execution component, bounded historical dataset reads, canonical run persistence, and failure lifecycle on top of Phase 1.
 
 The historical clock is authoritative: strategy decisions, order creation, fills, and state transitions occur only from information available at that simulated time. Same-timestamp ordering must be deterministic and explicit.
 
 Execution assumptions are run configuration, not hidden strategy behavior. The simulator is designed to support fees, spread/slippage, latency, limit-order fill rules, partial fills, and conservative scenarios without changing strategy logic. Paper will reuse this same simulated-execution component later.
 
-**Exit:** A deterministic backend Backtest run can consume stored Binance data, drive a strategy through the shared interface, reconstruct portfolio/order state, and persist a complete run through the Phase 1 canonical model.
+**Exit achieved:** A deterministic backend Backtest run consumes stored Binance data, drives a strategy through the shared interface, reconstructs portfolio/order state, and persists a complete run through the Phase 1 canonical model. Automated verification covers no-same-candle fills, deterministic replay, fees/slippage, limit policies, latency, partial fills, accounting, and failed-run preservation.
 
 ### Phase 3 — Minimal grid strategy test fixture
 
