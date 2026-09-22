@@ -8,11 +8,13 @@ const dataStatus = document.querySelector("#backtest-data-status");
 const chartEmpty = document.querySelector("#backtest-data-empty");
 const diagnosticsSection = document.querySelector(".diagnostics-section");
 const diagnosticsToggle = document.querySelector("#diagnostics-toggle");
-const diagnosticsToggleLabel = diagnosticsToggle?.querySelector(".diagnostics-toggle-label");
 const diagnosticsContent = document.querySelector("#diagnostics-content");
 const diagnosticsContext = document.querySelector("#diagnostics-context");
 const diagnosticsStatus = document.querySelector("#diagnostics-status");
 const diagnosticsRows = document.querySelector("#diagnostics-rows");
+const rollingPredictionSection = document.querySelector(".rolling-prediction-section");
+const rollingPredictionToggle = document.querySelector("#rolling-prediction-toggle");
+const rollingPredictionContent = document.querySelector("#rolling-prediction-content");
 const rollingPredictionCard = document.querySelector("#rolling-prediction-card");
 const rollingPredictionStatus = document.querySelector("#rolling-prediction-status");
 const TIMEFRAME_MS = { "1m": 60_000, "1h": 3_600_000, "1d": 86_400_000 };
@@ -1175,11 +1177,12 @@ async function loadDatasets() {
   } finally { datasetSelect.disabled = false; }
 }
 
-function setDiagnosticsExpanded(expanded) {
-  diagnosticsSection?.classList.toggle("is-collapsed", !expanded);
-  diagnosticsToggle?.setAttribute("aria-expanded", String(expanded));
-  diagnosticsContent?.setAttribute("aria-hidden", String(!expanded));
-  if (diagnosticsToggleLabel) diagnosticsToggleLabel.textContent = expanded ? "Collapse" : "Open";
+function setCollapsiblePanelExpanded(section, toggle, content, expanded) {
+  section?.classList.toggle("is-collapsed", !expanded);
+  toggle?.setAttribute("aria-expanded", String(expanded));
+  content?.setAttribute("aria-hidden", String(!expanded));
+  const label = toggle?.querySelector(".collapsible-toggle-label");
+  if (label) label.textContent = expanded ? "Collapse" : "Open";
   if (expanded) {
     requestAnimationFrame(() => {
       diagnosticCharts.forEach(({ instance }) => instance.resize());
@@ -1188,10 +1191,25 @@ function setDiagnosticsExpanded(expanded) {
 }
 
 diagnosticsToggle?.addEventListener("click", () => {
-  setDiagnosticsExpanded(diagnosticsToggle.getAttribute("aria-expanded") !== "true");
+  setCollapsiblePanelExpanded(
+    diagnosticsSection,
+    diagnosticsToggle,
+    diagnosticsContent,
+    diagnosticsToggle.getAttribute("aria-expanded") !== "true",
+  );
 });
 
-setDiagnosticsExpanded(false);
+rollingPredictionToggle?.addEventListener("click", () => {
+  setCollapsiblePanelExpanded(
+    rollingPredictionSection,
+    rollingPredictionToggle,
+    rollingPredictionContent,
+    rollingPredictionToggle.getAttribute("aria-expanded") !== "true",
+  );
+});
+
+setCollapsiblePanelExpanded(diagnosticsSection, diagnosticsToggle, diagnosticsContent, false);
+setCollapsiblePanelExpanded(rollingPredictionSection, rollingPredictionToggle, rollingPredictionContent, false);
 
 datasetSelect.addEventListener("change", loadSeries);
 timeframeSelect.addEventListener("change", renderSelectedTimeframe);
