@@ -1,0 +1,49 @@
+name: Build XAGUSDT regression fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build_xagusdt_fixture.py"
+      - ".github/workflows/build-xagusdt-fixture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-fixture:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build frozen full XAGUSDT SQLite fixture
+        run: python3 scripts/build_xagusdt_fixture.py
+      - name: Verify fixture manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, sqlite3
+          db = pathlib.Path("test-data/xagusdt_1m_2026.sqlite3")
+          manifest = json.loads(pathlib.Path("test-data/xagusdt_1m_2026.manifest.json").read_text())
+          assert db.exists()
+          assert hashlib.sha256(db.read_bytes()).hexdigest() == manifest["database_sha256"]
+          con = sqlite3.connect(db)
+          assert con.execute("select count(*) from historical_ohlcv where dataset_id=1").fetchone()[0] == 369480
+          assert con.execute("select count(*) from auth_audit_events").fetchone()[0] == 0
+          assert con.execute("select count(*) from trading_runs").fetchone()[0] == 0
+          print("fixture verified", manifest["database_bytes"], manifest["database_sha256"])
+          PY
+      - name: Commit frozen fixture
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add test-data/xagusdt_1m_2026.sqlite3 test-data/xagusdt_1m_2026.manifest.json
+          if git diff --cached --quiet; then
+            echo "Fixture already matches committed files."
+            exit 0
+          fi
+          git commit -m "Add frozen full XAGUSDT regression fixture"
+          git push origin HEAD:main
