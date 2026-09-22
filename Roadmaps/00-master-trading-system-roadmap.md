@@ -88,6 +88,8 @@ Automated verification is green, the code is deployed live, and the authenticate
 
 ### Phase 4 — Live Paper runtime + shared Trading page
 
+Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
+
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
 
 Paper uses the same strategy interface, canonical run model, portfolio/order state model, and simulated-execution component already proven in Backtest. The main change is the clock/data source: historical replay becomes real-time market input.
