@@ -408,3 +408,38 @@ pub struct TradingRunHistory {
     pub positions: Vec<PositionSnapshotRecord>,
     pub equity: Vec<EquitySnapshotRecord>,
 }
+
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingRunCounts {
+    pub decisions: i64,
+    pub order_intents: i64,
+    pub orders: i64,
+    pub fills: i64,
+    pub positions: i64,
+    pub equity_snapshots: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingEquityStats {
+    pub snapshot_count: i64,
+    pub final_equity: Option<ExactDecimal>,
+    pub final_cash_balance: Option<ExactDecimal>,
+    pub final_realized_pnl: Option<ExactDecimal>,
+    pub final_unrealized_pnl: Option<ExactDecimal>,
+    pub final_fees_paid: Option<ExactDecimal>,
+    pub max_drawdown_percent: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingFillAudit {
+    pub event_time_ms: i64,
+    pub order_id: i64,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub price: ExactDecimal,
+    pub quantity: ExactDecimal,
+    pub fee: Option<ExactDecimal>,
+    pub fee_asset: Option<String>,
+    pub liquidity_role: Option<LiquidityRole>,
+}

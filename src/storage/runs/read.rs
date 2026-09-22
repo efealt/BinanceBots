@@ -164,6 +164,149 @@ impl StorageReader {
             equity,
         })
     }
+
+    pub fn trading_run_counts(&self, run_id: i64) -> Result<TradingRunCounts, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        connection
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM trading_decisions WHERE run_id = ?1),
+                    (SELECT COUNT(*) FROM trading_order_intents WHERE run_id = ?1),
+                    (SELECT COUNT(*) FROM trading_orders WHERE run_id = ?1),
+                    (SELECT COUNT(*) FROM trading_fills WHERE run_id = ?1),
+                    (SELECT COUNT(*) FROM trading_position_snapshots WHERE run_id = ?1),
+                    (SELECT COUNT(*) FROM trading_equity_snapshots WHERE run_id = ?1)",
+                params![run_id],
+                |row| {
+                    Ok(TradingRunCounts {
+                        decisions: row.get(0)?,
+                        order_intents: row.get(1)?,
+                        orders: row.get(2)?,
+                        fills: row.get(3)?,
+                        positions: row.get(4)?,
+                        equity_snapshots: row.get(5)?,
+                    })
+                },
+            )
+            .map_err(StorageError::from)
+    }
+
+    pub fn trading_run_fill_audit(&self, run_id: i64) -> Result<Vec<TradingFillAudit>, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT e.event_time_ms, f.order_id, o.side, o.order_type,
+                    f.price_decimal, f.quantity_decimal, f.fee_decimal,
+                    f.fee_asset, f.liquidity_role
+             FROM trading_fills f
+             JOIN trading_run_events e ON e.event_id = f.event_id
+             JOIN trading_orders o ON o.order_id = f.order_id
+             WHERE f.run_id = ?1
+             ORDER BY e.run_sequence"
+        )?;
+        let rows = statement.query_map(params![run_id], |row| {
+            Ok(TradingFillAudit {
+                event_time_ms: row.get(0)?,
+                order_id: row.get(1)?,
+                side: enum_from_row(row, 2, OrderSide::parse)?,
+                order_type: enum_from_row(row, 3, OrderType::parse)?,
+                price: decimal_from_row(row, 4)?,
+                quantity: decimal_from_row(row, 5)?,
+                fee: optional_decimal_from_row(row, 6)?,
+                fee_asset: row.get(7)?,
+                liquidity_role: optional_enum_from_row(row, 8, LiquidityRole::parse)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn trading_run_latest_position(
+        &self,
+        run_id: i64,
+    ) -> Result<Option<PositionSnapshotRecord>, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        connection
+            .query_row(
+                "SELECT e.event_id, e.run_id, e.run_sequence, e.event_kind, e.event_time_ms,
+                        e.exchange_time_ms, e.received_at_ms, e.persisted_at_ms,
+                        p.position_quantity_decimal, p.average_entry_price_decimal,
+                        p.mark_price_decimal, p.realized_pnl_decimal, p.unrealized_pnl_decimal,
+                        p.cash_balance_decimal, p.metadata_json
+                 FROM trading_position_snapshots p
+                 JOIN trading_run_events e ON e.event_id = p.event_id
+                 WHERE p.run_id = ?1
+                 ORDER BY e.run_sequence DESC
+                 LIMIT 1",
+                params![run_id],
+                map_position_record,
+            )
+            .optional()
+            .map_err(StorageError::from)
+    }
+
+    pub fn trading_run_equity_stats(&self, run_id: i64) -> Result<TradingEquityStats, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT q.equity_decimal, q.cash_balance_decimal, q.realized_pnl_decimal,
+                    q.unrealized_pnl_decimal, q.fees_paid_decimal
+             FROM trading_equity_snapshots q
+             JOIN trading_run_events e ON e.event_id = q.event_id
+             WHERE q.run_id = ?1
+             ORDER BY e.run_sequence"
+        )?;
+        let mut rows = statement.query(params![run_id])?;
+        let mut snapshot_count = 0_i64;
+        let mut peak = f64::NEG_INFINITY;
+        let mut max_drawdown_percent = 0.0_f64;
+        let mut final_equity = None;
+        let mut final_cash_balance = None;
+        let mut final_realized_pnl = None;
+        let mut final_unrealized_pnl = None;
+        let mut final_fees_paid = None;
+
+        while let Some(row) = rows.next()? {
+            let equity_raw: String = row.get(0)?;
+            let equity = ExactDecimal::new(&equity_raw)?;
+            let equity_value = equity_raw.parse::<f64>().map_err(|_| StorageError::InvalidTradingValue {
+                field: "equity_decimal",
+                value: equity_raw.clone(),
+            })?;
+            if equity_value > peak {
+                peak = equity_value;
+            }
+            if peak > 0.0 {
+                let drawdown = ((equity_value / peak) - 1.0) * 100.0;
+                if drawdown < max_drawdown_percent {
+                    max_drawdown_percent = drawdown;
+                }
+            }
+
+            let parse_optional = |index: usize| -> Result<Option<ExactDecimal>, StorageError> {
+                let value: Option<String> = row.get(index)?;
+                value.map(ExactDecimal::new).transpose()
+            };
+            final_equity = Some(equity);
+            final_cash_balance = parse_optional(1)?;
+            final_realized_pnl = parse_optional(2)?;
+            final_unrealized_pnl = parse_optional(3)?;
+            final_fees_paid = parse_optional(4)?;
+            snapshot_count += 1;
+        }
+
+        Ok(TradingEquityStats {
+            snapshot_count,
+            final_equity,
+            final_cash_balance,
+            final_realized_pnl,
+            final_unrealized_pnl,
+            final_fees_paid,
+            max_drawdown_percent,
+        })
+    }
+
 }
 
 use rusqlite::OptionalExtension;

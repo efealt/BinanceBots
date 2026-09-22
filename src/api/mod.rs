@@ -1,3 +1,4 @@
+pub mod backtests;
 pub mod data;
 pub mod market;
 pub mod security;
@@ -15,6 +16,7 @@ pub fn protected_router(
     Router::new()
         .merge(market::router(market_service))
         .merge(data::router(Arc::clone(&storage_reader)))
+        .merge(backtests::router(Arc::clone(&storage_reader)))
         .merge(security::router(storage_reader))
 }
 
