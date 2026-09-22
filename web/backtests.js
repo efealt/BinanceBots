@@ -17,6 +17,36 @@ const rollingPredictionToggle = document.querySelector("#rolling-prediction-togg
 const rollingPredictionContent = document.querySelector("#rolling-prediction-content");
 const rollingPredictionCard = document.querySelector("#rolling-prediction-card");
 const rollingPredictionStatus = document.querySelector("#rolling-prediction-status");
+const backtestRunForm = document.querySelector("#backtest-run-form");
+const backtestRunContext = document.querySelector("#backtest-run-context");
+const backtestStrategy = document.querySelector("#backtest-strategy");
+const backtestInitialCapital = document.querySelector("#backtest-initial-capital");
+const backtestStartDate = document.querySelector("#backtest-start-date");
+const backtestEndDate = document.querySelector("#backtest-end-date");
+const backtestGridAnchor = document.querySelector("#backtest-grid-anchor");
+const backtestFixedAnchor = document.querySelector("#backtest-fixed-anchor");
+const backtestGridSpacing = document.querySelector("#backtest-grid-spacing");
+const backtestGridLevels = document.querySelector("#backtest-grid-levels");
+const backtestGridQuantity = document.querySelector("#backtest-grid-quantity");
+const backtestFeeBps = document.querySelector("#backtest-fee-bps");
+const backtestSpreadBps = document.querySelector("#backtest-spread-bps");
+const backtestSlippageBps = document.querySelector("#backtest-slippage-bps");
+const backtestLatencyMs = document.querySelector("#backtest-latency-ms");
+const backtestLimitPolicy = document.querySelector("#backtest-limit-policy");
+const backtestPartialFill = document.querySelector("#backtest-partial-fill");
+const backtestFormError = document.querySelector("#backtest-form-error");
+const runBacktestButton = document.querySelector("#run-backtest-button");
+const backtestRunStatusBadge = document.querySelector("#backtest-run-status-badge");
+const backtestProgressMessage = document.querySelector("#backtest-progress-message");
+const backtestProgressPercent = document.querySelector("#backtest-progress-percent");
+const backtestProgressTrack = document.querySelector(".backtest-progress-track");
+const backtestProgressFill = document.querySelector("#backtest-progress-fill");
+const backtestResultEmpty = document.querySelector("#backtest-result-empty");
+const backtestResultContent = document.querySelector("#backtest-result-content");
+const backtestKpiGrid = document.querySelector("#backtest-kpi-grid");
+const backtestResultContext = document.querySelector("#backtest-result-context");
+const backtestFillAuditCount = document.querySelector("#backtest-fill-audit-count");
+const backtestFillTableBody = document.querySelector("#backtest-fill-table-body");
 const TIMEFRAME_MS = { "1m": 60_000, "1h": 3_600_000, "1d": 86_400_000 };
 const TIMEFRAME_LABELS = { "1m": "1 minute", "1h": "1 hour", "1d": "1 day" };
 const ROLLING_WINDOW_SIZE = 30;
@@ -1118,6 +1148,292 @@ function renderSelectedTimeframe() {
   if (!candles.length) chartEmpty.textContent = "This ticker has no stored OHLCV candles.";
 }
 
+const BACKTEST_JOB_STORAGE_KEY = "binance-grid-active-backtest-job";
+const BACKTEST_RUN_STORAGE_KEY = "binance-grid-last-backtest-run";
+const BACKTEST_POLL_MS = 2500;
+let backtestJobActive = false;
+let backtestPollTimer = null;
+
+function utcDateInput(ms) {
+  if (!Number.isFinite(Number(ms))) return "";
+  return new Date(Number(ms)).toISOString().slice(0, 10);
+}
+
+function utcDayStartMs(value) {
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function utcDayEndMs(value) {
+  const start = utcDayStartMs(value);
+  return start === null ? null : start + 86_400_000 - 1;
+}
+
+function selectedBacktestDataset() {
+  return datasetsById.get(Number(datasetSelect.value)) ?? null;
+}
+
+function syncBacktestSetupContext(resetDates = false) {
+  const dataset = selectedBacktestDataset();
+  const interval = timeframeSelect.value;
+  if (!dataset) {
+    backtestRunContext.textContent = "Select historical data above";
+    return;
+  }
+  backtestRunContext.textContent = `${dataset.symbol} · ${TIMEFRAME_LABELS[interval]} · backend replay`;
+  if (resetDates || !backtestStartDate.value) backtestStartDate.value = utcDateInput(dataset.start_time_ms);
+  if (resetDates || !backtestEndDate.value) backtestEndDate.value = utcDateInput(dataset.end_time_ms);
+}
+
+function setBacktestFormBusy(busy) {
+  backtestJobActive = busy;
+  runBacktestButton.disabled = busy;
+  runBacktestButton.textContent = busy ? "Backtest running…" : "Run backtest on Render";
+  backtestRunForm.querySelectorAll("input, select").forEach((control) => {
+    if (control === backtestFixedAnchor) {
+      control.disabled = busy || backtestGridAnchor.value !== "fixed";
+    } else if (!control.hasAttribute("disabled")) {
+      control.disabled = busy;
+    }
+  });
+  datasetSelect.disabled = busy;
+  timeframeSelect.disabled = busy;
+}
+
+function setBacktestProgress(percent, message, status = null) {
+  const value = Math.max(0, Math.min(100, Number(percent) || 0));
+  backtestProgressPercent.textContent = `${Math.round(value)}%`;
+  backtestProgressFill.style.width = `${value}%`;
+  backtestProgressTrack?.setAttribute("aria-valuenow", String(Math.round(value)));
+  if (message) backtestProgressMessage.textContent = message;
+  if (status) {
+    backtestRunStatusBadge.textContent = status;
+    backtestRunStatusBadge.classList.toggle("badge--success", status === "Completed");
+  }
+}
+
+function formatDecimal(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+function formatQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
+function formatSignedPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return `${number >= 0 ? "+" : ""}${number.toFixed(3)}%`;
+}
+
+function formatUtcTimestamp(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value)) return "—";
+  return new Date(value).toISOString().replace("T", " ").replace(".000Z", "Z");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderBacktestResult(result) {
+  backtestResultEmpty.hidden = true;
+  backtestResultContent.hidden = false;
+  backtestRunStatusBadge.textContent = "Completed";
+  backtestRunStatusBadge.classList.add("badge--success");
+
+  const kpis = [
+    ["Total return", formatSignedPercent(result.total_return_percent)],
+    ["Final equity", formatDecimal(result.final_equity)],
+    ["Max drawdown", formatSignedPercent(result.max_drawdown_percent)],
+    ["Fees", formatDecimal(result.fees_paid, 6)],
+    ["Fills", Number(result.fill_count ?? 0).toLocaleString()],
+    ["Final position", formatQuantity(result.final_position_quantity)],
+    ["Realized PnL", formatDecimal(result.realized_pnl)],
+    ["Run ID", `#${result.run_id}`],
+  ];
+  backtestKpiGrid.innerHTML = kpis.map(([label, value]) => `
+    <div class="backtest-kpi">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+
+  const preRoll = result.reserved_first_candle_as_preroll
+    ? " · first available replay candle reserved as pre-roll"
+    : "";
+  backtestResultContext.textContent =
+    `${result.symbol} · ${result.replay_interval} · ${Number(result.candles_processed).toLocaleString()} active candles · ` +
+    `${formatUtcTimestamp(result.effective_start_time_ms)} → ${formatUtcTimestamp(result.effective_end_time_ms)}${preRoll}`;
+
+  const fills = Array.isArray(result.fills) ? result.fills : [];
+  backtestFillAuditCount.textContent = `${fills.length.toLocaleString()} fills`;
+  backtestFillTableBody.innerHTML = fills.length
+    ? fills.map((fill) => `
+      <tr>
+        <td>${escapeHtml(formatUtcTimestamp(fill.event_time_ms))}</td>
+        <td><span class="fill-side fill-side--${escapeHtml(fill.side)}">${escapeHtml(fill.side)}</span></td>
+        <td>${escapeHtml(fill.order_type)}</td>
+        <td>${escapeHtml(formatQuantity(fill.price))}</td>
+        <td>${escapeHtml(formatQuantity(fill.quantity))}</td>
+        <td>${escapeHtml(formatQuantity(fill.fee ?? 0))}</td>
+        <td>${escapeHtml(fill.liquidity_role ?? "—")}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="7" class="backtest-fill-empty">No fills occurred in this run.</td></tr>';
+}
+
+function backtestRequestPayload() {
+  const dataset = selectedBacktestDataset();
+  if (!dataset) throw new Error("Select a stored historical dataset first.");
+  if (!backtestStartDate.value || !backtestEndDate.value) throw new Error("Start and end dates are required.");
+  const startTime = utcDayStartMs(backtestStartDate.value);
+  const endTime = utcDayEndMs(backtestEndDate.value);
+  if (startTime === null || endTime === null || startTime > endTime) throw new Error("Start date must be on or before end date.");
+
+  const anchor = backtestGridAnchor.value;
+  const fixedAnchor = anchor === "fixed" ? Number(backtestFixedAnchor.value) : null;
+  if (anchor === "fixed" && (!Number.isFinite(fixedAnchor) || fixedAnchor <= 0)) {
+    throw new Error("Enter a positive fixed anchor price.");
+  }
+
+  return {
+    dataset_id: dataset.dataset_id,
+    replay_interval: timeframeSelect.value,
+    start_time_ms: startTime,
+    end_time_ms: endTime,
+    initial_capital: String(backtestInitialCapital.value),
+    strategy_id: backtestStrategy.value,
+    grid: {
+      anchor,
+      fixed_anchor_price: fixedAnchor,
+      spacing_bps: Number(backtestGridSpacing.value),
+      levels_per_side: Number(backtestGridLevels.value),
+      quantity_per_order: Number(backtestGridQuantity.value),
+    },
+    execution: {
+      fee_bps: Number(backtestFeeBps.value),
+      spread_bps: Number(backtestSpreadBps.value),
+      slippage_bps: Number(backtestSlippageBps.value),
+      latency_ms: Number(backtestLatencyMs.value),
+      limit_fill_policy: backtestLimitPolicy.value,
+      partial_fill_ratio: Number(backtestPartialFill.value),
+    },
+  };
+}
+
+async function pollBacktestJob(jobId) {
+  clearTimeout(backtestPollTimer);
+  try {
+    const response = await fetch(`/api/backtests/jobs/${jobId}`);
+    if (response.status === 404) {
+      localStorage.removeItem(BACKTEST_JOB_STORAGE_KEY);
+      setBacktestFormBusy(false);
+      setBacktestProgress(0, "Previous backend job is no longer available.", "No run");
+      return;
+    }
+    if (!response.ok) throw new Error(await response.text());
+    const job = await response.json();
+    const label = job.status === "completed"
+      ? "Completed"
+      : job.status === "failed"
+        ? "Failed"
+        : job.status === "queued"
+          ? "Queued"
+          : "Running";
+    setBacktestProgress(job.progress_percent, job.message, label);
+
+    if (job.status === "completed") {
+      localStorage.removeItem(BACKTEST_JOB_STORAGE_KEY);
+      if (job.run_id) localStorage.setItem(BACKTEST_RUN_STORAGE_KEY, String(job.run_id));
+      setBacktestFormBusy(false);
+      if (job.result) renderBacktestResult(job.result);
+      return;
+    }
+    if (job.status === "failed") {
+      localStorage.removeItem(BACKTEST_JOB_STORAGE_KEY);
+      setBacktestFormBusy(false);
+      backtestFormError.hidden = false;
+      backtestFormError.textContent = job.message || "Backtest failed.";
+      return;
+    }
+    backtestPollTimer = setTimeout(() => pollBacktestJob(jobId), BACKTEST_POLL_MS);
+  } catch (error) {
+    backtestPollTimer = setTimeout(() => pollBacktestJob(jobId), BACKTEST_POLL_MS);
+    backtestProgressMessage.textContent = `Status check delayed: ${error.message || "network error"}`;
+  }
+}
+
+async function restoreBacktestState() {
+  const activeJob = Number(localStorage.getItem(BACKTEST_JOB_STORAGE_KEY));
+  if (Number.isFinite(activeJob) && activeJob > 0) {
+    setBacktestFormBusy(true);
+    await pollBacktestJob(activeJob);
+    return;
+  }
+  const lastRun = Number(localStorage.getItem(BACKTEST_RUN_STORAGE_KEY));
+  if (!Number.isFinite(lastRun) || lastRun <= 0) return;
+  try {
+    const response = await fetch(`/api/backtests/runs/${lastRun}`);
+    if (!response.ok) return;
+    const result = await response.json();
+    setBacktestProgress(100, "Last persisted run loaded.", "Completed");
+    renderBacktestResult(result);
+  } catch (_) {
+    // The historical page still works even if the optional previous-result restore fails.
+  }
+}
+
+backtestGridAnchor.addEventListener("change", () => {
+  backtestFixedAnchor.disabled = backtestJobActive || backtestGridAnchor.value !== "fixed";
+});
+
+backtestRunForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  backtestFormError.hidden = true;
+  backtestResultEmpty.hidden = false;
+  backtestResultContent.hidden = true;
+  setBacktestProgress(0, "Submitting backend job…", "Queued");
+
+  let payload;
+  try {
+    payload = backtestRequestPayload();
+  } catch (error) {
+    backtestFormError.hidden = false;
+    backtestFormError.textContent = error.message;
+    setBacktestProgress(0, "Ready to run.", "No run");
+    return;
+  }
+
+  setBacktestFormBusy(true);
+  try {
+    const response = await fetch("/api/backtests/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const job = await response.json();
+    localStorage.setItem(BACKTEST_JOB_STORAGE_KEY, String(job.job_id));
+    setBacktestProgress(job.progress_percent, job.message, "Queued");
+    await pollBacktestJob(job.job_id);
+  } catch (error) {
+    setBacktestFormBusy(false);
+    backtestFormError.hidden = false;
+    backtestFormError.textContent = error.message || "Could not start the backtest.";
+    setBacktestProgress(0, "Backtest was not started.", "No run");
+  }
+});
+
 async function loadSeries() {
   const datasetId = Number(datasetSelect.value);
   if (!datasetId) {
@@ -1132,6 +1448,7 @@ async function loadSeries() {
   datasetSelect.disabled = true;
   timeframeSelect.disabled = true;
   updateAfterHoursSchedule(datasetsById.get(datasetId));
+  syncBacktestSetupContext(true);
   dataStatus.textContent = "Loading complete OHLCV series…";
   chartEmpty.hidden = false;
   chartEmpty.textContent = "Loading OHLCV data…";
@@ -1212,7 +1529,10 @@ setCollapsiblePanelExpanded(diagnosticsSection, diagnosticsToggle, diagnosticsCo
 setCollapsiblePanelExpanded(rollingPredictionSection, rollingPredictionToggle, rollingPredictionContent, false);
 
 datasetSelect.addEventListener("change", loadSeries);
-timeframeSelect.addEventListener("change", renderSelectedTimeframe);
+timeframeSelect.addEventListener("change", () => {
+  renderSelectedTimeframe();
+  syncBacktestSetupContext(false);
+});
 weekendOverlayToggle.addEventListener("change", () => updateOverlayPreference(
   weekendOverlayToggle, OVERLAY_PREFERENCES.weekend, weekendOverlay,
 ));
@@ -1229,4 +1549,7 @@ weekendOverlay.attach(chart.chart);
 afterHoursOverlay.attach(chart.chart);
 initializeOverlayPreferences();
 initializeTheme();
-loadDatasets();
+loadDatasets().then(() => {
+  syncBacktestSetupContext(false);
+  restoreBacktestState();
+});

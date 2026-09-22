@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Backtest · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=compact-collapsibles-13" />
+    <link rel="stylesheet" href="/styles.css?v=backtest-ui-14" />
   </head>
   <body>
     <div class="app-shell">
@@ -126,56 +126,180 @@
           </div>
         </section>
 
-        <section class="single-run-grid">
-          <article class="panel">
+        <section class="single-run-grid backtest-run-workspace">
+          <article class="panel backtest-run-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Inputs</p>
-                <h2>Backtest setup</h2>
+                <h2>Strategy backtest</h2>
               </div>
-              <span class="badge badge--muted">Not wired</span>
+              <span id="backtest-run-context" class="badge badge--muted">Select historical data above</span>
             </div>
 
-            <form class="form-grid">
-              <label>
-                Strategy
-                <input value="No strategy selected" disabled />
-              </label>
-              <label>
-                Dataset
-                <input value="No OHLCV data selected" disabled />
-              </label>
-              <label>
-                Symbol
-                <input value="—" disabled />
-              </label>
-              <label>
-                Timeframe
-                <input value="—" disabled />
-              </label>
-              <label>
-                Start date
-                <input value="—" disabled />
-              </label>
-              <label>
-                End date
-                <input value="—" disabled />
-              </label>
-            </form>
+            <form id="backtest-run-form" class="backtest-run-form">
+              <div class="backtest-form-section">
+                <div class="backtest-section-heading">
+                  <div>
+                    <strong>Run</strong>
+                    <span>Uses the ticker and interval selected at the top of this page.</span>
+                  </div>
+                </div>
+                <div class="backtest-parameter-grid">
+                  <label class="field">
+                    Strategy
+                    <select id="backtest-strategy" class="field-control">
+                      <option value="static-grid-fixture">Static grid fixture</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    Initial capital
+                    <input id="backtest-initial-capital" class="field-control" type="number" min="0.01" step="0.01" value="100000" />
+                  </label>
+                  <label class="field">
+                    Start date · UTC
+                    <input id="backtest-start-date" class="field-control" type="date" />
+                  </label>
+                  <label class="field">
+                    End date · UTC
+                    <input id="backtest-end-date" class="field-control" type="date" />
+                  </label>
+                </div>
+              </div>
 
-            <button class="button button--secondary" type="button" disabled>Run backtest</button>
-            <p class="panel-note">This page uses stored historical data only.</p>
+              <div class="backtest-form-section">
+                <div class="backtest-section-heading">
+                  <div>
+                    <strong>Static grid parameters</strong>
+                    <span>Engineering fixture: initial resting levels are placed once; they are not replenished.</span>
+                  </div>
+                </div>
+                <div class="backtest-parameter-grid backtest-parameter-grid--wide">
+                  <label class="field">
+                    Anchor
+                    <select id="backtest-grid-anchor" class="field-control">
+                      <option value="previous_close" selected>Previous completed close</option>
+                      <option value="fixed">Fixed price</option>
+                    </select>
+                  </label>
+                  <label id="backtest-fixed-anchor-field" class="field">
+                    Fixed anchor price
+                    <input id="backtest-fixed-anchor" class="field-control" type="number" min="0.00000001" step="any" placeholder="Used only for Fixed price" disabled />
+                  </label>
+                  <label class="field">
+                    Grid spacing · bps
+                    <input id="backtest-grid-spacing" class="field-control" type="number" min="0.01" max="9999" step="0.01" value="100" />
+                  </label>
+                  <label class="field">
+                    Levels per side
+                    <input id="backtest-grid-levels" class="field-control" type="number" min="1" max="100" step="1" value="3" />
+                  </label>
+                  <label class="field">
+                    Quantity per order
+                    <input id="backtest-grid-quantity" class="field-control" type="number" min="0.00000001" step="any" value="1" />
+                  </label>
+                  <label class="field">
+                    Time in force
+                    <input class="field-control" value="GTC" disabled />
+                  </label>
+                </div>
+              </div>
+
+              <div class="backtest-form-section">
+                <div class="backtest-section-heading">
+                  <div>
+                    <strong>Execution assumptions</strong>
+                    <span>Explicit simulator assumptions recorded with the run.</span>
+                  </div>
+                </div>
+                <div class="backtest-parameter-grid backtest-parameter-grid--wide">
+                  <label class="field">
+                    Fee · bps
+                    <input id="backtest-fee-bps" class="field-control" type="number" min="0" step="0.01" value="4" />
+                  </label>
+                  <label class="field">
+                    Spread · bps
+                    <input id="backtest-spread-bps" class="field-control" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                  <label class="field">
+                    Slippage · bps
+                    <input id="backtest-slippage-bps" class="field-control" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                  <label class="field">
+                    Latency · ms
+                    <input id="backtest-latency-ms" class="field-control" type="number" min="0" step="1" value="0" />
+                  </label>
+                  <label class="field">
+                    Limit fill policy
+                    <select id="backtest-limit-policy" class="field-control">
+                      <option value="touch" selected>Touch</option>
+                      <option value="trade_through">Trade-through</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    Partial fill ratio
+                    <input id="backtest-partial-fill" class="field-control" type="number" min="0.0001" max="1" step="0.01" value="1" />
+                  </label>
+                </div>
+              </div>
+
+              <div id="backtest-form-error" class="backtest-form-error" role="alert" hidden></div>
+              <button id="run-backtest-button" class="button button--primary" type="submit">Run backtest on Render</button>
+              <p class="panel-note">Execution continues on the Render backend if this browser tab is closed.</p>
+            </form>
           </article>
 
-          <article class="panel">
+          <article class="panel backtest-result-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Output</p>
                 <h2>Backtest result</h2>
               </div>
-              <span class="badge badge--muted">No run</span>
+              <span id="backtest-run-status-badge" class="badge badge--muted">No run</span>
             </div>
-            <div class="result-placeholder">Select a strategy and stored OHLCV dataset, then run the backtest to see the result.</div>
+
+            <div class="backtest-progress-block">
+              <div class="backtest-progress-heading">
+                <span id="backtest-progress-message">Ready to run.</span>
+                <strong id="backtest-progress-percent">0%</strong>
+              </div>
+              <div class="backtest-progress-track" role="progressbar" aria-label="Backtest progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="backtest-progress-fill" class="backtest-progress-fill"></div>
+              </div>
+            </div>
+
+            <div id="backtest-result-empty" class="backtest-result-empty">
+              Configure the strategy above and start a historical replay.
+            </div>
+
+            <div id="backtest-result-content" hidden>
+              <div id="backtest-kpi-grid" class="backtest-kpi-grid"></div>
+              <div id="backtest-result-context" class="backtest-result-context"></div>
+
+              <div class="backtest-fill-audit">
+                <div class="backtest-section-heading">
+                  <div>
+                    <strong>Fill audit</strong>
+                    <span id="backtest-fill-audit-count">0 fills</span>
+                  </div>
+                </div>
+                <div class="backtest-fill-table-wrap">
+                  <table class="backtest-fill-table">
+                    <thead>
+                      <tr>
+                        <th>Time · UTC</th>
+                        <th>Side</th>
+                        <th>Order</th>
+                        <th>Price</th>
+                        <th>Quantity</th>
+                        <th>Fee</th>
+                        <th>Role</th>
+                      </tr>
+                    </thead>
+                    <tbody id="backtest-fill-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </article>
         </section>
       </main>
@@ -184,6 +308,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
     <script src="/chart-overlays.js?v=5"></script>
-    <script src="/backtests.js?v=compact-collapsibles-13"></script>
+    <script src="/backtests.js?v=backtest-ui-14"></script>
   </body>
 </html>

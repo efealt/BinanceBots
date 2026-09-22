@@ -146,6 +146,42 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .lower-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
 .backtest-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(330px, 1fr); gap: 16px; }
 .single-run-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.backtest-run-panel, .backtest-result-panel { min-height: 0; }
+.backtest-run-form { display: grid; gap: 18px; margin-top: 20px; }
+.backtest-form-section { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.backtest-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.backtest-section-heading strong, .backtest-section-heading span { display: block; }
+.backtest-section-heading strong { font-size: 0.86rem; }
+.backtest-section-heading span { margin-top: 4px; color: var(--muted); font-size: 0.7rem; line-height: 1.45; }
+.backtest-parameter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.backtest-parameter-grid--wide { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.backtest-run-form .field-control { min-width: 0; height: 42px; }
+.backtest-form-error { padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--ask) 48%, var(--border)); border-radius: 9px; background: var(--ask-soft); color: var(--ask); font-size: 0.78rem; }
+.backtest-progress-block { margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.backtest-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; color: var(--muted); font-size: 0.78rem; }
+.backtest-progress-heading strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.backtest-progress-track { height: 10px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.backtest-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 280ms ease; }
+.backtest-result-empty { margin-top: 16px; padding: 18px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); font-size: 0.8rem; text-align: center; }
+.backtest-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.backtest-kpi { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); }
+.backtest-kpi span, .backtest-kpi strong { display: block; }
+.backtest-kpi span { color: var(--muted); font-size: 0.68rem; }
+.backtest-kpi strong { margin-top: 6px; overflow: hidden; color: var(--text); font-size: 0.96rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.backtest-result-context { margin-top: 12px; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.backtest-fill-audit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.backtest-fill-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.backtest-fill-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.backtest-fill-table th, .backtest-fill-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.backtest-fill-table th:first-child, .backtest-fill-table td:first-child { text-align: left; }
+.backtest-fill-table th { color: var(--muted); background: var(--surface-raised); font-size: 0.64rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.backtest-fill-table tbody tr:last-child td { border-bottom: 0; }
+.fill-side { font-weight: 750; text-transform: uppercase; }
+.fill-side--buy { color: var(--bid); }
+.fill-side--sell { color: var(--ask); }
+.backtest-fill-empty { color: var(--muted); text-align: center !important; }
+.badge--success { border-color: color-mix(in srgb, var(--bid) 45%, var(--border)); color: var(--bid); }
+
 .backtest-data-selector { min-height: auto; margin-bottom: 16px; }
 .backtest-data-controls { display: grid; grid-template-columns: minmax(300px, 460px) minmax(180px, 260px); gap: 16px; margin-top: 22px; }
 .backtest-data-status { min-height: 1.2em; margin: 14px 0 0; color: var(--muted); font-size: 0.78rem; }
@@ -384,6 +420,8 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 #rest-candle-table[hidden], #websocket-event-table[hidden], #recent-event-empty[hidden] { display: none; }
 
 @media (max-width: 900px) {
+  .backtest-parameter-grid, .backtest-parameter-grid--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .backtest-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-grid, .lower-grid, .backtest-grid, .single-run-grid, .market-workspace { grid-template-columns: 1fr; }
   .diagnostic-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chart-placeholder { min-height: 280px; }
@@ -394,6 +432,7 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 }
 
 @media (max-width: 620px) {
+  .backtest-parameter-grid, .backtest-parameter-grid--wide, .backtest-kpi-grid { grid-template-columns: 1fr; }
   .collapsible-panel-heading { align-items: flex-start; }
   .collapsible-panel-actions { flex-wrap: wrap; justify-content: flex-end; }
   .collapsible-panel.is-collapsed .collapsible-panel-title { align-items: flex-start; flex-direction: column; gap: 2px; }
