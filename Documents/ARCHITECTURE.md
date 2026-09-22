@@ -224,6 +224,21 @@ Focused tests cover stop idempotence, persisted reason, rejection of post-stop c
 
 Phase 4.4A does not define feed-gap recovery or service-restart recovery; those remain 4.4B and 4.4C.
 
+## Phase 4.4B Feed reconnect and gap integrity
+
+Paper now treats Binance feed connectivity as part of the strategy clock's integrity contract.
+
+- While the backend market feed is `loading` or `reconnecting`, the Paper strategy clock is paused; no candles, fills, or strategy decisions are advanced.
+- When the feed reports `live` again, the runtime resumes only after the backend snapshot proves contiguous 1-minute chronology starting from the runtime's exact expected candle.
+- A later candle appearing while the expected minute is absent proves an unrecoverable real-time gap, even when that later candle is still forming. The run fails rather than silently treating a later historical catch-up as uninterrupted Paper observation.
+- Older candles already processed remain harmless rolling-snapshot history and are ignored.
+- Successful continuity validation emits a runtime `feed_resumed` event; a disconnect emits `feed_paused`.
+- Gap failures use the persisted reason prefix `market_data_gap:`, stored on the canonical failed run for later Paper-vs-Backtest comparison.
+
+Focused tests verify contiguous reconnect catch-up, missing-minute detection when the snapshot has already advanced, and persistence of the exact gap-failure reason.
+
+Phase 4.4B does not define service-restart recovery; that remains 4.4C.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

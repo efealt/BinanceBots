@@ -96,7 +96,7 @@ The shared `Strategy` interface, portfolio/accounting, execution engine, Backtes
 
 **Exit achieved:** Strategy implementations are structurally independent modules, the old shared `grid.rs` was removed, and the existing frozen XAGUSDT regression remains unchanged.
 
-### Phase 4 — Live Paper runtime + shared Trading page — IN PROGRESS (4.1–4.3 + 4.4A COMPLETE)
+### Phase 4 — Live Paper runtime + shared Trading page — IN PROGRESS (4.1–4.3 + 4.4A–4.4B COMPLETE)
 
 Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
 

@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.3 + 4.4A COMPLETE
+Status: IN PROGRESS — 4.1–4.3 + 4.4A–4.4B COMPLETE
 
 ## Prerequisite
 
@@ -85,18 +85,18 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.4A — Stop semantics + backend ownership
 
-- [x]Make **Stop** idempotent.
-- [x]Persist the terminal `stopped` state and stop reason.
-- [x]Guarantee no further strategy decisions or fills after stop.
-- [x]Confirm browser disconnect/logout does not stop a backend Paper run.
+- [x] Make **Stop** idempotent.
+- [x] Persist the terminal `stopped` state and stop reason.
+- [x] Guarantee no further strategy decisions or fills after stop.
+- [x] Confirm browser disconnect/logout does not stop a backend Paper run.
 
 **Checkpoint:** A Paper run is backend-owned and stops exactly once when explicitly requested.
 
 ### 4.4B — Feed reconnect + gap integrity
 
-- [ ] Resume after feed reconnect only when candle continuity is provable.
-- [ ] Reject/fail on an unrecoverable missing completed interval rather than silently backfilling it as real-time Paper.
-- [ ] Persist the failure reason for later Paper-vs-Backtest analysis.
+- [x] Resume after feed reconnect only when candle continuity is provable.
+- [x] Reject/fail on an unrecoverable missing completed interval rather than silently backfilling it as real-time Paper.
+- [x] Persist the failure reason for later Paper-vs-Backtest analysis.
 
 **Checkpoint:** A Paper run never crosses an unknown market-data gap silently.
 

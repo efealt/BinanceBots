@@ -455,6 +455,7 @@ impl PaperManager {
         let mut ticker = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut started = false;
+        let mut feed_interrupted = false;
         let mut aggregator = ReplayAggregator::new(config.replay_interval, boundary);
         let bootstrap_key = match MarketKey::new(
             &base_key.symbol,
@@ -507,6 +508,22 @@ impl PaperManager {
                     }).await;
 
                     if *stop_rx.borrow() {
+                        continue;
+                    }
+
+                    if market_snapshot.status != FeedStatus::Live {
+                        if !feed_interrupted {
+                            feed_interrupted = true;
+                            self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
+                                snapshot.updated_at_ms = now;
+                                push_runtime_event(
+                                    snapshot,
+                                    now,
+                                    "feed_paused",
+                                    "Paper strategy clock paused while Binance market feed is not live.",
+                                );
+                            }).await;
+                        }
                         continue;
                     }
 
@@ -566,6 +583,19 @@ impl PaperManager {
                             return;
                         }
                     };
+
+                    if feed_interrupted {
+                        feed_interrupted = false;
+                        self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
+                            snapshot.updated_at_ms = now;
+                            push_runtime_event(
+                                snapshot,
+                                now,
+                                "feed_resumed",
+                                "Binance market feed resumed with continuous 1m chronology proven from the expected candle.",
+                            );
+                        }).await;
+                    }
 
                     for candle in candidates {
                         if *stop_rx.borrow() {
@@ -965,42 +995,45 @@ fn completed_base_candles_from_snapshot(
     candles: &[Candle],
     expected_open_ms: i64,
 ) -> Result<Vec<Candle>, String> {
-    let mut previous_closed_open = None;
+    let mut previous_open = None;
     let mut next_expected = expected_open_ms;
     let mut fresh = Vec::new();
 
     for candle in candles {
-        if !candle.is_closed {
-            continue;
-        }
         if candle.open_time.rem_euclid(BASE_INTERVAL_MS) != 0 {
             return Err(format!(
-                "closed 1m candle is not UTC-minute aligned: {}",
+                "market_data_integrity: 1m candle open time is not UTC-minute aligned: {}",
                 candle.open_time
             ));
         }
-        if let Some(previous) = previous_closed_open
+        if let Some(previous) = previous_open
             && candle.open_time <= previous
         {
             return Err(format!(
-                "duplicate/out-of-order closed 1m candles in backend market snapshot: {} after {}",
+                "market_data_integrity: duplicate/out-of-order 1m candles in backend market snapshot: {} after {}",
                 candle.open_time, previous
             ));
         }
-        previous_closed_open = Some(candle.open_time);
+        previous_open = Some(candle.open_time);
 
-        // Older closed candles are expected in the rolling backend snapshot. They are
-        // intentionally ignored, but never forwarded to the strategy clock.
+        // Older candles are rolling-snapshot history and are never replayed again.
         if candle.open_time < expected_open_ms {
             continue;
         }
 
-        if candle.open_time != next_expected {
+        if candle.open_time > next_expected {
             return Err(format!(
-                "market-data gap: expected closed 1m candle at {}, received {}",
+                "market_data_gap: expected 1m candle at {}, but backend snapshot advanced to {}",
                 next_expected, candle.open_time
             ));
         }
+
+        // The expected candle exists but is still forming. Continuity is intact, so
+        // wait for its completed form rather than advancing the strategy clock.
+        if !candle.is_closed {
+            break;
+        }
+
         fresh.push(candle.clone());
         next_expected = next_expected.saturating_add(BASE_INTERVAL_MS);
     }
@@ -1325,7 +1358,7 @@ mod tests {
         assert!(completed_base_candles_from_snapshot(&out_of_order, 60_000)
             .err()
             .expect("invalid snapshot must be rejected")
-            .contains("market-data gap"));
+            .contains("market_data_gap:"));
 
         let gap = vec![
             candle(60_000, 1.0, 1.0, 1.0, 1.0),
@@ -1334,7 +1367,75 @@ mod tests {
         assert!(completed_base_candles_from_snapshot(&gap, 60_000)
             .err()
             .expect("invalid snapshot must be rejected")
-            .contains("market-data gap"));
+            .contains("market_data_gap:"));
+    }
+
+    #[test]
+    fn reconnect_accepts_only_contiguous_completed_minutes_before_current_incomplete_candle() {
+        let mut current = candle(180_000, 1.0, 1.0, 1.0, 1.0);
+        current.is_closed = false;
+        let snapshot = vec![
+            candle(0, 1.0, 1.0, 1.0, 1.0),
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+            candle(120_000, 1.0, 1.0, 1.0, 1.0),
+            current,
+        ];
+
+        let recovered = completed_base_candles_from_snapshot(&snapshot, 60_000).unwrap();
+        assert_eq!(
+            recovered.iter().map(|item| item.open_time).collect::<Vec<_>>(),
+            vec![60_000, 120_000]
+        );
+    }
+
+    #[test]
+    fn reconnect_fails_if_snapshot_advanced_past_missing_expected_minute() {
+        let mut later_current = candle(120_000, 1.0, 1.0, 1.0, 1.0);
+        later_current.is_closed = false;
+        let snapshot = vec![
+            candle(0, 1.0, 1.0, 1.0, 1.0),
+            later_current,
+        ];
+
+        let error = completed_base_candles_from_snapshot(&snapshot, 60_000)
+            .err()
+            .expect("missing expected minute must fail");
+        assert!(error.starts_with("market_data_gap:"));
+        assert!(error.contains("expected 1m candle at 60000"));
+        assert!(error.contains("advanced to 120000"));
+    }
+
+    #[test]
+    fn feed_gap_failure_reason_is_persisted_for_later_comparison() {
+        let path = temp_database("feed-gap-reason");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "feedgapreason");
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let reason = "market_data_gap: expected 1m candle at 60000, but backend snapshot advanced to 120000";
+        core.fail(120_000, reason).unwrap();
+
+        let history = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(history.run.status, RunStatus::Failed);
+        assert_eq!(
+            history.status_events.last().and_then(|event| event.note.as_deref()),
+            Some(reason)
+        );
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
     }
 
     #[test]
