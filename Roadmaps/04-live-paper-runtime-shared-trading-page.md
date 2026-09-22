@@ -60,11 +60,11 @@ Connect the real-time clock to the already-proven engine semantics.
 
 For every completed Paper replay candle:
 
-1. [ ] Process orders that were already active before that candle using the shared simulated-execution rules.
-2. [ ] Update portfolio, position, fees, mark, PnL, and equity.
-3. [ ] Persist fills/position/equity through the canonical run model.
-4. [ ] Only after the candle is complete, call the strategy's normal `on_candle`.
-5. [ ] Persist its Decision / OrderIntent / Order events; those new orders cannot retroactively fill from the candle that produced them.
+1. [x] Process orders that were already active before that candle using the shared simulated-execution rules.
+2. [x] Update portfolio, position, fees, mark, PnL, and equity.
+3. [x] Persist fills/position/equity through the canonical run model.
+4. [x] Only after the candle is complete, call the strategy's normal `on_candle`.
+5. [x] Persist its Decision / OrderIntent / Order events; those new orders cannot retroactively fill from the candle that produced them.
 
 Also:
 
@@ -75,93 +75,141 @@ Also:
 
 ---
 
+## Remaining execution rule
+
+From 4.4 onward, each substep below is a separate implementation unit: **implement → focused tests → commit → one CI/deploy verification → stop**. Do not combine adjacent substeps unless the user explicitly asks.
+
+---
+
 ## 4.4 — Runtime integrity, stop, and failure behavior
 
-Make backend ownership safe before exposing start/stop controls.
+### 4.4A — Stop semantics + backend ownership
 
-- [ ] User **Stop** must be idempotent, persist the terminal state, and prevent further strategy decisions/fills.
-- [ ] Browser disconnect/logout must not stop an active Paper run.
-- [ ] Market-feed reconnect may resume only when the runtime can prove the required strategy candle is still complete and chronological.
-- [ ] If a required completed interval cannot be reconstructed without violating real-time chronology, fail the Paper run explicitly rather than silently backfilling it later and calling it real-time Paper.
-- [ ] On process/service restart, detect any run that had been `running` and terminate/recover it according to the same chronology-integrity rule; never silently pretend uninterrupted observation.
-- [ ] Persist a clear failure/stop reason for later Phase 5/6 comparison.
+- [ ] Make **Stop** idempotent.
+- [ ] Persist the terminal `stopped` state and stop reason.
+- [ ] Guarantee no further strategy decisions or fills after stop.
+- [ ] Confirm browser disconnect/logout does not stop a backend Paper run.
 
-**Checkpoint:** A Paper run never continues through an unknown market-data period without an explicit, auditable state transition.
+**Checkpoint:** A Paper run is backend-owned and stops exactly once when explicitly requested.
+
+### 4.4B — Feed reconnect + gap integrity
+
+- [ ] Resume after feed reconnect only when candle continuity is provable.
+- [ ] Reject/fail on an unrecoverable missing completed interval rather than silently backfilling it as real-time Paper.
+- [ ] Persist the failure reason for later Paper-vs-Backtest analysis.
+
+**Checkpoint:** A Paper run never crosses an unknown market-data gap silently.
+
+### 4.4C — Service restart handling
+
+- [ ] Detect Paper runs that were `created` or `running` when the service restarts.
+- [ ] Recover only when chronology can be proven safe; otherwise terminate the interrupted run explicitly.
+- [ ] Persist the restart/interruption reason.
+
+**Checkpoint:** A Render restart cannot masquerade as uninterrupted Paper observation.
 
 ---
 
 ## 4.5 — Trading control API + live stream
 
-Expose the runtime through authenticated backend interfaces.
+### 4.5A — Control endpoints + Live lock
 
 - [ ] Add authenticated endpoints to create/start, stop, inspect, and list Paper runs.
-- [ ] Return a complete current snapshot: run status, strategy/config, market, position, cash/equity/PnL, fees, open orders, latest fills, and feed health.
-- [ ] Add an authenticated run-specific live stream for price/candle updates, order-state changes, fills, position/equity changes, runtime status, and feed status.
-- [ ] Reconnection flow is **snapshot first → then live events**, so refreshing the page cannot lose state.
-- [ ] Server-side requests for `mode=live` must return a locked/not-enabled response throughout Phase 4.
+- [ ] Reject every `mode=live` start/control path server-side in Phase 4.
 
-**Checkpoint:** The Trading page can be rebuilt entirely from backend state after refresh without being the owner of the runtime.
+**Checkpoint:** Paper can be controlled through authenticated backend APIs and Live cannot be started.
+
+### 4.5B — Complete snapshot contract
+
+- [ ] Return run status, strategy/config, market, position, cash/equity/PnL, fees, open orders, recent fills, and feed health.
+- [ ] Make the snapshot sufficient to rebuild the Trading page after refresh without relying on browser state.
+
+**Checkpoint:** One authenticated snapshot contains the complete current Paper state required by the UI.
+
+### 4.5C — Run live stream + reconnect contract
+
+- [ ] Add an authenticated run-specific live stream for candles, order changes, fills, position/equity changes, runtime status, and feed status.
+- [ ] Reconnect using **snapshot first → live events second**.
+- [ ] Prevent refresh/reconnect from losing or duplicating visible runtime state.
+
+**Checkpoint:** The browser can disconnect and reconnect without becoming runtime owner.
 
 ---
 
 ## 4.6 — Shared Trading page
 
-Create one operational page that survives into Phase 7 and Phase 8.
+### 4.6A — Page shell + mode/status header
 
-### Top controls
+- [ ] Add the authenticated **Trading** page and navigation entry.
+- [ ] Add a prominent **PAPER | LIVE** selector.
+- [ ] Keep Live visibly locked in Phase 4.
+- [ ] Show run ID/status and Binance feed/connection health.
 
-- [ ] Add a new authenticated **Trading** navigation/page.
-- [ ] Add a prominent **PAPER | LIVE** mode selector.
-- [ ] Paper is selectable; Live is visibly locked and explains that real execution is not enabled yet.
-- [ ] Show run ID/status plus Binance feed/connection health at the top.
+**Checkpoint:** The permanent Paper/Live page shell exists with unambiguous mode/status state.
 
-### Main live view
+### 4.6B — Configuration + run controls
 
-- [ ] Live candlestick chart updates from backend market data.
-- [ ] Draw active buy/sell grid/order levels on the chart for their actual active lifetime.
-- [ ] Add buy/sell fill markers as fills occur.
+- [ ] Expose the current strategy parameters and Paper execution assumptions.
+- [ ] Add **Start Paper** and **Stop** controls.
+- [ ] Lock configuration while a run is active.
+- [ ] Prevent mode changes while a run is active.
+
+**Checkpoint:** A Paper run can be safely configured and controlled from the page.
+
+### 4.6C — Live chart + order/fill overlays
+
+- [ ] Render the live candlestick chart.
+- [ ] Draw active buy/sell grid/order levels for their actual active lifetime.
+- [ ] Add buy/sell fill markers in real time.
+
+**Checkpoint:** The chart visually explains what the Paper strategy is doing against the live market.
+
+### 4.6D — Portfolio, orders, and audit panels
+
 - [ ] Show current position/inventory, cash, equity, realized/unrealized PnL, fees, and exposure.
-- [ ] Show open orders with price, side, quantity, fill state, and age.
-- [ ] Show an event/fill audit stream with clear event names and timestamps.
+- [ ] Show open orders with side, price, quantity, fill state, and age.
+- [ ] Show the event/fill audit stream with clear names and timestamps.
+- [ ] Preserve access to the complete run record rather than silently truncating it.
 
-### Run configuration and controls
-
-- [ ] Let the user configure the current strategy and the same Paper execution assumptions used by Backtest.
-- [ ] Add clear **Start Paper** and **Stop** controls.
-- [ ] Once a run is active, lock configuration that would mutate the running strategy.
-- [ ] Mode cannot change while a run is active.
-
-**Checkpoint:** Closing/reopening the Trading page restores the same active Paper run and its current visual state.
+**Checkpoint:** The page provides both operational monitoring and exact auditability.
 
 ---
 
 ## 4.7 — Paper/Live shared UI contract
 
-Prevent Phase 7/8 from requiring a second page.
+- [ ] Keep the frontend monitoring model mode-neutral: market, orders, fills, position, equity/PnL, fees, status, and events use one contract.
+- [ ] Keep execution-specific behavior behind adapters: Phase 4 simulated execution, Phase 8 real Binance execution.
+- [ ] Permit mode-specific setup/safety panels without duplicating the core page.
+- [ ] Keep future Live styling unmistakable from Paper.
 
-- [ ] Keep the monitoring model mode-neutral: market, orders, fills, position, equity/PnL, fees, status, and events use one frontend contract.
-- [ ] Keep execution-specific behavior behind adapters: Phase 4 uses simulated execution; Phase 8 will use the real Binance execution adapter.
-- [ ] Allow mode-specific setup/safety panels without duplicating the core chart/monitoring UI.
-- [ ] Keep Live styling unmistakable so future real-money mode cannot be confused with Paper.
-
-**Checkpoint:** Phase 7/8 can extend/unlock the existing Trading page instead of replacing it.
+**Checkpoint:** Phase 7/8 can extend/unlock this same Trading page instead of replacing it.
 
 ---
 
-## 4.8 — Verification and production checkpoint
+## 4.8 — Final Phase 4 verification
 
-Verify chronology first, then runtime resilience, then UI.
+### 4.8A — Automated parity + safety verification
 
-- [ ] Add deterministic tests feeding the same synthetic completed-candle sequence through Backtest and Paper and compare strategy decisions/order intents/fill/accounting semantics.
-- [ ] Test start-at-mid-interval arming and previous-candle bootstrap.
-- [ ] Test duplicate/out-of-order/stale candle rejection and feed-gap failure behavior.
-- [ ] Test idempotent start/stop and browser disconnect/reconnect via snapshot + live stream.
-- [ ] Test that every Phase 4 Live-mode start path is rejected server-side.
-- [ ] Run existing Backtest/grid regressions unchanged.
-- [ ] Deploy to Render.
-- [ ] Start a real Paper run from the hosted Trading page and verify live candles, grid/order lines, fills, positions, equity/PnL, logs, and browser-independent execution.
+- [ ] Feed the same synthetic completed-candle sequence through Backtest and Paper and compare decisions, intents, fills, accounting, and ordering.
+- [ ] Verify start-at-mid-interval arming and previous-candle bootstrap.
+- [ ] Verify duplicate/out-of-order/stale/gap handling.
+- [ ] Verify idempotent stop and snapshot/live-stream reconnect behavior.
+- [ ] Verify every Phase 4 Live-mode start path is rejected server-side.
+- [ ] Run the existing Backtest/grid regression unchanged.
+
+**Checkpoint:** Automated tests prove the Phase 4 chronology and safety contract without using production UI behavior as evidence.
+
+### 4.8B — Production smoke + visual acceptance
+
+- [ ] Deploy the final Phase 4 implementation to Render.
+- [ ] Start a real Paper run from the hosted Trading page.
+- [ ] Verify live candles, grid/order lines, fills, positions, equity/PnL, fees, exposure, logs, and feed/runtime status.
+- [ ] Close/reopen the page and verify the backend run continues and restores correctly.
 - [ ] Stop the run cleanly and verify the complete canonical Paper history remains persisted.
-- [ ] Update `Documents/ARCHITECTURE.md` with the implemented Phase 4 architecture.
+- [ ] Update `Documents/ARCHITECTURE.md` with the final implemented Phase 4 architecture.
+- [ ] Mark Phase 4 complete only after the hosted page is visually meaningful and the persisted run is coherent.
+
+**Checkpoint:** Phase 4 is proven end-to-end in production.
 
 ## Completion condition
 
