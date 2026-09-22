@@ -547,31 +547,18 @@ impl PaperManager {
                     }
 
                     let expected = aggregator.expected_base_open_ms();
-                    let mut candidates: Vec<_> = market_snapshot
-                        .candles
-                        .iter()
-                        .filter(|candle| candle.is_closed && candle.open_time >= expected)
-                        .cloned()
-                        .collect();
-                    candidates.sort_by_key(|candle| candle.open_time);
-
-                    for candle in candidates {
-                        if candle.open_time > aggregator.expected_base_open_ms() {
-                            self.finish_failed(
-                                &handle,
-                                &mut core,
-                                format!(
-                                    "market-data gap: expected closed 1m candle at {}, received {}",
-                                    aggregator.expected_base_open_ms(),
-                                    candle.open_time
-                                ),
-                            ).await;
+                    let candidates = match completed_base_candles_from_snapshot(
+                        &market_snapshot.candles,
+                        expected,
+                    ) {
+                        Ok(candidates) => candidates,
+                        Err(error) => {
+                            self.finish_failed(&handle, &mut core, error).await;
                             return;
                         }
-                        if candle.open_time < aggregator.expected_base_open_ms() {
-                            continue;
-                        }
+                    };
 
+                    for candle in candidates {
                         let completed = match aggregator.push(&candle) {
                             Ok(completed) => completed,
                             Err(error) => {
@@ -638,14 +625,12 @@ impl PaperManager {
         boundary: i64,
         interval: TradingInterval,
     ) -> Result<Option<MarketCandle>, PaperError> {
-        let target_open = boundary.saturating_sub(interval.duration_ms());
         let snapshot = self.market.snapshot_for(key.clone()).await?;
-        Ok(snapshot
-            .candles
-            .iter()
-            .rev()
-            .find(|candle| candle.is_closed && candle.open_time == target_open)
-            .map(market_candle))
+        Ok(previous_completed_replay_candle(
+            &snapshot.candles,
+            boundary,
+            interval,
+        ))
     }
 
     async fn update_snapshot(
@@ -917,6 +902,70 @@ impl PaperRunCore {
 }
 
 #[derive(Debug)]
+fn previous_completed_replay_candle(
+    candles: &[Candle],
+    boundary_ms: i64,
+    interval: TradingInterval,
+) -> Option<MarketCandle> {
+    let target_open = boundary_ms.saturating_sub(interval.duration_ms());
+    candles
+        .iter()
+        .rev()
+        .find(|candle| {
+            candle.is_closed
+                && candle.open_time == target_open
+                && candle.close_time < boundary_ms
+        })
+        .map(market_candle)
+}
+
+fn completed_base_candles_from_snapshot(
+    candles: &[Candle],
+    expected_open_ms: i64,
+) -> Result<Vec<Candle>, String> {
+    let mut previous_closed_open = None;
+    let mut next_expected = expected_open_ms;
+    let mut fresh = Vec::new();
+
+    for candle in candles {
+        if !candle.is_closed {
+            continue;
+        }
+        if candle.open_time.rem_euclid(BASE_INTERVAL_MS) != 0 {
+            return Err(format!(
+                "closed 1m candle is not UTC-minute aligned: {}",
+                candle.open_time
+            ));
+        }
+        if let Some(previous) = previous_closed_open
+            && candle.open_time <= previous
+        {
+            return Err(format!(
+                "duplicate/out-of-order closed 1m candles in backend market snapshot: {} after {}",
+                candle.open_time, previous
+            ));
+        }
+        previous_closed_open = Some(candle.open_time);
+
+        // Older closed candles are expected in the rolling backend snapshot. They are
+        // intentionally ignored, but never forwarded to the strategy clock.
+        if candle.open_time < expected_open_ms {
+            continue;
+        }
+
+        if candle.open_time != next_expected {
+            return Err(format!(
+                "market-data gap: expected closed 1m candle at {}, received {}",
+                next_expected, candle.open_time
+            ));
+        }
+        fresh.push(candle.clone());
+        next_expected = next_expected.saturating_add(BASE_INTERVAL_MS);
+    }
+
+    Ok(fresh)
+}
+
 struct ReplayAggregator {
     interval: TradingInterval,
     expected_base_open_ms: i64,
@@ -1184,6 +1233,135 @@ mod tests {
             .push(&candle(120_000, 1.0, 1.0, 1.0, 1.0))
             .unwrap_err();
         assert!(error.contains("expected 60000"));
+    }
+
+    #[test]
+    fn arming_boundary_is_the_next_clean_utc_interval() {
+        assert_eq!(TradingInterval::OneMinute.next_bucket_open_ms(61_234), 120_000);
+        assert_eq!(TradingInterval::OneHour.next_bucket_open_ms(3_600_001), 7_200_000);
+        assert_eq!(TradingInterval::OneDay.next_bucket_open_ms(90_000_000), 172_800_000);
+    }
+
+    #[test]
+    fn bootstrap_selects_only_the_immediately_previous_completed_replay_candle() {
+        let mut older = candle(0, 100.0, 101.0, 99.0, 100.5);
+        older.close_time = 3_599_999;
+        let mut previous = candle(3_600_000, 101.0, 103.0, 100.0, 102.0);
+        previous.close_time = 7_199_999;
+        let mut current = candle(7_200_000, 102.0, 104.0, 101.0, 103.0);
+        current.close_time = 10_799_999;
+        current.is_closed = false;
+
+        let selected = previous_completed_replay_candle(
+            &[older, previous.clone(), current],
+            7_200_000,
+            TradingInterval::OneHour,
+        )
+        .expect("previous completed replay candle");
+
+        assert_eq!(selected.open_time_ms, previous.open_time);
+        assert_eq!(selected.close_time_ms, previous.close_time);
+        assert_eq!(selected.close, previous.close);
+    }
+
+    #[test]
+    fn backend_snapshot_validation_rejects_duplicate_out_of_order_and_missing_minutes() {
+        let duplicate = vec![
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+        ];
+        assert!(completed_base_candles_from_snapshot(&duplicate, 60_000)
+            .unwrap_err()
+            .contains("duplicate/out-of-order"));
+
+        let out_of_order = vec![
+            candle(120_000, 1.0, 1.0, 1.0, 1.0),
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+        ];
+        assert!(completed_base_candles_from_snapshot(&out_of_order, 60_000)
+            .unwrap_err()
+            .contains("market-data gap"));
+
+        let gap = vec![
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+            candle(180_000, 1.0, 1.0, 1.0, 1.0),
+        ];
+        assert!(completed_base_candles_from_snapshot(&gap, 60_000)
+            .unwrap_err()
+            .contains("market-data gap"));
+    }
+
+    #[test]
+    fn stale_snapshot_history_is_ignored_before_the_strategy_clock() {
+        let candles = vec![
+            candle(0, 1.0, 1.0, 1.0, 1.0),
+            candle(60_000, 1.0, 1.0, 1.0, 1.0),
+            candle(120_000, 1.0, 1.0, 1.0, 1.0),
+        ];
+        let fresh = completed_base_candles_from_snapshot(&candles, 120_000).unwrap();
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].open_time, 120_000);
+    }
+
+    #[test]
+    fn paper_and_backtest_aggregation_use_the_same_utc_bucket_rules() {
+        for interval in [
+            TradingInterval::OneMinute,
+            TradingInterval::OneHour,
+            TradingInterval::OneDay,
+        ] {
+            let minute_count = (interval.duration_ms() / BASE_INTERVAL_MS) as usize;
+            let source: Vec<crate::storage::OhlcvCandle> = (0..minute_count)
+                .map(|index| {
+                    let open_time = index as i64 * BASE_INTERVAL_MS;
+                    let open = 100.0 + index as f64 * 0.01;
+                    crate::storage::OhlcvCandle {
+                        open_time_ms: open_time,
+                        close_time_ms: open_time + BASE_INTERVAL_MS - 1,
+                        open_price: open,
+                        high_price: open + 2.0,
+                        low_price: open - 1.0,
+                        close_price: open + 0.5,
+                        base_volume: 1.0 + index as f64 * 0.001,
+                        quote_volume: None,
+                        trade_count: None,
+                        taker_buy_base_volume: None,
+                        taker_buy_quote_volume: None,
+                    }
+                })
+                .collect();
+
+            let backtest = crate::backtest::aggregate_candles(&source, interval).unwrap();
+            assert_eq!(backtest.len(), 1);
+
+            let mut paper_aggregator = ReplayAggregator::new(interval, 0);
+            let mut paper_completed = None;
+            for item in &source {
+                let live = Candle {
+                    open_time: item.open_time_ms,
+                    close_time: item.close_time_ms,
+                    open: item.open_price,
+                    high: item.high_price,
+                    low: item.low_price,
+                    close: item.close_price,
+                    volume: item.base_volume,
+                    is_closed: true,
+                };
+                if let Some(completed) = paper_aggregator.push(&live).unwrap() {
+                    paper_completed = Some(completed);
+                }
+            }
+
+            let paper = paper_completed.expect("paper replay bucket completes");
+            let historical = &backtest[0];
+            assert_eq!(paper.open_time_ms, historical.open_time_ms);
+            assert_eq!(paper.close_time_ms, historical.close_time_ms);
+            assert!((paper.open - historical.open_price).abs() < 1e-12);
+            assert!((paper.high - historical.high_price).abs() < 1e-12);
+            assert!((paper.low - historical.low_price).abs() < 1e-12);
+            assert!((paper.close - historical.close_price).abs() < 1e-12);
+            assert!((paper.volume - historical.base_volume).abs() < 1e-9);
+        }
     }
 
     struct NoOpStrategy;

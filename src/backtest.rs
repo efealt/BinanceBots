@@ -530,7 +530,7 @@ fn validate_replay_interval(source_interval: &str, replay_interval: ReplayInterv
     Ok(())
 }
 
-fn aggregate_candles(
+pub(crate) fn aggregate_candles(
     source: &[crate::storage::OhlcvCandle],
     interval: ReplayInterval,
 ) -> Result<Vec<crate::storage::OhlcvCandle>, BacktestError> {

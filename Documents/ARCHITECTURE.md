@@ -171,6 +171,19 @@ Phase 4.1 establishes the backend-owned Paper run contract without changing any 
 
 Focused tests verify canonical Paper lifecycle persistence and isolation between separate Paper run cores.
 
+## Phase 4.2 Real-time candle clock
+
+Paper's strategy clock is backend-owned and deterministic.
+
+- Active Paper replay consumes the existing server-side Binance public market service at a **1-minute base interval**; browser data is never an input to the strategy clock.
+- A run created during an interval starts in `arming` state and uses the next clean UTC 1m / 1h / 1d boundary as its first active boundary.
+- Before `on_start`, the backend obtains exactly the immediately previous completed replay candle for the configured interval. This gives previous-candle strategies the same information boundary used by Backtest.
+- Completed 1-minute candles are aggregated into 1m / 1h / 1d replay candles using the shared `TradingInterval` UTC bucket definitions.
+- Snapshot validation prevents duplicate, out-of-order, misaligned, or missing completed 1-minute candles from reaching the strategy clock. Older candles already processed are recognized as rolling-snapshot history and ignored.
+- Deterministic tests compare Paper aggregation directly with the Backtest aggregation routine for 1m, 1h, and 1d and verify identical open/close timestamps and OHLCV values for the same completed minute sequence.
+
+Phase 4.2 establishes chronology only. Order/fill processing semantics remain the separate Phase 4.3 checkpoint.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

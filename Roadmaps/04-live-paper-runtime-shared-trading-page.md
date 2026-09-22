@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1 COMPLETE
+Status: IN PROGRESS — 4.1–4.2 COMPLETE
 
 ## Prerequisite
 
@@ -44,11 +44,11 @@ Build the runtime foundation before building the page.
 
 Make the market clock deterministic before strategy execution is enabled.
 
-- [ ] Feed Paper from the existing backend Binance public market-data path, never from browser-delivered data.
-- [ ] Use completed 1-minute market candles as the base stream and aggregate them in UTC to the configured 1m / 1h / 1d Paper interval using the same bucket rules as Backtest.
-- [ ] Start a new Paper run on a clean replay boundary. If started during an incomplete interval, enter an **arming** state and begin at the next full interval rather than treating a partial candle as a complete historical candle.
-- [ ] Bootstrap the immediately previous completed replay candle before `on_start` so previous-close strategies have the same information contract as Backtest.
-- [ ] Detect duplicate, out-of-order, stale, and missing candles before they reach the strategy.
+- [x] Feed Paper from the existing backend Binance public market-data path, never from browser-delivered data.
+- [x] Use completed 1-minute market candles as the base stream and aggregate them in UTC to the configured 1m / 1h / 1d Paper interval using the same bucket rules as Backtest.
+- [x] Start a new Paper run on a clean replay boundary. If started during an incomplete interval, enter an **arming** state and begin at the next full interval rather than treating a partial candle as a complete historical candle.
+- [x] Bootstrap the immediately previous completed replay candle before `on_start` so previous-close strategies have the same information contract as Backtest.
+- [x] Detect duplicate, out-of-order, stale, and missing candles before they reach the strategy.
 
 **Checkpoint:** Given the same completed candle sequence, Paper and Backtest expose candles to the strategy in the same chronological order.
 
