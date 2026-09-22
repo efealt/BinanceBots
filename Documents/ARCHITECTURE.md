@@ -294,6 +294,23 @@ Focused tests verify canonical/config/financial reconstruction without browser s
 
 Phase 4.5B does not define live-stream sequencing or reconnect de-duplication; that remains 4.5C.
 
+## Phase 4.5C Run live stream and reconnect contract
+
+The authenticated per-run stream at `GET /api/trading/runs/{run_id}/stream` now uses an explicit **snapshot first → live updates second** contract.
+
+- Every active Paper snapshot has a monotonic in-memory `stream_revision`.
+- The backend subscribes to the run broadcast channel **before** reading the bootstrap snapshot. This closes the previous race where an update could occur between separate snapshot and subscribe calls.
+- The WebSocket sends one `snapshot` message first, then `update` messages containing the same complete Paper snapshot contract used by the REST endpoint.
+- Updates at or below the last delivered revision are discarded, so a state already represented by the bootstrap snapshot is not replayed as a duplicate.
+- Because each update is a complete state snapshot, candles, order changes, fills, portfolio/equity, runtime status, and feed status are reconstructed from one mode-neutral message shape rather than browser-owned incremental state.
+- If the broadcast receiver reports lag, the server does not silently skip forward. It fetches a fresh authoritative Paper snapshot and sends it as a new `snapshot` resynchronization message before continuing.
+- A terminal/persisted run has no live receiver: its snapshot is sent once and the WebSocket closes.
+- The stream remains inside the authenticated protected router, and disconnecting the WebSocket does not affect the backend Paper runtime.
+
+Focused tests verify monotonic snapshot revisions, subscribe-before-snapshot bootstrap behavior, and revision de-duplication.
+
+This completes the Phase 4.5 backend control/snapshot/stream layer; the Trading page itself begins in Phase 4.6.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

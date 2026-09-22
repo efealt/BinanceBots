@@ -53,6 +53,7 @@ struct RunsResponse<T> {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 enum TradingStreamMessage {
     Snapshot(PaperSnapshot),
+    Update(PaperSnapshot),
 }
 
 pub fn router(manager: Arc<PaperManager>) -> Router {
@@ -142,24 +143,28 @@ async fn run_stream(
     Path(run_id): Path<i64>,
 ) -> Result<Response, TradingApiError> {
     validate_run_id(run_id)?;
-    let initial = manager.snapshot(run_id).await?;
-    let receiver = manager.subscribe(run_id).await?;
+    let (initial, receiver) = manager.stream_bootstrap(run_id).await?;
+    let stream_manager = Arc::clone(&manager);
     Ok(websocket
-        .on_upgrade(move |socket| stream_runtime(socket, initial, receiver))
+        .on_upgrade(move |socket| {
+            stream_runtime(socket, run_id, stream_manager, initial, receiver)
+        })
         .into_response())
 }
 
 async fn stream_runtime(
     socket: WebSocket,
+    run_id: i64,
+    manager: Arc<PaperManager>,
     initial: PaperSnapshot,
     mut updates: Option<tokio::sync::broadcast::Receiver<PaperSnapshot>>,
 ) {
     let (mut sender, mut receiver) = socket.split();
-    let payload = match serde_json::to_string(&TradingStreamMessage::Snapshot(initial)) {
-        Ok(payload) => payload,
-        Err(_) => return,
-    };
-    if sender.send(Message::Text(payload.into())).await.is_err() {
+    let mut last_revision = initial.stream_revision;
+    if send_stream_message(&mut sender, TradingStreamMessage::Snapshot(initial))
+        .await
+        .is_err()
+    {
         return;
     }
 
@@ -177,21 +182,55 @@ async fn stream_runtime(
                 }
             }
             update = updates.recv() => {
-                let snapshot = match update {
-                    Ok(snapshot) => snapshot,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                match update {
+                    Ok(snapshot) => {
+                        if !is_newer_revision(last_revision, snapshot.stream_revision) {
+                            continue;
+                        }
+                        last_revision = snapshot.stream_revision;
+                        if send_stream_message(&mut sender, TradingStreamMessage::Update(snapshot))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        let snapshot = match manager.snapshot(run_id).await {
+                            Ok(snapshot) => snapshot,
+                            Err(_) => break,
+                        };
+                        if !is_newer_revision(last_revision, snapshot.stream_revision) {
+                            continue;
+                        }
+                        last_revision = snapshot.stream_revision;
+                        if send_stream_message(&mut sender, TradingStreamMessage::Snapshot(snapshot))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                };
-                let payload = match serde_json::to_string(&TradingStreamMessage::Snapshot(snapshot)) {
-                    Ok(payload) => payload,
-                    Err(_) => break,
-                };
-                if sender.send(Message::Text(payload.into())).await.is_err() {
-                    break;
                 }
             }
         }
     }
+}
+
+async fn send_stream_message(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    message: TradingStreamMessage,
+) -> Result<(), ()> {
+    let payload = serde_json::to_string(&message).map_err(|_| ())?;
+    sender
+        .send(Message::Text(payload.into()))
+        .await
+        .map_err(|_| ())
+}
+
+fn is_newer_revision(last_revision: u64, candidate_revision: u64) -> bool {
+    candidate_revision > last_revision
 }
 
 fn require_phase4_paper_mode(mode: &str) -> Result<(), TradingApiError> {
@@ -292,6 +331,14 @@ mod tests {
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
         let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn stream_revision_gate_drops_bootstrap_duplicates_and_accepts_new_state() {
+        assert!(!is_newer_revision(7, 7));
+        assert!(!is_newer_revision(7, 6));
+        assert!(is_newer_revision(7, 8));
+        assert!(is_newer_revision(7, 10));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.4 + 4.5A–4.5B COMPLETE
+Status: IN PROGRESS — 4.1–4.5 COMPLETE
 
 ## Prerequisite
 
@@ -128,9 +128,9 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.5C — Run live stream + reconnect contract
 
-- [ ] Add an authenticated run-specific live stream for candles, order changes, fills, position/equity changes, runtime status, and feed status.
-- [ ] Reconnect using **snapshot first → live events second**.
-- [ ] Prevent refresh/reconnect from losing or duplicating visible runtime state.
+- [x] Add an authenticated run-specific live stream for candles, order changes, fills, position/equity changes, runtime status, and feed status.
+- [x] Reconnect using **snapshot first → live events second**.
+- [x] Prevent refresh/reconnect from losing or duplicating visible runtime state.
 
 **Checkpoint:** The browser can disconnect and reconnect without becoming runtime owner.
 

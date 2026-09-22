@@ -92,6 +92,7 @@ pub struct PaperBaseCandleView {
 #[derive(Clone, Debug, Serialize)]
 pub struct PaperSnapshot {
     pub run_id: i64,
+    pub stream_revision: u64,
     pub comparison_id: Option<String>,
     pub mode: String,
     pub runtime_status: String,
@@ -239,6 +240,7 @@ impl PaperManager {
 
         let initial_snapshot = PaperSnapshot {
             run_id: run.run_id,
+            stream_revision: 1,
             comparison_id: run.comparison_id.clone(),
             mode: "paper".into(),
             runtime_status: "arming".into(),
@@ -332,12 +334,21 @@ impl PaperManager {
         self.persisted_snapshot(run_id)
     }
 
-    pub async fn subscribe(
+    pub async fn stream_bootstrap(
         &self,
         run_id: i64,
-    ) -> Result<Option<broadcast::Receiver<PaperSnapshot>>, PaperError> {
+    ) -> Result<(PaperSnapshot, Option<broadcast::Receiver<PaperSnapshot>>), PaperError> {
         let handle = self.runtimes.lock().await.get(&run_id).cloned();
-        Ok(handle.map(|handle| handle.updates_tx.subscribe()))
+        let Some(handle) = handle else {
+            return Ok((self.persisted_snapshot(run_id)?, None));
+        };
+
+        // Subscribe before reading the full snapshot. Any update racing with the snapshot
+        // read is queued, and the stream revision lets the client/server discard updates
+        // already represented by the bootstrap snapshot.
+        let receiver = handle.updates_tx.subscribe();
+        let snapshot = handle.snapshot.read().await.clone();
+        Ok((snapshot, Some(receiver)))
     }
 
     pub async fn list_runs(&self, limit: usize) -> Result<Vec<PaperRunSummary>, PaperError> {
@@ -439,6 +450,7 @@ impl PaperManager {
 
         Ok(PaperSnapshot {
             run_id,
+            stream_revision: 0,
             comparison_id: run.comparison_id,
             mode: "paper".into(),
             runtime_status: run.status.as_str().into(),
@@ -736,6 +748,7 @@ impl PaperManager {
         snapshot.portfolio = portfolio;
         snapshot.open_orders = open_orders;
         update(&mut snapshot);
+        snapshot.stream_revision = snapshot.stream_revision.saturating_add(1);
         let cloned = snapshot.clone();
         drop(snapshot);
         let _ = handle.updates_tx.send(cloned);
@@ -2386,6 +2399,7 @@ mod tests {
     fn market_snapshot_fields_are_synchronized_for_ui_refresh_state() {
         let mut snapshot = PaperSnapshot {
             run_id: 1,
+            stream_revision: 1,
             comparison_id: None,
             mode: "paper".into(),
             runtime_status: "running".into(),
@@ -2456,6 +2470,104 @@ mod tests {
         assert_eq!(candle.open_time_ms, 120_000);
         assert!(!candle.is_closed);
         assert_eq!(candle.close, 101.0);
+    }
+
+    #[tokio::test]
+    async fn stream_bootstrap_is_snapshot_first_and_revisions_are_monotonic() {
+        let path = temp_database("stream-bootstrap");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "streambootstrap");
+        let run_id = core.run_id;
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let mut snapshot = PaperSnapshot {
+            run_id,
+            stream_revision: 7,
+            comparison_id: None,
+            mode: "paper".into(),
+            runtime_status: "running".into(),
+            canonical_status: "running".into(),
+            runtime_active: true,
+            created_at_ms: 1,
+            started_at_ms: Some(60_000),
+            ended_at_ms: None,
+            symbol: "BTCUSDT".into(),
+            market_type: "spot".into(),
+            replay_interval: "1m".into(),
+            strategy_id: "test-paper-noop".into(),
+            strategy_version: "1".into(),
+            strategy_params: json!({}),
+            run_config: json!({}),
+            data_source: json!({}),
+            execution_assumptions: json!({}),
+            initial_capital: "1000".into(),
+            arming_boundary_ms: 60_000,
+            feed_status: FeedStatus::Live,
+            best_bid: None,
+            best_ask: None,
+            mid_price: None,
+            latest_base_candle: None,
+            portfolio: core.portfolio.view(),
+            open_orders: core.open_orders(),
+            recent_fills: Vec::new(),
+            recent_events: Vec::new(),
+            latest_replay_candle: None,
+            last_base_candle_open_ms: None,
+            updated_at_ms: 60_000,
+        };
+        let (stop_tx, _stop_rx) = watch::channel(false);
+        let (updates_tx, _) = broadcast::channel(8);
+        let handle = Arc::new(PaperRuntimeHandle {
+            snapshot: Arc::new(RwLock::new(snapshot.clone())),
+            stop_tx,
+            updates_tx,
+        });
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::from([(run_id, Arc::clone(&handle))])),
+        };
+
+        let (bootstrap, mut receiver) = manager.stream_bootstrap(run_id).await.unwrap();
+        assert_eq!(bootstrap.stream_revision, 7);
+        assert_eq!(bootstrap.runtime_status, "running");
+
+        snapshot.portfolio.cash = 999.0;
+        manager
+            .update_snapshot(
+                &handle,
+                snapshot.portfolio.clone(),
+                snapshot.open_orders.clone(),
+                |next| next.updated_at_ms = 61_000,
+            )
+            .await;
+
+        let update = receiver
+            .as_mut()
+            .expect("active runtime receiver")
+            .recv()
+            .await
+            .unwrap();
+        assert_eq!(update.stream_revision, 8);
+        assert_eq!(update.updated_at_ms, 61_000);
+        assert_eq!(update.portfolio.cash, 999.0);
+
+        core.stop(90_000, "test_cleanup").unwrap();
+        drop(manager);
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
     }
 
     #[test]
