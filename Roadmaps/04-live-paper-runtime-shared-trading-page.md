@@ -2,6 +2,10 @@
 
 Status: PLANNED
 
+## Prerequisite
+
+Phase 3.7 is complete. Strategy implementations now live under `src/trading/strategies/`, with the current fixture in `static_grid.rs` and future strategy concepts isolated into their own modules. Phase 4 must use the shared `Strategy` interface and must not fold Paper-specific behavior into any strategy module.
+
 ## Objective
 
 Run the same strategy engine against **real-time Binance public market data** in Paper mode on Render, while sending **no real Binance account orders**.

@@ -86,7 +86,7 @@ Automated verification is green, the code is deployed live, and the authenticate
 
 **Exit achieved:** A completed Backtest run can be visually audited over its full effective period without changing strategy logic.
 
-### Phase 3.7 — Strategy Module Structure
+### Phase 3.7 — Strategy Module Structure — COMPLETE
 
 Detailed roadmap: `Roadmaps/03.7-strategy-module-structure.md`
 
@@ -94,7 +94,7 @@ Before Paper runtime work begins, reorganize strategy implementations into a ded
 
 The shared `Strategy` interface, portfolio/accounting, execution engine, Backtest/Paper/Live contracts, and current static-grid behavior remain unchanged.
 
-**Exit:** Strategy implementations are structurally independent modules and the existing frozen regression is unchanged.
+**Exit achieved:** Strategy implementations are structurally independent modules, the old shared `grid.rs` was removed, and the existing frozen XAGUSDT regression remains unchanged.
 
 ### Phase 4 — Live Paper runtime + shared Trading page
 

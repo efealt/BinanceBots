@@ -1,7 +1,7 @@
 # BinanceGrid Architecture
 
 Status: current system  
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 ## Runtime
 
@@ -77,6 +77,33 @@ Before the first active backtest candle is processed, the strategy receives an `
 
 The strategy interface is mode-neutral and the simulated execution component is reusable by later Paper mode. Execution assumptions are explicit run metadata and currently support fees, spread/slippage, latency, touch vs trade-through limit fills, and deterministic partial fills. The Phase 2 engine itself contains no trading strategy.
 
+## Strategy organization
+
+Strategy implementations are separated from the shared trading engine under `src/trading/strategies/`.
+
+Current structure:
+
+```text
+src/trading/
+  mod.rs
+  types.rs
+  portfolio.rs
+  simulation.rs
+  strategies/
+    mod.rs
+    static_grid.rs
+    dynamic_grid.rs
+    volatility_grid.rs
+    mean_reversion.rs
+    breakout.rs
+```
+
+`src/trading/types.rs` owns the shared mode-neutral `Strategy` interface and strategy input/output types. `portfolio.rs` owns portfolio/accounting state, and `simulation.rs` owns simulated execution. Strategy implementations do not live inside the Backtest engine.
+
+The Phase 3 fixture now lives in `src/trading/strategies/static_grid.rs`. The dynamic-grid, volatility-grid, mean-reversion, and breakout modules are intentionally reserved placeholders only; no trading rules have been invented for them.
+
+One strategy concept should have one module. If a future strategy becomes large, that module may become its own folder while continuing to implement the same shared `Strategy` interface. Backtest, Paper, and Live must call the same strategy implementation rather than maintaining mode-specific copies.
+
 ## Phase 3 grid fixture and real-data regression
 
 Phase 3 adds one deliberately simple mode-neutral `StaticGridStrategy` as an engineering fixture. It is configured through the shared strategy interface with an anchor source, spacing in basis points, levels per side, quantity per order, and time-in-force. The initial grid is emitted only through `on_start`; normal candle callbacks do not contain a Backtest-specific execution path.
@@ -127,9 +154,9 @@ The completed-run analysis surface contains:
 
 Dense 1-minute runs keep all records available and use zoomable ECharts views rather than truncating the run. Pure visualization math for Buy & Hold, drawdown, and position/exposure is isolated in `web/backtest-analysis-math.js` and covered by Node tests.
 
-### Current Phase 3.6 verification status
+### Phase 3.6 verification
 
-Automated verification covers the analysis math, JavaScript syntax, Rust storage/read paths, the existing Rust suite, and the full frozen XAGUSDT regression. The analysis implementation is deployed live on Render. Final authenticated visual validation of the rendered production Run #1 remains a browser-session checkpoint; no public bypass endpoint was added.
+Automated verification covers the analysis math, JavaScript syntax, Rust storage/read paths, the existing Rust suite, and the full frozen XAGUSDT regression. The analysis implementation is deployed live on Render, and the authenticated production visual output was reviewed and accepted as sufficient for Backtest analysis.
 
 ## UI
 
