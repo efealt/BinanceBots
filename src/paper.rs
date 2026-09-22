@@ -901,7 +901,6 @@ impl PaperRunCore {
     }
 }
 
-#[derive(Debug)]
 fn previous_completed_replay_candle(
     candles: &[Candle],
     boundary_ms: i64,
@@ -966,6 +965,7 @@ fn completed_base_candles_from_snapshot(
     Ok(fresh)
 }
 
+#[derive(Debug)]
 struct ReplayAggregator {
     interval: TradingInterval,
     expected_base_open_ms: i64,
@@ -1271,7 +1271,8 @@ mod tests {
             candle(60_000, 1.0, 1.0, 1.0, 1.0),
         ];
         assert!(completed_base_candles_from_snapshot(&duplicate, 60_000)
-            .unwrap_err()
+            .err()
+            .expect("duplicate snapshot must be rejected")
             .contains("duplicate/out-of-order"));
 
         let out_of_order = vec![
@@ -1279,7 +1280,8 @@ mod tests {
             candle(60_000, 1.0, 1.0, 1.0, 1.0),
         ];
         assert!(completed_base_candles_from_snapshot(&out_of_order, 60_000)
-            .unwrap_err()
+            .err()
+            .expect("invalid snapshot must be rejected")
             .contains("market-data gap"));
 
         let gap = vec![
@@ -1287,7 +1289,8 @@ mod tests {
             candle(180_000, 1.0, 1.0, 1.0, 1.0),
         ];
         assert!(completed_base_candles_from_snapshot(&gap, 60_000)
-            .unwrap_err()
+            .err()
+            .expect("invalid snapshot must be rejected")
             .contains("market-data gap"));
     }
 
