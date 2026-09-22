@@ -2236,7 +2236,8 @@ mod tests {
         });
         manager.runtimes.lock().await.insert(run_id, Arc::clone(&handle));
 
-        let browser_receiver = manager.subscribe(run_id).await.unwrap().unwrap();
+        let (_bootstrap, browser_receiver) = manager.stream_bootstrap(run_id).await.unwrap();
+        let browser_receiver = browser_receiver.expect("active runtime receiver");
         drop(browser_receiver);
 
         assert!(manager.runtimes.lock().await.contains_key(&run_id));
