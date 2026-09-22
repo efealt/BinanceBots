@@ -443,3 +443,28 @@ pub struct TradingFillAudit {
     pub fee_asset: Option<String>,
     pub liquidity_role: Option<LiquidityRole>,
 }
+
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingEquityPoint {
+    pub event_time_ms: i64,
+    pub equity: ExactDecimal,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingPositionPoint {
+    pub event_time_ms: i64,
+    pub position_quantity: ExactDecimal,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingOrderLevel {
+    pub order_id: i64,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub price: ExactDecimal,
+    pub quantity: ExactDecimal,
+    pub active_from_ms: i64,
+    pub active_to_ms: Option<i64>,
+    pub final_status: Option<OrderStatus>,
+}

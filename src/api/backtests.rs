@@ -35,6 +35,7 @@ pub fn router(storage_reader: Arc<StorageReader>) -> Router {
         .route("/api/backtests/jobs", post(create_job))
         .route("/api/backtests/jobs/{job_id}", get(job_status))
         .route("/api/backtests/runs/{run_id}", get(run_result))
+        .route("/api/backtests/runs/{run_id}/analysis", get(run_analysis))
         .with_state(Arc::new(BacktestApiState {
             storage_reader,
             jobs: Arc::new(Mutex::new(HashMap::new())),
@@ -82,6 +83,14 @@ struct BacktestJobResponse {
     message: String,
     run_id: Option<i64>,
     result: Option<BacktestRunView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct BacktestAnalysisView {
+    run_id: i64,
+    equity: Vec<crate::storage::TradingEquityPoint>,
+    positions: Vec<crate::storage::TradingPositionPoint>,
+    order_levels: Vec<crate::storage::TradingOrderLevel>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -201,6 +210,32 @@ async fn job_status(
         .cloned()
         .ok_or(BacktestApiError::JobNotFound(job_id))?;
     Ok(Json(job))
+}
+
+async fn run_analysis(
+    State(state): State<Arc<BacktestApiState>>,
+    Path(run_id): Path<i64>,
+) -> Result<Json<BacktestAnalysisView>, BacktestApiError> {
+    if run_id <= 0 {
+        return Err(BacktestApiError::Invalid("run_id must be positive".into()));
+    }
+    let storage_reader = Arc::clone(&state.storage_reader);
+    let analysis = tokio::task::spawn_blocking(move || -> Result<BacktestAnalysisView, StorageError> {
+        let run = storage_reader.trading_run(run_id)?;
+        if run.mode != crate::storage::RunMode::Backtest {
+            return Err(StorageError::InvalidTradingValue {
+                field: "run_mode",
+                value: run.mode.as_str().to_string(),
+            });
+        }
+        Ok(BacktestAnalysisView {
+            run_id,
+            equity: storage_reader.trading_run_equity_points(run_id)?,
+            positions: storage_reader.trading_run_position_points(run_id)?,
+            order_levels: storage_reader.trading_run_order_levels(run_id)?,
+        })
+    }).await??;
+    Ok(Json(analysis))
 }
 
 async fn run_result(

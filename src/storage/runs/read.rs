@@ -246,6 +246,104 @@ impl StorageReader {
             .map_err(StorageError::from)
     }
 
+    pub fn trading_run_equity_points(
+        &self,
+        run_id: i64,
+    ) -> Result<Vec<TradingEquityPoint>, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT e.event_time_ms, q.equity_decimal
+             FROM trading_equity_snapshots q
+             JOIN trading_run_events e ON e.event_id = q.event_id
+             WHERE q.run_id = ?1
+             ORDER BY e.run_sequence"
+        )?;
+        let rows = statement.query_map(params![run_id], |row| {
+            Ok(TradingEquityPoint {
+                event_time_ms: row.get(0)?,
+                equity: decimal_from_row(row, 1)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn trading_run_position_points(
+        &self,
+        run_id: i64,
+    ) -> Result<Vec<TradingPositionPoint>, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT e.event_time_ms, p.position_quantity_decimal
+             FROM trading_position_snapshots p
+             JOIN trading_run_events e ON e.event_id = p.event_id
+             WHERE p.run_id = ?1
+             ORDER BY e.run_sequence"
+        )?;
+        let rows = statement.query_map(params![run_id], |row| {
+            Ok(TradingPositionPoint {
+                event_time_ms: row.get(0)?,
+                position_quantity: decimal_from_row(row, 1)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn trading_run_order_levels(
+        &self,
+        run_id: i64,
+    ) -> Result<Vec<TradingOrderLevel>, StorageError> {
+        self.trading_run(run_id)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT
+                o.order_id,
+                o.side,
+                o.order_type,
+                o.price_decimal,
+                o.quantity_decimal,
+                created.event_time_ms,
+                (
+                    SELECT terminal_event.event_time_ms
+                    FROM trading_order_state_events terminal_state
+                    JOIN trading_run_events terminal_event
+                      ON terminal_event.event_id = terminal_state.event_id
+                    WHERE terminal_state.order_id = o.order_id
+                      AND terminal_state.status IN ('filled', 'cancelled', 'rejected', 'expired')
+                    ORDER BY terminal_event.run_sequence
+                    LIMIT 1
+                ) AS active_to_ms,
+                (
+                    SELECT latest_state.status
+                    FROM trading_order_state_events latest_state
+                    JOIN trading_run_events latest_event
+                      ON latest_event.event_id = latest_state.event_id
+                    WHERE latest_state.order_id = o.order_id
+                    ORDER BY latest_event.run_sequence DESC
+                    LIMIT 1
+                ) AS final_status
+             FROM trading_orders o
+             JOIN trading_run_events created ON created.event_id = o.created_event_id
+             WHERE o.run_id = ?1
+               AND o.price_decimal IS NOT NULL
+             ORDER BY created.run_sequence, o.order_id"
+        )?;
+        let rows = statement.query_map(params![run_id], |row| {
+            Ok(TradingOrderLevel {
+                order_id: row.get(0)?,
+                side: enum_from_row(row, 1, OrderSide::parse)?,
+                order_type: enum_from_row(row, 2, OrderType::parse)?,
+                price: decimal_from_row(row, 3)?,
+                quantity: decimal_from_row(row, 4)?,
+                active_from_ms: row.get(5)?,
+                active_to_ms: row.get(6)?,
+                final_status: optional_enum_from_row(row, 7, OrderStatus::parse)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn trading_run_equity_stats(&self, run_id: i64) -> Result<TradingEquityStats, StorageError> {
         self.trading_run(run_id)?;
         let connection = self.open()?;
