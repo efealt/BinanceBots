@@ -62,6 +62,14 @@ Its purpose is only to prove signals, order intents, simulated fills, state tran
 
 **Exit:** The simple grid runs end to end in Backtest using the shared engine and canonical storage model, with no mode-specific strategy implementation.
 
+### Phase 3.5 — Backtest Strategy UI checkpoint
+
+Expose the proven backend Backtest engine and Phase 3 grid through a thin authenticated UI so the user can select stored historical data, configure strategy/execution inputs, launch a backend run, and inspect persisted results.
+
+The UI contains no strategy or simulation logic; it only configures and displays the backend system. This checkpoint is completed before any live Paper runtime work begins.
+
+**Exit:** The user can independently launch and inspect a historical strategy run through the hosted application, while the backend remains the sole owner of strategy execution and persistence.
+
 ### Phase 4 — Live Paper runtime
 
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
@@ -134,7 +142,9 @@ Phase 1   Shared DB / canonical run model
    ↓
 Phase 2   Backtest engine
    ↓
-Phase 3   Simple grid test fixture
+Phase 3   Simple grid test fixture + full committed XAGUSDT regression DB
+   ↓
+Phase 3.5 Backtest Strategy UI / user validation checkpoint
    ↓
 Phase 4   Paper in real time
    ↓
