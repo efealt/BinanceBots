@@ -472,7 +472,7 @@ impl PaperManager {
                         let result = core.stop(now, "user_stop");
                         match result {
                             Ok(()) => {
-                                self.update_snapshot(&handle, &core, |snapshot| {
+                                self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                     snapshot.runtime_status = "stopped".into();
                                     snapshot.canonical_status = "stopped".into();
                                     snapshot.updated_at_ms = now;
@@ -496,7 +496,7 @@ impl PaperManager {
                         }
                     };
 
-                    self.update_snapshot(&handle, &core, |snapshot| {
+                    self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                         snapshot.feed_status = market_snapshot.status;
                         snapshot.updated_at_ms = now;
                     }).await;
@@ -510,7 +510,7 @@ impl PaperManager {
                                 match core.start(boundary, &previous) {
                                     Ok(()) => {
                                         started = true;
-                                        self.update_snapshot(&handle, &core, |snapshot| {
+                                        self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                             snapshot.runtime_status = "running".into();
                                             snapshot.canonical_status = "running".into();
                                             snapshot.updated_at_ms = now;
@@ -580,7 +580,7 @@ impl PaperManager {
                             }
                         };
 
-                        self.update_snapshot(&handle, &core, |snapshot| {
+                        self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                             snapshot.last_base_candle_open_ms = Some(candle.open_time);
                             snapshot.updated_at_ms = system_now_ms();
                         }).await;
@@ -588,7 +588,7 @@ impl PaperManager {
                         if let Some(replay_candle) = completed {
                             match core.process_candle(&replay_candle) {
                                 Ok(fills) => {
-                                    self.update_snapshot(&handle, &core, |snapshot| {
+                                    self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                         snapshot.latest_replay_candle = Some(replay_candle.clone());
                                         snapshot.updated_at_ms = system_now_ms();
                                         for fill in fills {
@@ -651,12 +651,13 @@ impl PaperManager {
     async fn update_snapshot(
         &self,
         handle: &PaperRuntimeHandle,
-        core: &PaperRunCore,
+        portfolio: PortfolioView,
+        open_orders: Vec<PaperOpenOrderView>,
         update: impl FnOnce(&mut PaperSnapshot),
     ) {
         let mut snapshot = handle.snapshot.write().await;
-        snapshot.portfolio = core.portfolio.view();
-        snapshot.open_orders = core.open_orders();
+        snapshot.portfolio = portfolio;
+        snapshot.open_orders = open_orders;
         update(&mut snapshot);
         let cloned = snapshot.clone();
         drop(snapshot);
@@ -671,7 +672,9 @@ impl PaperManager {
     ) {
         let now = system_now_ms();
         let _ = core.fail(now, &reason);
-        self.update_snapshot(handle, core, |snapshot| {
+        let portfolio = core.portfolio.view();
+        let open_orders = core.open_orders();
+        self.update_snapshot(handle, portfolio, open_orders, |snapshot| {
             snapshot.runtime_status = "failed".into();
             snapshot.canonical_status = "failed".into();
             snapshot.updated_at_ms = now;
