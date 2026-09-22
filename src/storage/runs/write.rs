@@ -415,6 +415,54 @@ impl StorageReader {
         })
     }
 
+    pub fn record_equity_snapshots(
+        &self,
+        inputs: &[EquitySnapshotInput],
+    ) -> Result<Vec<EquitySnapshotRecord>, StorageError> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut connection = self.open_write()?;
+        let transaction = connection.transaction()?;
+        let mut records = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            let event = allocate_event(
+                &transaction,
+                input.run_id,
+                RunEventKind::Equity,
+                input.times,
+            )?;
+            transaction.execute(
+                "INSERT INTO trading_equity_snapshots (
+                    event_id, run_id, equity_decimal, cash_balance_decimal,
+                    realized_pnl_decimal, unrealized_pnl_decimal, fees_paid_decimal, metadata_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    event.event_id,
+                    input.run_id,
+                    input.equity.as_str(),
+                    input.cash_balance.as_ref().map(ExactDecimal::as_str),
+                    input.realized_pnl.as_ref().map(ExactDecimal::as_str),
+                    input.unrealized_pnl.as_ref().map(ExactDecimal::as_str),
+                    input.fees_paid.as_ref().map(ExactDecimal::as_str),
+                    json_string(&input.metadata)?,
+                ],
+            )?;
+            records.push(EquitySnapshotRecord {
+                event,
+                equity: input.equity.clone(),
+                cash_balance: input.cash_balance.clone(),
+                realized_pnl: input.realized_pnl.clone(),
+                unrealized_pnl: input.unrealized_pnl.clone(),
+                fees_paid: input.fees_paid.clone(),
+                metadata: input.metadata.clone(),
+            });
+        }
+        transaction.commit()?;
+        Ok(records)
+    }
+
     pub fn record_equity_snapshot(
         &self,
         input: &EquitySnapshotInput,

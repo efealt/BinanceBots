@@ -11,6 +11,7 @@ on:
       - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "test-data/**"
       - ".github/workflows/storage-tests.yml"
   workflow_dispatch:
 
@@ -22,3 +23,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run Rust tests
         run: cargo test --all-targets
+      - name: Run full frozen XAGUSDT grid regression
+        run: |
+          fixture="test-data/xagusdt_1m_2026.sqlite3"
+          before="$(sha256sum "$fixture" | awk '{print $1}')"
+          test "$before" = "37afda792f5f06cee9e63eca010f6c5b850d2282fe5ecc5a686b213f832c4a7e"
+          regression_db="$(mktemp --suffix=.sqlite3)"
+          cp "$fixture" "$regression_db"
+          XAGUSDT_REGRESSION_DB="$regression_db" cargo test full_xagusdt_grid_regression -- --ignored --nocapture
+          after="$(sha256sum "$fixture" | awk '{print $1}')"
+          test "$after" = "$before"
+          rm -f "$regression_db" "$regression_db-wal" "$regression_db-shm"

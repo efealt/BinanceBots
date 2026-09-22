@@ -1,7 +1,9 @@
+mod grid;
 mod portfolio;
 mod simulation;
 mod types;
 
+pub use grid::{GridAnchor, StaticGridConfig, StaticGridStrategy};
 pub use portfolio::PortfolioState;
 pub use simulation::{PendingOrder, SimulatedExecution, SimulatedFill};
 pub use types::{

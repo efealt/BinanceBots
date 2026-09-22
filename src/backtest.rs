@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use thiserror::Error;
 
+const EQUITY_BATCH_SIZE: usize = 2_048;
+
 #[derive(Clone, Debug)]
 pub struct BacktestRunConfig {
     pub dataset_id: i64,
@@ -209,13 +211,23 @@ impl BacktestEngine {
             execution,
         )?;
 
+        let mut equity_buffer = Vec::with_capacity(EQUITY_BATCH_SIZE);
+
         for candle in candles {
             *failure_time = candle.close_time_ms;
             let market_candle = market_candle_from_storage(candle);
 
-            let fills = execution
-                .process_candle(&market_candle)
-                .map_err(BacktestError::Simulation)?;
+            let fills = match execution.process_candle(&market_candle) {
+                Ok(fills) => fills,
+                Err(error) => {
+                    self.flush_equity_buffer(&mut equity_buffer)?;
+                    return Err(BacktestError::Simulation(error));
+                }
+            };
+            if !fills.is_empty() {
+                self.flush_equity_buffer(&mut equity_buffer)?;
+            }
+
             for fill in fills {
                 self.storage.record_fill(&FillInput {
                     order_id: fill.order_id,
@@ -270,19 +282,26 @@ impl BacktestEngine {
                 candle: &market_candle,
                 portfolio: portfolio.view(),
             };
-            let output = strategy
-                .on_candle(&context)
-                .map_err(BacktestError::Strategy)?;
+            let output = match strategy.on_candle(&context) {
+                Ok(output) => output,
+                Err(error) => {
+                    self.flush_equity_buffer(&mut equity_buffer)?;
+                    return Err(BacktestError::Strategy(error));
+                }
+            };
 
-            self.persist_strategy_output(
-                run_id,
-                market_candle.close_time_ms,
-                output,
-                execution,
-            )?;
+            if !output.decisions.is_empty() || !output.order_intents.is_empty() {
+                self.flush_equity_buffer(&mut equity_buffer)?;
+                self.persist_strategy_output(
+                    run_id,
+                    market_candle.close_time_ms,
+                    output,
+                    execution,
+                )?;
+            }
 
             let view = portfolio.view();
-            self.storage.record_equity_snapshot(&EquitySnapshotInput {
+            equity_buffer.push(EquitySnapshotInput {
                 run_id,
                 times: EventTimes::new(market_candle.close_time_ms),
                 equity: exact(view.equity)?,
@@ -291,7 +310,23 @@ impl BacktestEngine {
                 unrealized_pnl: Some(exact(view.unrealized_pnl)?),
                 fees_paid: Some(exact(view.fees_paid)?),
                 metadata: json!({"mark_price": decimal_string(market_candle.close).map_err(BacktestError::Simulation)?}),
-            })?;
+            });
+            if equity_buffer.len() >= EQUITY_BATCH_SIZE {
+                self.flush_equity_buffer(&mut equity_buffer)?;
+            }
+        }
+
+        self.flush_equity_buffer(&mut equity_buffer)?;
+        Ok(())
+    }
+
+    fn flush_equity_buffer(
+        &self,
+        buffer: &mut Vec<EquitySnapshotInput>,
+    ) -> Result<(), BacktestError> {
+        if !buffer.is_empty() {
+            self.storage.record_equity_snapshots(buffer)?;
+            buffer.clear();
         }
         Ok(())
     }

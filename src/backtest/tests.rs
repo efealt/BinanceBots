@@ -2,13 +2,15 @@ use super::*;
 use crate::{
     storage::{OrderSide, OrderType, RunStatus, StorageReader, TimeInForce},
     trading::{
-        ExecutionAssumptions, LimitFillPolicy, MarketCandle, SimulatedExecution, StrategyDecision,
-        StrategyOrderIntent, StrategyOutput, StrategyStartContext,
+        ExecutionAssumptions, GridAnchor, LimitFillPolicy, MarketCandle, SimulatedExecution,
+        StaticGridConfig, StaticGridStrategy, StrategyDecision, StrategyOrderIntent,
+        StrategyOutput, StrategyStartContext,
     },
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, params, types::ValueRef};
 use serde_json::json;
-use std::{path::PathBuf, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use sha2::{Digest, Sha256};
+use std::{fs, path::{Path, PathBuf}, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 
 fn temp_database(label: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -339,4 +341,309 @@ fn failed_strategy_marks_run_failed_without_deleting_history() {
     assert!(history.status_events.iter().any(|event| event.status == RunStatus::Failed));
 
     cleanup(&path);
+}
+
+
+struct ReplenishAfterFill {
+    emitted_replacement: bool,
+}
+
+impl Strategy for ReplenishAfterFill {
+    fn id(&self) -> &str { "test-replenish-after-fill" }
+    fn version(&self) -> &str { "1" }
+    fn parameters(&self) -> serde_json::Value { json!({}) }
+
+    fn on_start(
+        &mut self,
+        _context: &StrategyStartContext<'_>,
+    ) -> Result<StrategyOutput, String> {
+        Ok(StrategyOutput {
+            decisions: vec![StrategyDecision {
+                decision_type: "seed_buy".into(),
+                payload: json!({}),
+            }],
+            order_intents: vec![StrategyOrderIntent {
+                intent_key: Some("seed-buy".into()),
+                side: OrderSide::Buy,
+                order_type: OrderType::Limit,
+                time_in_force: Some(TimeInForce::Gtc),
+                price: Some(100.0),
+                quantity: 1.0,
+                stop_price: None,
+                reduce_only: false,
+                metadata: json!({"source": "on_start"}),
+            }],
+        })
+    }
+
+    fn on_candle(&mut self, context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+        if self.emitted_replacement || context.portfolio.position_quantity <= 0.0 {
+            return Ok(StrategyOutput::default());
+        }
+        self.emitted_replacement = true;
+        Ok(StrategyOutput {
+            decisions: vec![StrategyDecision {
+                decision_type: "replace_after_fill".into(),
+                payload: json!({"position_quantity": context.portfolio.position_quantity}),
+            }],
+            order_intents: vec![StrategyOrderIntent {
+                intent_key: Some("replacement-sell".into()),
+                side: OrderSide::Sell,
+                order_type: OrderType::Limit,
+                time_in_force: Some(TimeInForce::Gtc),
+                price: Some(111.0),
+                quantity: 1.0,
+                stop_price: None,
+                reduce_only: false,
+                metadata: json!({"source": "on_candle"}),
+            }],
+        })
+    }
+}
+
+#[test]
+fn static_grid_allows_multiple_preexisting_levels_to_fill_in_same_candle() {
+    let path = temp_database("multi-grid");
+    let (reader, dataset_id) = seed_dataset(&path);
+    let engine = BacktestEngine::new(Arc::clone(&reader));
+    let mut config = basic_config(dataset_id, "multi-grid");
+    config.start_time_ms = Some(60_000);
+    config.end_time_ms = Some(119_999);
+
+    let mut strategy = StaticGridStrategy::new(StaticGridConfig {
+        anchor: GridAnchor::PreviousClose,
+        fixed_anchor_price: None,
+        spacing_bps: 40.0,
+        levels_per_side: 2,
+        quantity_per_order: 1.0,
+        time_in_force: TimeInForce::Gtc,
+    }).unwrap();
+
+    let result = engine.run(&config, &mut strategy).expect("run static grid");
+    let history = reader.trading_run_history(result.run_id).unwrap();
+    assert_eq!(history.order_intents.len(), 4);
+    assert_eq!(history.fills.len(), 4);
+    assert!(history.fills.iter().all(|fill| fill.event.event_time_ms == 119_999));
+    assert_eq!(history.equity.len(), 1);
+
+    cleanup(&path);
+}
+
+#[test]
+fn replacement_created_after_candle_close_cannot_retroactively_fill_that_candle() {
+    let path = temp_database("replacement-timing");
+    let (reader, dataset_id) = seed_dataset(&path);
+    let engine = BacktestEngine::new(Arc::clone(&reader));
+    let mut config = basic_config(dataset_id, "replacement-timing");
+    config.start_time_ms = Some(60_000);
+    config.end_time_ms = Some(179_999);
+
+    let mut strategy = ReplenishAfterFill { emitted_replacement: false };
+    let result = engine.run(&config, &mut strategy).expect("run replacement timing");
+    let history = reader.trading_run_history(result.run_id).unwrap();
+    assert_eq!(history.fills.len(), 2);
+
+    let buy = history.fills.iter().find(|fill| fill.price.as_str() == "100").unwrap();
+    let replacement = history.fills.iter().find(|fill| fill.price.as_str() == "111").unwrap();
+    assert_eq!(buy.event.event_time_ms, 119_999);
+    assert_eq!(replacement.event.event_time_ms, 179_999);
+    assert_ne!(replacement.event.event_time_ms, 119_999);
+
+    cleanup(&path);
+}
+
+fn file_sha256(path: &Path) -> String {
+    let bytes = fs::read(path).expect("read file for sha256");
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn semantic_run_digest(path: &Path, run_id: i64) -> String {
+    let connection = Connection::open(path).expect("open regression database for digest");
+    let mut statement = connection.prepare(
+        "SELECT
+            CAST(e.run_sequence AS TEXT),
+            e.event_kind,
+            CAST(e.event_time_ms AS TEXT),
+            rs.status, rs.note,
+            d.decision_type, d.payload_json,
+            oi.intent_key, oi.side, oi.order_type, oi.time_in_force,
+            oi.price_decimal, oi.quantity_decimal, oi.stop_price_decimal,
+            CAST(oi.reduce_only AS TEXT), oi.metadata_json,
+            created_order.side, created_order.order_type, created_order.time_in_force,
+            created_order.price_decimal, created_order.quantity_decimal,
+            created_order.stop_price_decimal, created_order.metadata_json,
+            os.status, os.filled_quantity_decimal, os.average_fill_price_decimal,
+            os.reject_reason, os.metadata_json,
+            CAST(state_order_event.run_sequence AS TEXT),
+            f.price_decimal, f.quantity_decimal, f.fee_decimal, f.fee_asset,
+            f.liquidity_role, f.metadata_json,
+            CAST(fill_order_event.run_sequence AS TEXT),
+            p.position_quantity_decimal, p.average_entry_price_decimal,
+            p.mark_price_decimal, p.realized_pnl_decimal, p.unrealized_pnl_decimal,
+            p.cash_balance_decimal, p.metadata_json,
+            q.equity_decimal, q.cash_balance_decimal, q.realized_pnl_decimal,
+            q.unrealized_pnl_decimal, q.fees_paid_decimal, q.metadata_json
+         FROM trading_run_events e
+         LEFT JOIN trading_run_status_events rs ON rs.event_id = e.event_id
+         LEFT JOIN trading_decisions d ON d.event_id = e.event_id
+         LEFT JOIN trading_order_intents oi ON oi.event_id = e.event_id
+         LEFT JOIN trading_orders created_order ON created_order.created_event_id = e.event_id
+         LEFT JOIN trading_order_state_events os ON os.event_id = e.event_id
+         LEFT JOIN trading_orders state_order ON state_order.order_id = os.order_id
+         LEFT JOIN trading_run_events state_order_event ON state_order_event.event_id = state_order.created_event_id
+         LEFT JOIN trading_fills f ON f.event_id = e.event_id
+         LEFT JOIN trading_orders fill_order ON fill_order.order_id = f.order_id
+         LEFT JOIN trading_run_events fill_order_event ON fill_order_event.event_id = fill_order.created_event_id
+         LEFT JOIN trading_position_snapshots p ON p.event_id = e.event_id
+         LEFT JOIN trading_equity_snapshots q ON q.event_id = e.event_id
+         WHERE e.run_id = ?1
+           AND NOT (e.event_kind = 'run_status' AND rs.status = 'created')
+         ORDER BY e.run_sequence"
+    ).expect("prepare semantic digest query");
+
+    let column_count = statement.column_count();
+    let mut rows = statement.query(params![run_id]).expect("query semantic events");
+    let mut hasher = Sha256::new();
+    while let Some(row) = rows.next().expect("read semantic event") {
+        for index in 0..column_count {
+            match row.get_ref(index).expect("read semantic value") {
+                ValueRef::Null => hasher.update(b"<NULL>"),
+                ValueRef::Integer(value) => hasher.update(value.to_string().as_bytes()),
+                ValueRef::Real(value) => hasher.update(value.to_string().as_bytes()),
+                ValueRef::Text(value) => hasher.update(value),
+                ValueRef::Blob(value) => hasher.update(value),
+            }
+            hasher.update([0x1f]);
+        }
+        hasher.update([0x1e]);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn regression_counts(path: &Path, run_id: i64) -> serde_json::Value {
+    let connection = Connection::open(path).expect("open regression database for counts");
+    let count = |table: &str| -> i64 {
+        connection.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE run_id = ?1"),
+            params![run_id],
+            |row| row.get(0),
+        ).expect("count regression rows")
+    };
+    json!({
+        "decisions": count("trading_decisions"),
+        "order_intents": count("trading_order_intents"),
+        "orders": count("trading_orders"),
+        "fills": count("trading_fills"),
+        "positions": count("trading_position_snapshots"),
+        "equity_snapshots": count("trading_equity_snapshots")
+    })
+}
+
+#[test]
+#[ignore = "full committed real-market Phase 3 regression; CI runs this explicitly"]
+fn full_xagusdt_grid_regression() {
+    const FIXTURE_SHA256: &str = "37afda792f5f06cee9e63eca010f6c5b850d2282fe5ecc5a686b213f832c4a7e";
+    const FIRST_ACTIVE_OPEN_MS: i64 = 1_767_780_060_000;
+    const LAST_CLOSE_MS: i64 = 1_789_948_799_999;
+    const ACTIVE_CANDLES: usize = 369_479;
+
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test-data/xagusdt_1m_2026.sqlite3");
+    let fixture_before = file_sha256(&fixture);
+    assert_eq!(fixture_before, FIXTURE_SHA256);
+
+    let path = std::env::var_os("XAGUSDT_REGRESSION_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let temp = temp_database("xagusdt-full-regression");
+            fs::copy(&fixture, &temp).expect("copy frozen regression fixture");
+            temp
+        });
+    assert_ne!(path, fixture, "regression must never mutate committed fixture in place");
+
+    let reader = Arc::new(StorageReader::new(path.clone()));
+    let engine = BacktestEngine::new(Arc::clone(&reader));
+    let execution = ExecutionAssumptions {
+        fee_bps: 4.0,
+        spread_bps: 0.0,
+        slippage_bps: 0.0,
+        latency_ms: 0,
+        limit_fill_policy: LimitFillPolicy::Touch,
+        partial_fill_ratio: 1.0,
+    };
+    let run_config = json!({
+        "purpose": "phase3_engineering_regression",
+        "fixture_sha256": FIXTURE_SHA256,
+        "parameters_are_test_fixture_not_trading_recommendation": true
+    });
+
+    let make_strategy = || StaticGridStrategy::new(StaticGridConfig {
+        anchor: GridAnchor::PreviousClose,
+        fixed_anchor_price: None,
+        spacing_bps: 100.0,
+        levels_per_side: 3,
+        quantity_per_order: 1.0,
+        time_in_force: TimeInForce::Gtc,
+    }).unwrap();
+    let make_config = |comparison_id: &str| BacktestRunConfig {
+        dataset_id: 1,
+        start_time_ms: Some(FIRST_ACTIVE_OPEN_MS),
+        end_time_ms: Some(LAST_CLOSE_MS),
+        comparison_id: Some(comparison_id.into()),
+        initial_capital: ExactDecimal::new("100000").unwrap(),
+        execution: execution.clone(),
+        run_config: run_config.clone(),
+    };
+
+    let mut first_strategy = make_strategy();
+    let first = engine.run(&make_config("phase3-xagusdt-regression-a"), &mut first_strategy)
+        .expect("first full XAGUSDT regression run");
+    let mut second_strategy = make_strategy();
+    let second = engine.run(&make_config("phase3-xagusdt-regression-b"), &mut second_strategy)
+        .expect("second full XAGUSDT regression run");
+
+    assert_eq!(first.candles_processed, ACTIVE_CANDLES);
+    assert_eq!(second.candles_processed, ACTIVE_CANDLES);
+
+    let first_digest = semantic_run_digest(&path, first.run_id);
+    let second_digest = semantic_run_digest(&path, second.run_id);
+    assert_eq!(first_digest, second_digest, "semantic replay must be deterministic");
+
+    let first_counts = regression_counts(&path, first.run_id);
+    let second_counts = regression_counts(&path, second.run_id);
+    assert_eq!(first_counts, second_counts);
+    assert_eq!(first_counts["decisions"], 1);
+    assert_eq!(first_counts["order_intents"], 6);
+    assert_eq!(first_counts["orders"], 6);
+    assert_eq!(first_counts["equity_snapshots"], ACTIVE_CANDLES as i64);
+
+    let summary = json!({
+        "fixture_sha256": FIXTURE_SHA256,
+        "strategy_id": "static-grid-fixture",
+        "strategy_version": "1",
+        "strategy_parameters": first_strategy.parameters(),
+        "execution_assumptions": execution,
+        "active_candles": ACTIVE_CANDLES,
+        "counts": first_counts,
+        "final_portfolio": first.final_portfolio,
+        "semantic_result_sha256": first_digest
+    });
+    println!("PHASE3_REGRESSION_SUMMARY={}", serde_json::to_string(&summary).unwrap());
+
+    let baseline_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test-data/xagusdt_phase3_grid_baseline.json");
+    if baseline_path.exists() {
+        let expected: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&baseline_path).expect("read Phase 3 baseline")
+        ).expect("parse Phase 3 baseline");
+        assert_eq!(summary, expected, "Phase 3 real-data regression baseline changed");
+    }
+
+    assert_eq!(file_sha256(&fixture), fixture_before, "committed fixture changed during regression");
+
+    if std::env::var_os("XAGUSDT_REGRESSION_DB").is_none() {
+        cleanup(&path);
+    }
 }
