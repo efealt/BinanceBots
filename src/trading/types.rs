@@ -68,6 +68,10 @@ pub trait Strategy {
     fn version(&self) -> &str;
     fn parameters(&self) -> Value;
 
+    fn requires_previous_candle(&self) -> bool {
+        false
+    }
+
     fn on_start(
         &mut self,
         _context: &StrategyStartContext<'_>,

@@ -16,9 +16,46 @@ use thiserror::Error;
 
 const EQUITY_BATCH_SIZE: usize = 2_048;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayInterval {
+    OneMinute,
+    OneHour,
+    OneDay,
+}
+
+impl ReplayInterval {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OneMinute => "1m",
+            Self::OneHour => "1h",
+            Self::OneDay => "1d",
+        }
+    }
+
+    pub fn duration_ms(self) -> i64 {
+        match self {
+            Self::OneMinute => 60_000,
+            Self::OneHour => 3_600_000,
+            Self::OneDay => 86_400_000,
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "1m" => Some(Self::OneMinute),
+            "1h" => Some(Self::OneHour),
+            "1d" => Some(Self::OneDay),
+            _ => None,
+        }
+    }
+}
+
+
 #[derive(Clone, Debug)]
 pub struct BacktestRunConfig {
     pub dataset_id: i64,
+    pub replay_interval: ReplayInterval,
     pub start_time_ms: Option<i64>,
     pub end_time_ms: Option<i64>,
     pub comparison_id: Option<String>,
@@ -31,8 +68,20 @@ pub struct BacktestRunConfig {
 pub struct BacktestRunResult {
     pub run_id: i64,
     pub dataset_id: i64,
+    pub replay_interval: String,
     pub candles_processed: usize,
+    pub effective_start_time_ms: i64,
+    pub effective_end_time_ms: i64,
+    pub previous_candle_open_time_ms: Option<i64>,
+    pub reserved_first_candle_as_preroll: bool,
     pub final_portfolio: PortfolioView,
+}
+
+struct PreparedReplay {
+    dataset: HistoricalDatasetInfo,
+    candles: Vec<crate::storage::OhlcvCandle>,
+    previous_candle: Option<MarketCandle>,
+    reserved_first_candle_as_preroll: bool,
 }
 
 #[derive(Debug, Error)]
@@ -62,27 +111,24 @@ impl BacktestEngine {
         config: &BacktestRunConfig,
         strategy: &mut S,
     ) -> Result<BacktestRunResult, BacktestError> {
+        self.run_with_progress(config, strategy, |_| {})
+    }
+
+    pub fn run_with_progress<S: Strategy, F: FnMut(u8)>(
+        &self,
+        config: &BacktestRunConfig,
+        strategy: &mut S,
+        mut progress: F,
+    ) -> Result<BacktestRunResult, BacktestError> {
+        progress(0);
         validate_config(config)?;
+        let prepared = self.prepare_replay(config, strategy)?;
+        progress(2);
 
-        let dataset = self.storage.historical_dataset_info(config.dataset_id)?;
-        let candles = self.storage.ohlcv_series_between(
-            config.dataset_id,
-            config.start_time_ms,
-            config.end_time_ms,
-        )?;
-        if candles.is_empty() {
-            return Err(BacktestError::InvalidConfig(
-                "selected dataset/range contains no completed candles".into(),
-            ));
-        }
-        validate_candle_order(&candles)?;
-
-        let first = &candles[0];
-        let last = candles.last().expect("non-empty candles");
-        let previous_candle = self
-            .storage
-            .ohlcv_previous_candle(config.dataset_id, first.open_time_ms)?
-            .map(|candle| market_candle_from_storage(&candle));
+        let dataset = &prepared.dataset;
+        let candles = &prepared.candles;
+        let first = candles.first().expect("prepared replay has active candles");
+        let last = candles.last().expect("prepared replay has active candles");
         let strategy_params = strategy.parameters();
         let execution_json = serde_json::to_value(&config.execution)
             .map_err(|error| BacktestError::InvalidConfig(error.to_string()))?;
@@ -101,12 +147,15 @@ impl BacktestEngine {
                 "venue": dataset.venue,
                 "symbol": dataset.symbol,
                 "market_type": dataset.market_type,
-                "interval": dataset.interval,
+                "source_interval": dataset.interval,
+                "replay_interval": config.replay_interval.as_str(),
                 "source": dataset.source,
                 "requested_start_time_ms": config.start_time_ms,
                 "requested_end_time_ms": config.end_time_ms,
-                "first_open_time_ms": first.open_time_ms,
-                "last_close_time_ms": last.close_time_ms
+                "effective_first_open_time_ms": first.open_time_ms,
+                "effective_last_close_time_ms": last.close_time_ms,
+                "previous_candle_open_time_ms": prepared.previous_candle.as_ref().map(|candle| candle.open_time_ms),
+                "reserved_first_candle_as_preroll": prepared.reserved_first_candle_as_preroll
             }),
             execution_assumptions: execution_json,
         };
@@ -130,13 +179,14 @@ impl BacktestEngine {
 
         let result = self.execute(
             run.run_id,
-            &dataset,
-            &candles,
-            previous_candle.as_ref(),
+            dataset,
+            candles,
+            prepared.previous_candle.as_ref(),
             strategy,
             &mut portfolio,
             &mut execution,
             &mut failure_time,
+            &mut progress,
         );
 
         match result {
@@ -164,10 +214,16 @@ impl BacktestEngine {
                     EventTimes::new(final_time),
                     None,
                 )?;
+                progress(100);
                 Ok(BacktestRunResult {
                     run_id: run.run_id,
                     dataset_id: config.dataset_id,
+                    replay_interval: config.replay_interval.as_str().to_string(),
                     candles_processed: candles.len(),
+                    effective_start_time_ms: first.open_time_ms,
+                    effective_end_time_ms: last.close_time_ms,
+                    previous_candle_open_time_ms: prepared.previous_candle.as_ref().map(|candle| candle.open_time_ms),
+                    reserved_first_candle_as_preroll: prepared.reserved_first_candle_as_preroll,
                     final_portfolio: portfolio.view(),
                 })
             }
@@ -184,6 +240,78 @@ impl BacktestEngine {
         }
     }
 
+    fn prepare_replay<S: Strategy>(
+        &self,
+        config: &BacktestRunConfig,
+        strategy: &S,
+    ) -> Result<PreparedReplay, BacktestError> {
+        let dataset = self.storage.historical_dataset_info(config.dataset_id)?;
+        validate_replay_interval(&dataset.interval, config.replay_interval)?;
+
+        let preload_start = config
+            .start_time_ms
+            .map(|start| start.saturating_sub(config.replay_interval.duration_ms()));
+        let source_candles = self.storage.ohlcv_series_between(
+            config.dataset_id,
+            preload_start,
+            config.end_time_ms,
+        )?;
+        if source_candles.is_empty() {
+            return Err(BacktestError::InvalidConfig(
+                "selected dataset/range contains no completed candles".into(),
+            ));
+        }
+        validate_candle_order(&source_candles)?;
+        let replay_candles = aggregate_candles(&source_candles, config.replay_interval)?;
+        if replay_candles.is_empty() {
+            return Err(BacktestError::InvalidConfig(
+                "selected dataset/range contains no replay candles".into(),
+            ));
+        }
+
+        let requested_start = config.start_time_ms.unwrap_or(i64::MIN);
+        let active_index = replay_candles
+            .iter()
+            .position(|candle| candle.open_time_ms >= requested_start)
+            .unwrap_or(replay_candles.len());
+        if active_index >= replay_candles.len() {
+            return Err(BacktestError::InvalidConfig(
+                "selected start time is after the available replay candles".into(),
+            ));
+        }
+
+        let mut previous_candle = active_index
+            .checked_sub(1)
+            .and_then(|index| replay_candles.get(index))
+            .map(market_candle_from_storage);
+        let mut active = replay_candles[active_index..].to_vec();
+        let mut reserved_first_candle_as_preroll = false;
+
+        if previous_candle.is_none() && strategy.requires_previous_candle() {
+            if active.len() < 2 {
+                return Err(BacktestError::InvalidConfig(
+                    "strategy requires a previous completed replay candle; selected range is too short".into(),
+                ));
+            }
+            let pre_roll = active.remove(0);
+            previous_candle = Some(market_candle_from_storage(&pre_roll));
+            reserved_first_candle_as_preroll = true;
+        }
+
+        if active.is_empty() {
+            return Err(BacktestError::InvalidConfig(
+                "selected range contains no active replay candles after pre-roll".into(),
+            ));
+        }
+
+        Ok(PreparedReplay {
+            dataset,
+            candles: active,
+            previous_candle,
+            reserved_first_candle_as_preroll,
+        })
+    }
+
     fn execute<S: Strategy>(
         &self,
         run_id: i64,
@@ -194,6 +322,7 @@ impl BacktestEngine {
         portfolio: &mut PortfolioState,
         execution: &mut SimulatedExecution,
         failure_time: &mut i64,
+        progress: &mut impl FnMut(u8),
     ) -> Result<(), BacktestError> {
         let first = candles.first().expect("execute receives non-empty candles");
         let start_context = StrategyStartContext {
@@ -213,7 +342,8 @@ impl BacktestEngine {
 
         let mut equity_buffer = Vec::with_capacity(EQUITY_BATCH_SIZE);
 
-        for candle in candles {
+        let mut last_progress = 2_u8;
+        for (index, candle) in candles.iter().enumerate() {
             *failure_time = candle.close_time_ms;
             let market_candle = market_candle_from_storage(candle);
 
@@ -314,6 +444,13 @@ impl BacktestEngine {
             if equity_buffer.len() >= EQUITY_BATCH_SIZE {
                 self.flush_equity_buffer(&mut equity_buffer)?;
             }
+
+            let completed = index + 1;
+            let next_progress = 2 + ((completed * 96) / candles.len()) as u8;
+            if next_progress > last_progress {
+                last_progress = next_progress;
+                progress(next_progress.min(98));
+            }
         }
 
         self.flush_equity_buffer(&mut equity_buffer)?;
@@ -402,6 +539,86 @@ fn market_candle_from_storage(candle: &crate::storage::OhlcvCandle) -> MarketCan
         low: candle.low_price,
         close: candle.close_price,
         volume: candle.base_volume,
+    }
+}
+
+fn validate_replay_interval(source_interval: &str, replay_interval: ReplayInterval) -> Result<(), BacktestError> {
+    let source_ms = match source_interval {
+        "1m" => 60_000,
+        "1h" => 3_600_000,
+        "1d" => 86_400_000,
+        other => {
+            return Err(BacktestError::InvalidConfig(format!(
+                "unsupported stored dataset interval: {other}"
+            )));
+        }
+    };
+    let replay_ms = replay_interval.duration_ms();
+    if replay_ms < source_ms || replay_ms % source_ms != 0 {
+        return Err(BacktestError::InvalidConfig(format!(
+            "replay interval {} cannot be derived from stored interval {source_interval}",
+            replay_interval.as_str()
+        )));
+    }
+    Ok(())
+}
+
+fn aggregate_candles(
+    source: &[crate::storage::OhlcvCandle],
+    interval: ReplayInterval,
+) -> Result<Vec<crate::storage::OhlcvCandle>, BacktestError> {
+    let interval_ms = interval.duration_ms();
+    let mut aggregated: Vec<crate::storage::OhlcvCandle> = Vec::new();
+
+    for candle in source {
+        let bucket_open = candle.open_time_ms.div_euclid(interval_ms) * interval_ms;
+        if let Some(current) = aggregated.last_mut()
+            && current.open_time_ms == bucket_open
+        {
+            current.close_time_ms = candle.close_time_ms;
+            current.high_price = current.high_price.max(candle.high_price);
+            current.low_price = current.low_price.min(candle.low_price);
+            current.close_price = candle.close_price;
+            current.base_volume += candle.base_volume;
+            current.quote_volume = sum_optional(current.quote_volume, candle.quote_volume);
+            current.trade_count = sum_optional_i64(current.trade_count, candle.trade_count);
+            current.taker_buy_base_volume =
+                sum_optional(current.taker_buy_base_volume, candle.taker_buy_base_volume);
+            current.taker_buy_quote_volume =
+                sum_optional(current.taker_buy_quote_volume, candle.taker_buy_quote_volume);
+            continue;
+        }
+
+        aggregated.push(crate::storage::OhlcvCandle {
+            open_time_ms: bucket_open,
+            close_time_ms: candle.close_time_ms,
+            open_price: candle.open_price,
+            high_price: candle.high_price,
+            low_price: candle.low_price,
+            close_price: candle.close_price,
+            base_volume: candle.base_volume,
+            quote_volume: candle.quote_volume,
+            trade_count: candle.trade_count,
+            taker_buy_base_volume: candle.taker_buy_base_volume,
+            taker_buy_quote_volume: candle.taker_buy_quote_volume,
+        });
+    }
+
+    validate_candle_order(&aggregated)?;
+    Ok(aggregated)
+}
+
+fn sum_optional(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left + right),
+        _ => None,
+    }
+}
+
+fn sum_optional_i64(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left + right),
+        _ => None,
     }
 }
 

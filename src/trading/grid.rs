@@ -88,6 +88,10 @@ impl Strategy for StaticGridStrategy {
         serde_json::to_value(&self.config).expect("grid configuration is serializable")
     }
 
+    fn requires_previous_candle(&self) -> bool {
+        matches!(self.config.anchor, GridAnchor::PreviousClose)
+    }
+
     fn on_start(&mut self, context: &StrategyStartContext<'_>) -> Result<StrategyOutput, String> {
         if self.initialized {
             return Err("static grid cannot be initialized twice".into());

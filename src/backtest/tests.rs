@@ -156,6 +156,7 @@ impl Strategy for FailingStrategy {
 fn basic_config(dataset_id: i64, comparison_id: &str) -> BacktestRunConfig {
     BacktestRunConfig {
         dataset_id,
+        replay_interval: ReplayInterval::OneMinute,
         start_time_ms: None,
         end_time_ms: None,
         comparison_id: Some(comparison_id.into()),
@@ -589,6 +590,7 @@ fn full_xagusdt_grid_regression() {
     }).unwrap();
     let make_config = |comparison_id: &str| BacktestRunConfig {
         dataset_id: 1,
+        replay_interval: ReplayInterval::OneMinute,
         start_time_ms: Some(FIRST_ACTIVE_OPEN_MS),
         end_time_ms: Some(LAST_CLOSE_MS),
         comparison_id: Some(comparison_id.into()),
@@ -652,4 +654,89 @@ fn full_xagusdt_grid_regression() {
     if std::env::var_os("XAGUSDT_REGRESSION_DB").is_none() {
         cleanup(&path);
     }
+}
+
+
+#[test]
+fn aggregates_one_minute_candles_into_utc_hour_buckets() {
+    let source = vec![
+        crate::storage::OhlcvCandle {
+            open_time_ms: 3_600_000,
+            close_time_ms: 3_659_999,
+            open_price: 100.0,
+            high_price: 102.0,
+            low_price: 99.0,
+            close_price: 101.0,
+            base_volume: 10.0,
+            quote_volume: Some(1000.0),
+            trade_count: Some(5),
+            taker_buy_base_volume: Some(4.0),
+            taker_buy_quote_volume: Some(400.0),
+        },
+        crate::storage::OhlcvCandle {
+            open_time_ms: 3_660_000,
+            close_time_ms: 3_719_999,
+            open_price: 101.0,
+            high_price: 104.0,
+            low_price: 100.0,
+            close_price: 103.0,
+            base_volume: 20.0,
+            quote_volume: Some(2000.0),
+            trade_count: Some(7),
+            taker_buy_base_volume: Some(8.0),
+            taker_buy_quote_volume: Some(800.0),
+        },
+        crate::storage::OhlcvCandle {
+            open_time_ms: 7_200_000,
+            close_time_ms: 7_259_999,
+            open_price: 104.0,
+            high_price: 105.0,
+            low_price: 103.0,
+            close_price: 104.5,
+            base_volume: 5.0,
+            quote_volume: Some(500.0),
+            trade_count: Some(2),
+            taker_buy_base_volume: Some(2.0),
+            taker_buy_quote_volume: Some(200.0),
+        },
+    ];
+
+    let aggregated = aggregate_candles(&source, ReplayInterval::OneHour).unwrap();
+    assert_eq!(aggregated.len(), 2);
+    assert_eq!(aggregated[0].open_time_ms, 3_600_000);
+    assert_eq!(aggregated[0].close_time_ms, 3_719_999);
+    assert_eq!(aggregated[0].open_price, 100.0);
+    assert_eq!(aggregated[0].high_price, 104.0);
+    assert_eq!(aggregated[0].low_price, 99.0);
+    assert_eq!(aggregated[0].close_price, 103.0);
+    assert_eq!(aggregated[0].base_volume, 30.0);
+    assert_eq!(aggregated[0].trade_count, Some(12));
+    assert_eq!(aggregated[1].open_time_ms, 7_200_000);
+}
+
+#[test]
+fn previous_close_strategy_reserves_first_replay_candle_when_history_starts_at_requested_range() {
+    let path = temp_database("auto-preroll");
+    let (reader, dataset_id) = seed_dataset(&path);
+    let engine = BacktestEngine::new(Arc::clone(&reader));
+    let mut config = basic_config(dataset_id, "auto-preroll");
+    config.start_time_ms = Some(0);
+    config.end_time_ms = Some(179_999);
+
+    let mut strategy = StaticGridStrategy::new(StaticGridConfig {
+        anchor: GridAnchor::PreviousClose,
+        fixed_anchor_price: None,
+        spacing_bps: 100.0,
+        levels_per_side: 1,
+        quantity_per_order: 1.0,
+        time_in_force: TimeInForce::Gtc,
+    }).unwrap();
+
+    let result = engine.run(&config, &mut strategy).expect("run with reserved pre-roll");
+    assert!(result.reserved_first_candle_as_preroll);
+    assert_eq!(result.previous_candle_open_time_ms, Some(0));
+    assert_eq!(result.effective_start_time_ms, 60_000);
+    assert_eq!(result.candles_processed, 2);
+
+    cleanup(&path);
 }
