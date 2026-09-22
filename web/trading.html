@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Trading · Binance Grid</title>
+    <link rel="stylesheet" href="/styles.css?v=trading-1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Binance Grid home">
+          <span class="brand-mark">BG</span>
+          <span>
+            <strong>Binance Grid</strong>
+            <small>Private quant console</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Main navigation">
+          <a href="/">Console</a>
+          <a href="/market.html">Market</a>
+          <a href="/data-downloader.html">Data Downloader</a>
+          <a href="/backtests.html">Backtest</a>
+          <a class="active" href="/trading.html" aria-current="page">Trading</a>
+          <a href="/security.html">Security</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <span class="environment-pill"><span class="status-dot pending" id="trading-top-dot"></span><span id="trading-top-label">Paper mode</span></span>
+          <form method="post" action="/logout">
+            <button class="button button--secondary" type="submit">Sign out</button>
+          </form>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="trading-page">
+        <section class="trading-mode-header" aria-labelledby="trading-heading">
+          <div>
+            <p class="eyebrow">Shared execution workspace</p>
+            <h1 id="trading-heading">Trading</h1>
+            <p class="lede">Backend-owned Paper runtime now. This same workspace remains the operational surface when Live execution is unlocked later.</p>
+          </div>
+
+          <div class="trading-mode-block">
+            <span class="trading-mode-label">Execution mode</span>
+            <div class="trading-mode-selector" role="group" aria-label="Execution mode">
+              <button id="trading-mode-paper" class="trading-mode-option is-active" type="button" aria-pressed="true">PAPER</button>
+              <button id="trading-mode-live" class="trading-mode-option trading-mode-option--locked" type="button" aria-pressed="false" disabled>LIVE <span>Locked</span></button>
+            </div>
+            <p class="trading-mode-note">Live execution is locked server-side until Phase 8.</p>
+          </div>
+        </section>
+
+        <section class="trading-status-grid" aria-label="Trading runtime status">
+          <article class="status-card trading-status-card">
+            <div class="card-header">
+              <p>Paper run</p>
+              <span id="trading-run-badge" class="badge badge--muted">Checking</span>
+            </div>
+            <strong id="trading-run-id">—</strong>
+            <span id="trading-run-status">Looking for a Paper run…</span>
+          </article>
+
+          <article class="status-card trading-status-card">
+            <div class="card-header">
+              <p>Binance feed</p>
+              <span class="status-dot pending" id="trading-feed-dot"></span>
+            </div>
+            <strong id="trading-feed-label">Unknown</strong>
+            <span id="trading-feed-detail">No Paper runtime selected</span>
+          </article>
+
+          <article class="status-card trading-status-card">
+            <div class="card-header">
+              <p>Backend connection</p>
+              <span class="status-dot pending" id="trading-connection-dot"></span>
+            </div>
+            <strong id="trading-connection-label">Connecting</strong>
+            <span id="trading-connection-detail">Reading protected Paper state</span>
+          </article>
+        </section>
+
+        <section class="panel trading-context-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Paper workspace</p>
+              <h2>Runtime context</h2>
+            </div>
+            <span class="badge">Backend owned</span>
+          </div>
+
+          <div class="trading-context-grid">
+            <div>
+              <span>Symbol</span>
+              <strong id="trading-symbol">—</strong>
+            </div>
+            <div>
+              <span>Market</span>
+              <strong id="trading-market-type">—</strong>
+            </div>
+            <div>
+              <span>Replay interval</span>
+              <strong id="trading-interval">—</strong>
+            </div>
+            <div>
+              <span>Strategy</span>
+              <strong id="trading-strategy">—</strong>
+            </div>
+          </div>
+
+          <p class="panel-note trading-runtime-note">Closing or refreshing this page does not stop a Paper run. Runtime ownership remains on the Render backend.</p>
+        </section>
+      </main>
+    </div>
+
+    <script src="/trading.js?v=1"></script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.5 COMPLETE
+Status: IN PROGRESS — 4.1–4.5 + 4.6A COMPLETE
 
 ## Prerequisite
 
@@ -140,10 +140,10 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.6A — Page shell + mode/status header
 
-- [ ] Add the authenticated **Trading** page and navigation entry.
-- [ ] Add a prominent **PAPER | LIVE** selector.
-- [ ] Keep Live visibly locked in Phase 4.
-- [ ] Show run ID/status and Binance feed/connection health.
+- [x] Add the authenticated **Trading** page and navigation entry.
+- [x] Add a prominent **PAPER | LIVE** selector.
+- [x] Keep Live visibly locked in Phase 4.
+- [x] Show run ID/status and Binance feed/connection health.
 
 **Checkpoint:** The permanent Paper/Live page shell exists with unambiguous mode/status state.
 

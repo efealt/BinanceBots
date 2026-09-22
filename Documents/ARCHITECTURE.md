@@ -311,12 +311,34 @@ Focused tests verify monotonic snapshot revisions, subscribe-before-snapshot boo
 
 This completes the Phase 4.5 backend control/snapshot/stream layer; the Trading page itself begins in Phase 4.6.
 
+## Phase 4.6A Shared Trading page shell
+
+The authenticated application now includes `/trading.html`, linked from the main navigation on every existing app page.
+
+The Phase 4.6A shell establishes the permanent shared Paper/Live surface without adding run controls yet:
+
+- a prominent **PAPER | LIVE** mode selector with Paper selected;
+- Live is visibly disabled and labeled locked, with the page stating that server-side Live execution remains locked until Phase 8;
+- a Paper-run status card showing the selected backend run ID and runtime/canonical status;
+- a Binance-feed status card driven from the backend Paper snapshot;
+- a backend-connection card showing REST/stream connectivity;
+- runtime context for symbol, market type, replay interval, and strategy.
+
+On load, the page queries the protected Trading API, prefers an active `arming`/`running` Paper run when one exists, otherwise shows the newest persisted Paper run, and reads its complete backend snapshot. If that run is active, the page attaches to the authenticated per-run WebSocket from Phase 4.5C so header/feed status stays current. The browser remains an observer; closing or refreshing the page does not affect the backend runtime.
+
+The page is served by the existing protected static-file fallback, so it inherits the same server-enforced authentication boundary as the rest of the application.
+
+Focused frontend checks verify the Trading navigation entry on all app pages, required status/header elements, JavaScript syntax, and the visibly disabled Live selector.
+
+Phase 4.6A does not add strategy configuration, Start/Stop controls, charts, or portfolio/order audit panels; those remain 4.6B–4.6D.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
 - **Market** — live market chart, quote, depth, trades, and indicators.
 - **Data Downloader** — historical dataset creation, catalog, date editing, and missing-data import.
 - **Backtest** — stored OHLCV charting and research diagnostics.
+- **Trading** — shared authenticated Paper/Live execution workspace; Phase 4 currently exposes the mode/status shell with Live locked.
 - **Security** — authenticated login-history audit view.
 
 ## Storage
