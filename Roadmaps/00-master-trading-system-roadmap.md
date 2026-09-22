@@ -66,15 +66,23 @@ Phase 3 did not expose a frontend or Paper runtime. The same strategy code is de
 
 **Exit achieved:** The simple grid runs end to end through the shared Backtest engine and canonical storage model on the full committed real XAGUSDT regression dataset, with deterministic repeatability and no mode-specific strategy implementation.
 
-### Phase 3.5 — Backtest Strategy UI checkpoint — IMPLEMENTED / PRODUCTION SMOKE PENDING
+### Phase 3.5 — Backtest Strategy UI checkpoint — COMPLETE
 
 Implemented the authenticated Backtest job API, backend UTC 1m/1h/1d replay aggregation, strategy/execution configuration UI, 0–100% progress reporting with 2.5-second polling, persisted-run result reconstruction, KPI output, and complete fill audit.
 
 The top historical dataset and interval selectors are the only market/timeframe selectors. Backtests execute on Render in backend-owned blocking tasks and continue independently of the browser. The current small Render instance accepts only one heavy Backtest job at a time.
 
-Automated verification is green and the implementation is deployed live. The remaining checkpoint is one authenticated production-UI smoke run against the Render-resident historical database; no public or bypass test endpoint was introduced solely for verification.
+Automated verification is green and the implementation is deployed live. The authenticated production XAGUSDT run was launched from the hosted page, reached 100%, persisted as Run #1, and returned coherent fills/KPIs.
 
-**Exit:** Mark COMPLETE after the authenticated production run is launched from the hosted page, reaches 100%, and its persisted result is verified.
+**Exit achieved:** The user can independently launch and inspect a historical strategy run through the hosted application while the backend remains the sole owner of strategy execution and persistence.
+
+### Phase 3.6 — Visual Backtest Analysis
+
+Add complete run visualization before Paper trading: underlying replay price with persisted order/grid levels and fill markers, strategy equity against a constant Buy & Hold benchmark of the same underlying, drawdown comparison, signed position/exposure, and explicit strategy/run parameter summary.
+
+Buy & Hold always starts with the same initial capital at the first active replay candle open and holds the underlying continuously through the effective Backtest period. Strategy equity remains the persisted canonical series, so flat/no-exposure periods remain flat while Buy & Hold continues to move.
+
+**Exit:** A completed Backtest run can be visually audited over its full effective period without changing strategy logic.
 
 ### Phase 4 — Live Paper runtime
 
@@ -151,6 +159,8 @@ Phase 2   Backtest engine
 Phase 3   Simple grid test fixture + full committed XAGUSDT regression DB
    ↓
 Phase 3.5 Backtest Strategy UI / user validation checkpoint
+   ↓
+Phase 3.6 Visual Backtest Analysis + Buy & Hold benchmark
    ↓
 Phase 4   Paper in real time
    ↓
