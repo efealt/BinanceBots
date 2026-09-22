@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-2" />
+    <link rel="stylesheet" href="/styles.css?v=trading-3" />
   </head>
   <body>
     <div class="app-shell">
@@ -204,6 +204,27 @@
           </form>
         </section>
 
+        <section class="panel trading-chart-panel" aria-labelledby="trading-chart-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Live Paper market</p>
+              <h2 id="trading-chart-heading">Candles, order lifetimes, and fills</h2>
+            </div>
+            <span id="trading-chart-badge" class="badge badge--muted">Binance 1m</span>
+          </div>
+
+          <div class="trading-chart-legend" aria-label="Trading chart series">
+            <span><i class="trading-chart-swatch trading-chart-swatch--candles"></i>Candles · quote price</span>
+            <span><i class="trading-chart-swatch trading-chart-swatch--buy-order"></i>Buy order lifetime · quote price</span>
+            <span><i class="trading-chart-swatch trading-chart-swatch--sell-order"></i>Sell order lifetime · quote price</span>
+            <span><i class="trading-chart-marker trading-chart-marker--buy"></i>Buy fill · quote price</span>
+            <span><i class="trading-chart-marker trading-chart-marker--sell"></i>Sell fill · quote price</span>
+          </div>
+
+          <div id="trading-live-chart" class="trading-live-chart" role="img" aria-label="Live Binance candlestick chart with Paper order levels and fill markers"></div>
+          <p id="trading-chart-status" class="panel-note trading-chart-status" role="status">Loading chart state…</p>
+        </section>
+
         <section class="panel trading-context-panel">
           <div class="panel-heading">
             <div>
@@ -237,6 +258,7 @@
       </main>
     </div>
 
-    <script src="/trading.js?v=2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
+    <script src="/trading.js?v=3"></script>
   </body>
 </html>

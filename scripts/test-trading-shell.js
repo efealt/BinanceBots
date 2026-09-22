@@ -24,6 +24,8 @@ for (const required of [
   'id="trading-run-status"',
   'id="trading-feed-label"',
   'id="trading-connection-label"',
+  'id="trading-live-chart"',
+  'id="trading-chart-status"',
 ]) {
   if (!trading.includes(required)) {
     throw new Error(`Trading shell is missing ${required}`);
@@ -61,6 +63,10 @@ for (const required of [
   if (!trading.includes(required)) throw new Error("Trading controls are missing " + required);
 }
 
+if (!trading.includes("https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js")) {
+  throw new Error("Trading chart must load the pinned ECharts runtime");
+}
+
 const tradingJs = fs.readFileSync("web/trading.js", "utf8");
 for (const required of [
   'requestJson("/api/trading/runs"',
@@ -68,8 +74,26 @@ for (const required of [
   'setConfigLocked(Boolean(snapshot.runtime_active))',
   'paperModeButton.disabled = locked',
   'applySnapshotToConfig(snapshot)',
+  '"/api/trading/runs/" + runId + "/chart"',
+  'type: "candlestick"',
+  'type: "custom"',
+  'name: "Buy fills"',
+  'name: "Sell fills"',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }
 
-console.log("Trading control contract OK");
+const tradingApi = fs.readFileSync("src/api/trading.rs", "utf8");
+if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/chart", get(run_chart))')) {
+  throw new Error("Trading API is missing the authenticated chart bootstrap route");
+}
+const paper = fs.readFileSync("src/paper.rs", "utf8");
+for (const required of [
+  "trading_run_order_levels(run_id)",
+  "trading_run_fill_audit(run_id)",
+  'MarketKey::new(&snapshot.symbol, "1m", market_type)',
+]) {
+  if (!paper.includes(required)) throw new Error("Paper chart contract is missing: " + required);
+}
+
+console.log("Trading control + live chart contract OK");

@@ -346,13 +346,27 @@ The shared authenticated Trading page now operates the Phase 4 Paper control API
 
 The controls deliberately do not add chart/order/fill visualization; those are Phase 4.6C and 4.6D.
 
+## Phase 4.6C Live chart and execution overlays
+
+The Trading page now includes a live ECharts candlestick view backed only by server-owned state.
+
+- `GET /api/trading/runs/{run_id}/chart` is authenticated with the rest of the Trading API.
+- For an active Paper run, the chart bootstrap returns the backend Binance 1-minute market-feed window, currently bounded by the market service's 1,000-candle runtime capacity.
+- Order overlays come from canonical persisted orders plus terminal order-state events through `trading_run_order_levels`, so each horizontal buy/sell level carries its actual active-from and active-to timestamps.
+- Fill markers come from the complete canonical fill audit through `trading_run_fill_audit`.
+- WebSocket snapshots continue updating the current 1-minute candle in place. New orders/fills trigger a chart-overlay refresh from canonical storage, so the browser does not invent execution history.
+- The chart explicitly labels its base feed as Binance 1m even when the strategy replay interval is 1h or 1d; strategy timing semantics remain backend-owned and unchanged.
+- The live candle window is runtime market context, not a replacement for the complete persisted run audit or Phase 5 historical replay. An inactive persisted run therefore does not claim retained live candles after its backend runtime is gone.
+
+Phase 4.6C does not add portfolio, open-order table, exposure, or full event-log panels; those remain Phase 4.6D.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
 - **Market** — live market chart, quote, depth, trades, and indicators.
 - **Data Downloader** — historical dataset creation, catalog, date editing, and missing-data import.
 - **Backtest** — stored OHLCV charting and research diagnostics.
-- **Trading** — shared authenticated Paper/Live execution workspace; Phase 4 currently exposes the mode/status shell with Live locked.
+- **Trading** — shared authenticated Paper/Live execution workspace with Paper controls, live Binance candles, canonical order-lifetime overlays, and fill markers; Live remains locked.
 - **Security** — authenticated login-history audit view.
 
 ## Storage

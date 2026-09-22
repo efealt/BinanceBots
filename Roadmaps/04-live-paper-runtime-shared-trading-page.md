@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6B COMPLETE
+Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6C COMPLETE
 
 ## Prerequisite
 
@@ -158,9 +158,9 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.6C — Live chart + order/fill overlays
 
-- [ ] Render the live candlestick chart.
-- [ ] Draw active buy/sell grid/order levels for their actual active lifetime.
-- [ ] Add buy/sell fill markers in real time.
+- [x] Render the live candlestick chart.
+- [x] Draw active buy/sell grid/order levels for their actual active lifetime.
+- [x] Add buy/sell fill markers in real time.
 
 **Checkpoint:** The chart visually explains what the Paper strategy is doing against the live market.
 

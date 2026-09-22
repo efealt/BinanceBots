@@ -1,6 +1,6 @@
 use crate::{
     market::MarketType,
-    paper::{PaperError, PaperManager, PaperSnapshot, PaperStartConfig},
+    paper::{PaperChartSnapshot, PaperError, PaperManager, PaperSnapshot, PaperStartConfig},
     storage::{ExactDecimal, TimeInForce},
     trading::{ExecutionAssumptions, GridAnchor, StaticGridConfig, TradingInterval},
 };
@@ -60,6 +60,7 @@ pub fn router(manager: Arc<PaperManager>) -> Router {
     Router::new()
         .route("/api/trading/runs", post(start_run).get(list_runs))
         .route("/api/trading/runs/{run_id}", get(run_snapshot))
+        .route("/api/trading/runs/{run_id}/chart", get(run_chart))
         .route("/api/trading/runs/{run_id}/stop", post(stop_run))
         .route("/api/trading/runs/{run_id}/stream", get(run_stream))
         .with_state(manager)
@@ -125,6 +126,14 @@ async fn run_snapshot(
 ) -> Result<Json<PaperSnapshot>, TradingApiError> {
     validate_run_id(run_id)?;
     Ok(Json(manager.snapshot(run_id).await?))
+}
+
+async fn run_chart(
+    State(manager): State<Arc<PaperManager>>,
+    Path(run_id): Path<i64>,
+) -> Result<Json<PaperChartSnapshot>, TradingApiError> {
+    validate_run_id(run_id)?;
+    Ok(Json(manager.chart_snapshot(run_id).await?))
 }
 
 async fn list_runs(

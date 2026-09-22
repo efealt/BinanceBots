@@ -4,7 +4,7 @@ use crate::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderStateInput, OrderStatus, OrderType,
         PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader,
-        TradingRunSpec,
+        TradingFillAudit, TradingOrderLevel, TradingRunSpec,
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
@@ -123,6 +123,20 @@ pub struct PaperSnapshot {
     pub recent_events: Vec<PaperRuntimeEvent>,
     pub latest_replay_candle: Option<MarketCandle>,
     pub last_base_candle_open_ms: Option<i64>,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PaperChartSnapshot {
+    pub run_id: i64,
+    pub symbol: String,
+    pub market_type: String,
+    pub base_interval: String,
+    pub replay_interval: String,
+    pub runtime_active: bool,
+    pub candles: Vec<PaperBaseCandleView>,
+    pub order_levels: Vec<TradingOrderLevel>,
+    pub fills: Vec<TradingFillAudit>,
     pub updated_at_ms: i64,
 }
 
@@ -332,6 +346,26 @@ impl PaperManager {
             return Ok(handle.snapshot.read().await.clone());
         }
         self.persisted_snapshot(run_id)
+    }
+
+    pub async fn chart_snapshot(&self, run_id: i64) -> Result<PaperChartSnapshot, PaperError> {
+        let snapshot = self.snapshot(run_id).await?;
+        let order_levels = self.storage.trading_run_order_levels(run_id)?;
+        let fills = self.storage.trading_run_fill_audit(run_id)?;
+        let market_snapshot = if snapshot.runtime_active {
+            let market_type = MarketType::parse(&snapshot.market_type)?;
+            let key = MarketKey::new(&snapshot.symbol, "1m", market_type)?;
+            Some(self.market.snapshot_for(key).await?)
+        } else {
+            None
+        };
+
+        Ok(paper_chart_snapshot(
+            &snapshot,
+            market_snapshot.as_ref(),
+            order_levels,
+            fills,
+        ))
     }
 
     pub async fn stream_bootstrap(
@@ -1261,6 +1295,28 @@ fn paper_base_candle(candle: &Candle) -> PaperBaseCandleView {
         close: candle.close,
         volume: candle.volume,
         is_closed: candle.is_closed,
+    }
+}
+
+fn paper_chart_snapshot(
+    snapshot: &PaperSnapshot,
+    market: Option<&MarketSnapshot>,
+    order_levels: Vec<TradingOrderLevel>,
+    fills: Vec<TradingFillAudit>,
+) -> PaperChartSnapshot {
+    PaperChartSnapshot {
+        run_id: snapshot.run_id,
+        symbol: snapshot.symbol.clone(),
+        market_type: snapshot.market_type.clone(),
+        base_interval: "1m".into(),
+        replay_interval: snapshot.replay_interval.clone(),
+        runtime_active: snapshot.runtime_active,
+        candles: market
+            .map(|market| market.candles.iter().map(paper_base_candle).collect())
+            .unwrap_or_default(),
+        order_levels,
+        fills,
+        updated_at_ms: snapshot.updated_at_ms,
     }
 }
 
@@ -2471,6 +2527,15 @@ mod tests {
         assert_eq!(candle.open_time_ms, 120_000);
         assert!(!candle.is_closed);
         assert_eq!(candle.close, 101.0);
+
+        let chart = paper_chart_snapshot(&snapshot, Some(&market), Vec::new(), Vec::new());
+        assert_eq!(chart.run_id, 1);
+        assert_eq!(chart.base_interval, "1m");
+        assert_eq!(chart.replay_interval, "1m");
+        assert_eq!(chart.candles.len(), 1);
+        assert_eq!(chart.candles[0].open_time_ms, 120_000);
+        assert!(chart.order_levels.is_empty());
+        assert!(chart.fills.is_empty());
     }
 
     #[tokio::test]
