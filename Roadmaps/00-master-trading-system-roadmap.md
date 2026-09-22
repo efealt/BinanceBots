@@ -86,6 +86,16 @@ Automated verification is green, the code is deployed live, and the authenticate
 
 **Exit achieved:** A completed Backtest run can be visually audited over its full effective period without changing strategy logic.
 
+### Phase 3.7 — Strategy Module Structure
+
+Detailed roadmap: `Roadmaps/03.7-strategy-module-structure.md`
+
+Before Paper runtime work begins, reorganize strategy implementations into a dedicated `src/trading/strategies/` namespace with one strategy per module. Move the existing static-grid fixture out of the generic `grid.rs` file and reserve separate modules for dynamic grid, volatility grid, mean reversion, and breakout without inventing their rules yet.
+
+The shared `Strategy` interface, portfolio/accounting, execution engine, Backtest/Paper/Live contracts, and current static-grid behavior remain unchanged.
+
+**Exit:** Strategy implementations are structurally independent modules and the existing frozen regression is unchanged.
+
 ### Phase 4 — Live Paper runtime + shared Trading page
 
 Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
@@ -175,6 +185,8 @@ Phase 3   Simple grid test fixture + full committed XAGUSDT regression DB
 Phase 3.5 Backtest Strategy UI / user validation checkpoint
    ↓
 Phase 3.6 Visual Backtest Analysis + Buy & Hold benchmark
+   ↓
+Phase 3.7 Strategy module structure
    ↓
 Phase 4   Paper in real time + shared Paper/Live Trading page (Live locked)
    ↓
