@@ -217,6 +217,7 @@ impl PaperManager {
             strategy,
             portfolio,
             execution,
+            status: RunStatus::Created,
         };
 
         let initial_snapshot = PaperSnapshot {
@@ -271,17 +272,20 @@ impl PaperManager {
     }
 
     pub async fn stop(&self, run_id: i64) -> Result<PaperSnapshot, PaperError> {
-        let handle = self
-            .runtimes
-            .lock()
-            .await
-            .get(&run_id)
-            .cloned()
-            .ok_or(PaperError::RunNotActive(run_id))?;
+        let handle = self.runtimes.lock().await.get(&run_id).cloned();
+        let Some(handle) = handle else {
+            let snapshot = self.persisted_snapshot(run_id)?;
+            if snapshot.canonical_status == RunStatus::Stopped.as_str() {
+                return Ok(snapshot);
+            }
+            return Err(PaperError::RunNotActive(run_id));
+        };
+
         let status = handle.snapshot.read().await.runtime_status.clone();
         if !matches!(status.as_str(), "arming" | "running") {
             return Ok(handle.snapshot.read().await.clone());
         }
+
         let _ = handle.stop_tx.send(true);
         for _ in 0..40 {
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -466,6 +470,7 @@ impl PaperManager {
 
         loop {
             tokio::select! {
+                biased;
                 changed = stop_rx.changed() => {
                     if changed.is_err() || *stop_rx.borrow() {
                         let now = system_now_ms();
@@ -500,6 +505,10 @@ impl PaperManager {
                         snapshot.feed_status = market_snapshot.status;
                         snapshot.updated_at_ms = now;
                     }).await;
+
+                    if *stop_rx.borrow() {
+                        continue;
+                    }
 
                     if !started {
                         if now < boundary {
@@ -559,6 +568,10 @@ impl PaperManager {
                     };
 
                     for candle in candidates {
+                        if *stop_rx.borrow() {
+                            break;
+                        }
+
                         let completed = match aggregator.push(&candle) {
                             Ok(completed) => completed,
                             Err(error) => {
@@ -573,6 +586,10 @@ impl PaperManager {
                         }).await;
 
                         if let Some(replay_candle) = completed {
+                            if *stop_rx.borrow() {
+                                break;
+                            }
+
                             match core.process_candle(&replay_candle) {
                                 Ok(fills) => {
                                     self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
@@ -674,16 +691,21 @@ struct PaperRunCore {
     strategy: Box<dyn Strategy + Send>,
     portfolio: PortfolioState,
     execution: SimulatedExecution,
+    status: RunStatus,
 }
 
 impl PaperRunCore {
     fn start(&mut self, start_time_ms: i64, previous: &MarketCandle) -> Result<(), PaperError> {
+        if self.status != RunStatus::Created {
+            return Err(PaperError::RunNotActive(self.run_id));
+        }
         self.storage.set_trading_run_status(
             self.run_id,
             RunStatus::Running,
             paper_times(start_time_ms),
             None,
         )?;
+        self.status = RunStatus::Running;
         let context = StrategyStartContext {
             now_ms: start_time_ms,
             previous_candle: Some(previous),
@@ -697,6 +719,10 @@ impl PaperRunCore {
         &mut self,
         candle: &MarketCandle,
     ) -> Result<Vec<crate::trading::SimulatedFill>, PaperError> {
+        if self.status != RunStatus::Running {
+            return Err(PaperError::RunNotActive(self.run_id));
+        }
+
         let fills = self
             .execution
             .process_candle(candle)
@@ -853,6 +879,13 @@ impl PaperRunCore {
     }
 
     fn stop(&mut self, event_time_ms: i64, reason: &str) -> Result<(), PaperError> {
+        if self.status == RunStatus::Stopped {
+            return Ok(());
+        }
+        if matches!(self.status, RunStatus::Completed | RunStatus::Failed) {
+            return Ok(());
+        }
+
         self.expire_pending(event_time_ms, reason)?;
         let run = self.storage.trading_run(self.run_id)?;
         if matches!(run.status, RunStatus::Created | RunStatus::Running) {
@@ -862,11 +895,18 @@ impl PaperRunCore {
                 EventTimes::new(event_time_ms),
                 Some(reason),
             )?;
+            self.status = RunStatus::Stopped;
+        } else {
+            self.status = run.status;
         }
         Ok(())
     }
 
     fn fail(&mut self, event_time_ms: i64, reason: &str) -> Result<(), PaperError> {
+        if matches!(self.status, RunStatus::Completed | RunStatus::Failed | RunStatus::Stopped) {
+            return Ok(());
+        }
+
         self.expire_pending(event_time_ms, reason)?;
         let run = self.storage.trading_run(self.run_id)?;
         if matches!(run.status, RunStatus::Created | RunStatus::Running) {
@@ -876,6 +916,9 @@ impl PaperRunCore {
                 EventTimes::new(event_time_ms),
                 Some(reason),
             )?;
+            self.status = RunStatus::Failed;
+        } else {
+            self.status = run.status;
         }
         Ok(())
     }
@@ -1578,6 +1621,7 @@ mod tests {
             strategy,
             portfolio: PortfolioState::new(1000.0).unwrap(),
             execution: SimulatedExecution::new(assumptions).unwrap(),
+            status: RunStatus::Created,
         }
     }
 
@@ -1606,6 +1650,7 @@ mod tests {
             strategy: Box::new(NoOpStrategy),
             portfolio: PortfolioState::new(1000.0).unwrap(),
             execution: SimulatedExecution::new(ExecutionAssumptions::default()).unwrap(),
+            status: RunStatus::Created,
         }
     }
 
@@ -1837,6 +1882,167 @@ mod tests {
         assert!((fills[0].price - 100.0).abs() < 1e-12);
         assert!(core.open_orders().is_empty());
 
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn stop_is_idempotent_persists_reason_and_blocks_future_processing() {
+        let path = temp_database("stop-idempotent");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "stopidempotent");
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+        core.stop(90_000, "user_stop").unwrap();
+
+        let after_first_stop = storage.trading_run_history(core.run_id).unwrap();
+        let event_count = after_first_stop.events.len();
+        assert_eq!(after_first_stop.run.status, RunStatus::Stopped);
+        assert_eq!(core.status, RunStatus::Stopped);
+        assert_eq!(
+            after_first_stop.status_events.last().and_then(|event| event.note.as_deref()),
+            Some("user_stop")
+        );
+        assert_eq!(
+            after_first_stop
+                .status_events
+                .iter()
+                .filter(|event| event.status == RunStatus::Stopped)
+                .count(),
+            1
+        );
+
+        core.stop(100_000, "user_stop").unwrap();
+        let after_second_stop = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(after_second_stop.events.len(), event_count);
+        assert_eq!(
+            after_second_stop
+                .status_events
+                .iter()
+                .filter(|event| event.status == RunStatus::Stopped)
+                .count(),
+            1
+        );
+
+        let later_candle = MarketCandle {
+            open_time_ms: 120_000,
+            close_time_ms: 179_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        assert!(matches!(
+            core.process_candle(&later_candle),
+            Err(PaperError::RunNotActive(run_id)) if run_id == core.run_id
+        ));
+        let after_rejected_candle = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(after_rejected_candle.events.len(), event_count);
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[tokio::test]
+    async fn repeated_manager_stop_returns_persisted_stopped_run_without_runtime_handle() {
+        let path = temp_database("manager-stop-idempotent");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "managerstop");
+        let run_id = core.run_id;
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+        core.stop(90_000, "user_stop").unwrap();
+        drop(core);
+
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::new()),
+        };
+        let snapshot = manager.stop(run_id).await.unwrap();
+        assert_eq!(snapshot.canonical_status, "stopped");
+        assert_eq!(snapshot.runtime_status, "stopped");
+
+        let history = storage.trading_run_history(run_id).unwrap();
+        assert_eq!(
+            history
+                .status_events
+                .iter()
+                .filter(|event| event.status == RunStatus::Stopped)
+                .count(),
+            1
+        );
+
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[tokio::test]
+    async fn dropping_browser_subscription_does_not_signal_or_remove_backend_runtime() {
+        let path = temp_database("browser-disconnect");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "browserdisconnect");
+        let run_id = core.run_id;
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::new()),
+        };
+        let snapshot = manager.persisted_snapshot(run_id).unwrap();
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let (updates_tx, _) = broadcast::channel(4);
+        let handle = Arc::new(PaperRuntimeHandle {
+            snapshot: Arc::new(RwLock::new(snapshot)),
+            stop_tx,
+            updates_tx,
+        });
+        manager.runtimes.lock().await.insert(run_id, Arc::clone(&handle));
+
+        let browser_receiver = manager.subscribe(run_id).await.unwrap().unwrap();
+        drop(browser_receiver);
+
+        assert!(manager.runtimes.lock().await.contains_key(&run_id));
+        assert!(!*stop_rx.borrow());
+
+        core.stop(90_000, "test_cleanup").unwrap();
+        drop(handle);
+        drop(manager);
         drop(core);
         drop(storage);
         cleanup_database(&path);

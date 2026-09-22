@@ -209,6 +209,21 @@ Focused Phase 4.3 tests verify:
 
 Phase 4.3 does not certify stop/restart/gap-recovery behavior; that remains Phase 4.4.
 
+## Phase 4.4A Stop semantics and backend ownership
+
+Paper Stop is now an idempotent backend operation.
+
+- The in-memory Paper core tracks its canonical lifecycle and refuses any further candle processing once it is terminal.
+- A successful user stop expires pending simulated orders once, persists exactly one `stopped` transition with the `user_stop` reason, and marks the runtime core terminal.
+- Repeating Stop on the same in-memory run does not append duplicate stop events.
+- Repeating Stop after the in-memory runtime handle is gone returns the persisted stopped run instead of attempting a second transition.
+- The runtime loop gives a ready stop signal priority over market polling and re-checks the stop signal after asynchronous market/snapshot work before advancing the strategy.
+- Browser live-update subscriptions are observers only. Dropping a browser subscription does not signal Stop or remove the backend runtime handle.
+
+Focused tests cover stop idempotence, persisted reason, rejection of post-stop candle processing, repeated Stop without a runtime handle, and browser-subscription disconnect independence.
+
+Phase 4.4A does not define feed-gap recovery or service-restart recovery; those remain 4.4B and 4.4C.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
