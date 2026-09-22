@@ -76,25 +76,31 @@ Automated verification is green and the implementation is deployed live. The aut
 
 **Exit achieved:** The user can independently launch and inspect a historical strategy run through the hosted application while the backend remains the sole owner of strategy execution and persistence.
 
-### Phase 3.6 — Visual Backtest Analysis — IMPLEMENTED / VISUAL SMOKE PENDING
+### Phase 3.6 — Visual Backtest Analysis — COMPLETE
 
 Implemented complete run visualization before Paper trading: underlying replay price with persisted order/grid lifetimes and fill markers, strategy equity against a constant Buy & Hold benchmark of the same underlying, drawdown comparison, signed position/exposure, and explicit strategy/run parameter summary.
 
 Buy & Hold always starts with the same initial capital at the first active replay candle open and holds the underlying continuously through the effective Backtest period. Strategy equity remains the persisted canonical series, so flat/no-exposure periods remain flat while Buy & Hold continues to move.
 
-Automated verification is green and the code is deployed live. The remaining gate is authenticated visual inspection of production Run #1 so the rendered chart meaning/layout is verified rather than inferred from tests.
+Automated verification is green, the code is deployed live, and the authenticated production visual output was reviewed and accepted as sufficient for Backtest analysis.
 
-**Exit:** Mark COMPLETE after Run #1 is visually confirmed on the hosted Backtest page.
+**Exit achieved:** A completed Backtest run can be visually audited over its full effective period without changing strategy logic.
 
-### Phase 4 — Live Paper runtime
+### Phase 4 — Live Paper runtime + shared Trading page
 
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
 
 Paper uses the same strategy interface, canonical run model, portfolio/order state model, and simulated-execution component already proven in Backtest. The main change is the clock/data source: historical replay becomes real-time market input.
 
+Phase 4 also creates one new authenticated **Trading** page that is designed from the beginning for both Paper and future Live execution. The page is shared rather than duplicated because Paper and Live need the same operational view: live price/candlestick data, active grid/order levels on the chart, fills, open orders, current position/inventory, cash/equity/PnL, exposure, fees, strategy parameters, run status/run ID, connection/feed status, event/order/fill logs, and start/stop controls.
+
+The Trading page has a prominent **Paper / Live** mode selector. In Phase 4, Paper is fully functional and Live is visible but locked/disabled. A running mode cannot be switched by a casual toggle; the active run must be stopped before any future mode change. The browser remains a client only: Paper execution and state continue on Render if the page is closed.
+
+This same Trading page is retained for later phases. Phase 7 adds authenticated live-account observations and execution-readiness infrastructure behind the existing page while strategy-driven real orders remain disabled. Phase 8 unlocks the Live mode and routes the same strategy/order-intent flow through the real Binance execution adapter. No separate Live-trading page is planned.
+
 Paper must run independently of the browser and persist the same decisions, order intents, simulated orders/fills, positions, and equity/PnL records required for later replay comparison.
 
-**Exit:** The same strategy code can run for a real-time period in Paper mode, survive normal browser disconnects, and produce a complete persistent run without real-money execution.
+**Exit:** The same strategy code can run for a real-time period in Paper mode, survive normal browser disconnects, produce a complete persistent run without real-money execution, and be operated/observed through the shared Trading page with Live visibly locked.
 
 ### Phase 5 — Paper-period historical replay
 
@@ -131,13 +137,17 @@ Add authenticated Binance account connectivity and the real execution infrastruc
 
 Establish account/balance/position reads, open-order state, private order/fill updates, fees, exchange filters and rounding, idempotent client order IDs, reconnect/reconciliation, stale-data protection, risk limits, emergency-stop behavior, and persistent execution audit records.
 
+Phase 7 extends the **same Trading page built in Phase 4** with live-account observability and readiness state. The Live mode remains locked for strategy-driven execution, but the page can show real account balances, positions, open orders, connection/reconciliation status, exchange constraints, and safety state where appropriate. No parallel Live UI is created.
+
 The real executor must consume the same order-intent contract used by Backtest/Paper and write actual exchange acknowledgements/fills into the same Phase 1 canonical run model. Readiness is proven without permitting automated strategy orders.
 
-**Exit:** The system can observe/reconcile the live Binance account and has a verified execution/safety path, while automated real-money submission remains disabled.
+**Exit:** The system can observe/reconcile the live Binance account through the shared Trading page and has a verified execution/safety path, while automated real-money submission remains disabled.
 
 ### Phase 8 — Live trading and final three-way validation
 
 Only after Backtest/Paper validation is complete and Phase 7 execution/safety readiness is proven do we enable strategy-driven Live orders. This is the first phase in which the strategy may submit real-money orders.
+
+Phase 8 unlocks the **Live** mode on the shared Trading page created in Phase 4. Paper and Live use the same visual/operational surface; the execution adapter underneath changes from simulated execution to the real Binance executor. Live status must be unmistakable and real-money mode cannot be entered accidentally from an active Paper run.
 
 Run the same strategy version/configuration in Live and, where useful, Paper over the same real-time period. Persist actual Binance acknowledgements, fills, fees, timestamps, positions, and PnL through the canonical run model.
 
@@ -164,7 +174,7 @@ Phase 3.5 Backtest Strategy UI / user validation checkpoint
    ↓
 Phase 3.6 Visual Backtest Analysis + Buy & Hold benchmark
    ↓
-Phase 4   Paper in real time
+Phase 4   Paper in real time + shared Paper/Live Trading page (Live locked)
    ↓
 Phase 5   Later historical replay of that Paper period
    ↓
