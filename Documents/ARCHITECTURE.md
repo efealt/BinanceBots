@@ -91,6 +91,22 @@ Backtest equity persistence batches consecutive equity snapshots without changin
 
 Phase 3 remains backend-only. The strategy code is deployed on Render, but Phase 3 did not claim or perform a production-database XAGUSDT run because no safe backend invocation surface exists yet. The master Phase 3.5 UI checkpoint will expose authenticated user-triggered Backtest execution and inspection.
 
+## Phase 3.5 Backtest Strategy UI
+
+The authenticated Backtest page now exposes the backend historical replay engine. The dataset and replay interval selected in the page's top historical-data controls are authoritative for both charting and strategy replay; the lower strategy form does not ask for symbol, dataset, or timeframe again.
+
+Backtest jobs are owned by the Render backend. Creating a run returns a lightweight job ID, and the browser polls job status every 2.5 seconds. The backend reports integer replay progress from 0% through 100%; closing the browser does not stop the running backend task. The current Render plan is intentionally limited to one concurrent heavy backtest.
+
+Stored 1-minute OHLCV can be replayed as UTC 1-minute, 1-hour, or 1-day candles. Aggregation happens in Rust before strategy execution. Strategies can declare that they require a previous completed candle; when no earlier replay candle exists in the selected range, the first available replay candle is reserved as pre-roll and active replay begins on the next candle.
+
+The current UI strategy is the Phase 3 `static-grid-fixture`. It exposes initial capital, start/end dates, previous-close or fixed anchor, spacing, levels per side, order quantity, fees, spread, slippage, latency, touch vs trade-through limit fills, and partial-fill ratio. GTC is fixed because the current simulator does not yet implement IOC/FOK/GTX semantics.
+
+Completed results are reconstructed from canonical run persistence rather than browser state. The UI shows total return, final equity, max drawdown, fees, fill count, final position, realized PnL, effective replay range, pre-roll status, and a complete fill audit. The most recent run ID is kept in browser local storage only as a convenience pointer; the run itself remains in SQLite.
+
+### Current Phase 3.5 verification status
+
+GitHub Actions verifies JavaScript syntax, the Rust suite, backend replay aggregation/pre-roll behavior, and the full frozen XAGUSDT regression. The Phase 3.5 code is deployed and live on Render. A final authenticated production-UI smoke run against the Render-resident historical database still requires an invocation from an authenticated browser session; no unauthenticated test endpoint was added.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

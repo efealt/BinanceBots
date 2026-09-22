@@ -66,13 +66,15 @@ Phase 3 did not expose a frontend or Paper runtime. The same strategy code is de
 
 **Exit achieved:** The simple grid runs end to end through the shared Backtest engine and canonical storage model on the full committed real XAGUSDT regression dataset, with deterministic repeatability and no mode-specific strategy implementation.
 
-### Phase 3.5 — Backtest Strategy UI checkpoint
+### Phase 3.5 — Backtest Strategy UI checkpoint — IMPLEMENTED / PRODUCTION SMOKE PENDING
 
-Expose the proven backend Backtest engine and Phase 3 grid through a thin authenticated UI so the user can select stored historical data, configure strategy/execution inputs, launch a backend run, and inspect persisted results.
+Implemented the authenticated Backtest job API, backend UTC 1m/1h/1d replay aggregation, strategy/execution configuration UI, 0–100% progress reporting with 2.5-second polling, persisted-run result reconstruction, KPI output, and complete fill audit.
 
-The UI contains no strategy or simulation logic; it only configures and displays the backend system. This checkpoint is completed before any live Paper runtime work begins.
+The top historical dataset and interval selectors are the only market/timeframe selectors. Backtests execute on Render in backend-owned blocking tasks and continue independently of the browser. The current small Render instance accepts only one heavy Backtest job at a time.
 
-**Exit:** The user can independently launch and inspect a historical strategy run through the hosted application, while the backend remains the sole owner of strategy execution and persistence.
+Automated verification is green and the implementation is deployed live. The remaining checkpoint is one authenticated production-UI smoke run against the Render-resident historical database; no public or bypass test endpoint was introduced solely for verification.
+
+**Exit:** Mark COMPLETE after the authenticated production run is launched from the hosted page, reaches 100%, and its persisted result is verified.
 
 ### Phase 4 — Live Paper runtime
 
