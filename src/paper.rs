@@ -1390,7 +1390,7 @@ mod tests {
         ) -> Result<StrategyOutput, String> {
             Ok(StrategyOutput {
                 decisions: Vec::new(),
-                order_intents: vec![StrategyOrderIntent {
+                order_intents: vec![crate::trading::StrategyOrderIntent {
                     intent_key: Some("resting-buy".into()),
                     side: crate::storage::OrderSide::Buy,
                     order_type: OrderType::Limit,
@@ -1408,7 +1408,7 @@ mod tests {
             let mut order_intents = Vec::new();
             if !self.emitted_exit {
                 self.emitted_exit = true;
-                order_intents.push(StrategyOrderIntent {
+                order_intents.push(crate::trading::StrategyOrderIntent {
                     intent_key: Some("close-after-first-candle".into()),
                     side: crate::storage::OrderSide::Sell,
                     order_type: OrderType::Limit,
@@ -1455,7 +1455,7 @@ mod tests {
         ) -> Result<StrategyOutput, String> {
             Ok(StrategyOutput {
                 decisions: Vec::new(),
-                order_intents: vec![StrategyOrderIntent {
+                order_intents: vec![crate::trading::StrategyOrderIntent {
                     intent_key: Some("market-entry".into()),
                     side: crate::storage::OrderSide::Buy,
                     order_type: OrderType::Market,
@@ -1495,7 +1495,7 @@ mod tests {
         ) -> Result<StrategyOutput, String> {
             Ok(StrategyOutput {
                 decisions: Vec::new(),
-                order_intents: vec![StrategyOrderIntent {
+                order_intents: vec![crate::trading::StrategyOrderIntent {
                     intent_key: Some("trade-through-buy".into()),
                     side: crate::storage::OrderSide::Buy,
                     order_type: OrderType::Limit,
