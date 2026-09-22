@@ -85,7 +85,14 @@ It stores:
 - historical datasets and import receipts;
 - historical OHLCV and related research data;
 - live-capture tables used by the dedicated capture path;
-- authentication audit events.
+- authentication audit events;
+- the canonical trading-run model shared by future Backtest, Paper, and Live execution.
+
+## Canonical trading-run persistence
+
+Backtest, Paper, and Live use one mode-neutral persistence contract. Each run has a unique run ID, mode, strategy/version/configuration, instrument, optional comparison ID, and append-ordered events for decisions, order intents, order states, fills, position snapshots, and equity/PnL snapshots.
+
+Trading values such as prices, quantities, fees, balances, and PnL are stored as canonical decimal text rather than binary floating-point. Event time, exchange time, receive time, and persistence time remain distinct. Order-state changes are append-only, and normal storage APIs do not delete Paper/Live history.
 
 ## Source of truth
 

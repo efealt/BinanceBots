@@ -1,4 +1,5 @@
 mod reader;
+mod runs;
 mod schema;
 
 use crate::market::{Candle, MarketEvent, MarketKey, MarketQuote, MarketTrade, OrderBookSnapshot};
@@ -41,6 +42,22 @@ pub enum StorageError {
     DataDownloadNotFound(i64),
     #[error("data entry {0} is currently downloading")]
     DataDownloadAlreadyRunning(i64),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("invalid exact trading decimal: {0}")]
+    InvalidTradingDecimal(String),
+    #[error("invalid trading value for {field}: {value}")]
+    InvalidTradingValue { field: &'static str, value: String },
+    #[error("trading instrument {0} was not found")]
+    TradingInstrumentNotFound(i64),
+    #[error("trading run {0} was not found")]
+    TradingRunNotFound(i64),
+    #[error("trading order intent event {0} was not found for this run")]
+    TradingIntentNotFound(i64),
+    #[error("trading order {0} was not found")]
+    TradingOrderNotFound(i64),
+    #[error("invalid trading run status transition from {from} to {to}")]
+    InvalidRunStatusTransition { from: &'static str, to: &'static str },
     #[error("a UTC start date is required before this data entry can download")]
     DataDownloadStartDateRequired,
     #[error("the saved start date cannot be changed after a download entry is created")]
@@ -51,6 +68,7 @@ pub use reader::{
     AuthAuditEvent, DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation,
     HistoricalKline, OhlcvCandle, StorageReader,
 };
+pub use runs::*;
 
 #[derive(Clone, Copy)]
 pub enum CaptureStatus {

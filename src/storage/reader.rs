@@ -530,14 +530,14 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    fn open(&self) -> Result<Connection, StorageError> {
+    pub(super) fn open(&self) -> Result<Connection, StorageError> {
         let connection =
             Connection::open_with_flags(&self.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(connection)
     }
 
-    fn open_write(&self) -> Result<Connection, StorageError> {
+    pub(super) fn open_write(&self) -> Result<Connection, StorageError> {
         let connection = Connection::open(&self.database_path)?;
         connection.busy_timeout(std::time::Duration::from_secs(10))?;
         connection.execute_batch(
