@@ -4,6 +4,7 @@ mod auth;
 mod collector;
 mod downloader;
 mod market;
+mod paper;
 mod storage;
 mod trading;
 
@@ -28,9 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage_reader = Arc::new(storage::StorageReader::new(database_path()));
     storage_reader.initialize()?;
     let auth_state = Arc::new(auth::AuthState::from_env(Arc::clone(&storage_reader))?);
+    let paper_manager = paper::PaperManager::new(Arc::clone(&storage_reader), Arc::clone(&market_service))?;
     let web_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web");
 
-    let protected_app = api::protected_router(market_service, storage_reader)
+    let protected_app = api::protected_router(market_service, storage_reader, paper_manager)
         .fallback_service(ServeDir::new(web_dir).append_index_html_on_directories(true))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&auth_state),
