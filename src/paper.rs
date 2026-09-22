@@ -3,11 +3,11 @@ use crate::{
     storage::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderStateInput, OrderStatus, OrderType,
-        PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader, TimeInForce,
+        PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader,
         TradingRunSpec,
     },
     trading::{
-        decimal_string, ExecutionAssumptions, GridAnchor, MarketCandle, PortfolioState,
+        decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
         PortfolioView, SimulatedExecution, StaticGridConfig, StaticGridStrategy, Strategy,
         StrategyContext, StrategyOutput, StrategyStartContext, TradingInterval,
     },
@@ -15,7 +15,7 @@ use crate::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -170,7 +170,7 @@ impl PaperManager {
             .storage
             .ensure_market_instrument(&symbol, config.market_type.as_str())?;
 
-        let mut strategy = build_strategy(&config)?;
+        let strategy = build_strategy(&config)?;
         let strategy_id = strategy.id().to_string();
         let strategy_version = strategy.version().to_string();
         let strategy_params = strategy.parameters();
