@@ -184,6 +184,31 @@ Paper's strategy clock is backend-owned and deterministic.
 
 Phase 4.2 establishes chronology only. Order/fill processing semantics remain the separate Phase 4.3 checkpoint.
 
+## Phase 4.3 Paper strategy and simulated execution loop
+
+Each completed Paper replay candle now runs through the same execution chronology established by Backtest:
+
+1. resting simulated orders that were eligible before the candle are processed first;
+2. fills are persisted and applied to the shared `PortfolioState`;
+3. order state and position snapshots are persisted through the canonical run model;
+4. the portfolio is marked to the completed candle close;
+5. only then does the mode-neutral strategy receive `on_candle`;
+6. decisions and new order intents are persisted and submitted after that completed-candle decision;
+7. the candle-close equity snapshot is persisted last.
+
+Because simulated execution for a candle is processed before the strategy callback, an order created from that candle's completed information cannot retroactively fill from the same candle's earlier range. It becomes eligible only on a later candle according to the shared simulator and configured latency.
+
+Paper uses the same `SimulatedExecution` component as Backtest. The Paper run records the exact execution assumptions used to construct that simulator: fees, spread, slippage, latency, limit fill policy, and partial-fill ratio.
+
+Focused Phase 4.3 tests verify:
+- a resting order fills before the strategy sees the completed candle and the strategy observes the post-fill position;
+- an order emitted by that completed candle remains pending even when the just-finished candle crossed its price;
+- canonical fill → position → decision → new intent → equity event ordering is append-ordered and auditable;
+- configured fee/spread/slippage/latency/partial-fill behavior is applied through the Paper path;
+- trade-through limit policy does not fill on a mere touch.
+
+Phase 4.3 does not certify stop/restart/gap-recovery behavior; that remains Phase 4.4.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

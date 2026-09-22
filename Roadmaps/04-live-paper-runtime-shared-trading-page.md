@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.2 COMPLETE
+Status: IN PROGRESS — 4.1–4.3 COMPLETE
 
 ## Prerequisite
 
@@ -68,8 +68,8 @@ For every completed Paper replay candle:
 
 Also:
 
-- [ ] Apply the configured fees, spread, slippage, latency, touch/trade-through, and partial-fill assumptions exactly as recorded on the run.
-- [ ] Keep Paper order IDs and event ordering deterministic and auditable.
+- [x] Apply the configured fees, spread, slippage, latency, touch/trade-through, and partial-fill assumptions exactly as recorded on the run.
+- [x] Keep Paper order IDs and event ordering deterministic and auditable.
 
 **Checkpoint:** The real-time Paper loop obeys the same no-lookahead and resting-order timing rules already established in Backtest.
 

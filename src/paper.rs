@@ -1367,6 +1367,153 @@ mod tests {
         }
     }
 
+    struct TimingProbeStrategy {
+        emitted_exit: bool,
+    }
+
+    impl Strategy for TimingProbeStrategy {
+        fn id(&self) -> &str {
+            "test-paper-timing-probe"
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn parameters(&self) -> Value {
+            json!({})
+        }
+
+        fn on_start(
+            &mut self,
+            _context: &StrategyStartContext<'_>,
+        ) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput {
+                decisions: Vec::new(),
+                order_intents: vec![StrategyOrderIntent {
+                    intent_key: Some("resting-buy".into()),
+                    side: crate::storage::OrderSide::Buy,
+                    order_type: OrderType::Limit,
+                    time_in_force: Some(crate::storage::TimeInForce::Gtc),
+                    price: Some(100.0),
+                    quantity: 1.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: json!({"phase": "on_start"}),
+                }],
+            })
+        }
+
+        fn on_candle(&mut self, context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+            let mut order_intents = Vec::new();
+            if !self.emitted_exit {
+                self.emitted_exit = true;
+                order_intents.push(StrategyOrderIntent {
+                    intent_key: Some("close-after-first-candle".into()),
+                    side: crate::storage::OrderSide::Sell,
+                    order_type: OrderType::Limit,
+                    time_in_force: Some(crate::storage::TimeInForce::Gtc),
+                    price: Some(111.0),
+                    quantity: 1.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: json!({"phase": "on_candle"}),
+                });
+            }
+
+            Ok(StrategyOutput {
+                decisions: vec![crate::trading::StrategyDecision {
+                    decision_type: "timing_probe".into(),
+                    payload: json!({
+                        "seen_position_quantity": context.portfolio.position_quantity,
+                        "signal_time_ms": context.now_ms
+                    }),
+                }],
+                order_intents,
+            })
+        }
+    }
+
+    struct MarketOrderOnStart;
+
+    impl Strategy for MarketOrderOnStart {
+        fn id(&self) -> &str {
+            "test-paper-market-order"
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn parameters(&self) -> Value {
+            json!({})
+        }
+
+        fn on_start(
+            &mut self,
+            _context: &StrategyStartContext<'_>,
+        ) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput {
+                decisions: Vec::new(),
+                order_intents: vec![StrategyOrderIntent {
+                    intent_key: Some("market-entry".into()),
+                    side: crate::storage::OrderSide::Buy,
+                    order_type: OrderType::Market,
+                    time_in_force: None,
+                    price: None,
+                    quantity: 2.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: json!({}),
+                }],
+            })
+        }
+
+        fn on_candle(&mut self, _context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput::default())
+        }
+    }
+
+    struct TouchPolicyProbe;
+
+    impl Strategy for TouchPolicyProbe {
+        fn id(&self) -> &str {
+            "test-paper-touch-policy"
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn parameters(&self) -> Value {
+            json!({})
+        }
+
+        fn on_start(
+            &mut self,
+            _context: &StrategyStartContext<'_>,
+        ) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput {
+                decisions: Vec::new(),
+                order_intents: vec![StrategyOrderIntent {
+                    intent_key: Some("trade-through-buy".into()),
+                    side: crate::storage::OrderSide::Buy,
+                    order_type: OrderType::Limit,
+                    time_in_force: Some(crate::storage::TimeInForce::Gtc),
+                    price: Some(100.0),
+                    quantity: 1.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: json!({}),
+                }],
+            })
+        }
+
+        fn on_candle(&mut self, _context: &StrategyContext<'_>) -> Result<StrategyOutput, String> {
+            Ok(StrategyOutput::default())
+        }
+    }
+
     struct NoOpStrategy;
 
     impl Strategy for NoOpStrategy {
@@ -1401,6 +1548,39 @@ mod tests {
         let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
     }
 
+    fn test_core_with_strategy(
+        storage: Arc<StorageReader>,
+        label: &str,
+        strategy: Box<dyn Strategy + Send>,
+        assumptions: ExecutionAssumptions,
+    ) -> PaperRunCore {
+        let instrument_id = storage
+            .ensure_market_instrument(&format!("{}USDT", label.to_ascii_uppercase()), "spot")
+            .unwrap();
+        let run = storage
+            .create_trading_run(&TradingRunSpec {
+                comparison_id: Some(format!("phase-4-3-{label}")),
+                mode: RunMode::Paper,
+                strategy_id: strategy.id().to_string(),
+                strategy_version: strategy.version().to_string(),
+                strategy_params: strategy.parameters(),
+                instrument_id,
+                initial_capital: ExactDecimal::new("1000").unwrap(),
+                run_config: json!({"test": "phase_4_3"}),
+                data_source: json!({"kind": "test"}),
+                execution_assumptions: serde_json::to_value(&assumptions).unwrap(),
+            })
+            .unwrap();
+
+        PaperRunCore {
+            run_id: run.run_id,
+            storage,
+            strategy,
+            portfolio: PortfolioState::new(1000.0).unwrap(),
+            execution: SimulatedExecution::new(assumptions).unwrap(),
+        }
+    }
+
     fn test_core(storage: Arc<StorageReader>, label: &str) -> PaperRunCore {
         let instrument_id = storage
             .ensure_market_instrument(&format!("{}USDT", label.to_ascii_uppercase()), "spot")
@@ -1427,6 +1607,239 @@ mod tests {
             portfolio: PortfolioState::new(1000.0).unwrap(),
             execution: SimulatedExecution::new(ExecutionAssumptions::default()).unwrap(),
         }
+    }
+
+    #[test]
+    fn paper_processes_resting_fills_before_strategy_and_never_retrofills_new_orders() {
+        let path = temp_database("execution-ordering");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core_with_strategy(
+            Arc::clone(&storage),
+            "executionordering",
+            Box::new(TimingProbeStrategy { emitted_exit: false }),
+            ExecutionAssumptions::default(),
+        );
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 105.0,
+            high: 106.0,
+            low: 104.0,
+            close: 105.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let first = MarketCandle {
+            open_time_ms: 60_000,
+            close_time_ms: 119_999,
+            open: 105.0,
+            high: 112.0,
+            low: 99.0,
+            close: 110.0,
+            volume: 1.0,
+        };
+        let first_fills = core.process_candle(&first).unwrap();
+        assert_eq!(first_fills.len(), 1);
+        assert_eq!(first_fills[0].side, crate::storage::OrderSide::Buy);
+        assert!((first_fills[0].price - 100.0).abs() < 1e-12);
+        assert_eq!(core.portfolio.view().position_quantity, 1.0);
+
+        // The sell order is created from the completed first candle. The first candle
+        // traded through 111, but the new order must still remain pending.
+        let pending = core.open_orders();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].side, crate::storage::OrderSide::Sell);
+        assert_eq!(pending[0].price, Some(111.0));
+        assert_eq!(pending[0].submitted_at_ms, first.close_time_ms);
+
+        let history_after_first = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(history_after_first.fills.len(), 1);
+        assert_eq!(history_after_first.positions.len(), 1);
+        assert_eq!(history_after_first.equity.len(), 1);
+        assert_eq!(history_after_first.order_intents.len(), 2);
+        assert_eq!(history_after_first.decisions.len(), 1);
+        assert_eq!(
+            history_after_first.decisions[0]
+                .payload
+                .get("seen_position_quantity")
+                .and_then(Value::as_f64),
+            Some(1.0)
+        );
+
+        let fill_sequence = history_after_first.fills[0].event.run_sequence;
+        let position_sequence = history_after_first.positions[0].event.run_sequence;
+        let decision_sequence = history_after_first.decisions[0].event.run_sequence;
+        let new_intent_sequence = history_after_first.order_intents[1].event.run_sequence;
+        let equity_sequence = history_after_first.equity[0].event.run_sequence;
+        assert!(fill_sequence < position_sequence);
+        assert!(position_sequence < decision_sequence);
+        assert!(decision_sequence < new_intent_sequence);
+        assert!(new_intent_sequence < equity_sequence);
+        assert!(
+            history_after_first
+                .events
+                .windows(2)
+                .all(|pair| pair[0].run_sequence < pair[1].run_sequence)
+        );
+        assert!(
+            history_after_first.orders[0].order_id
+                < history_after_first.orders[1].order_id
+        );
+
+        let second = MarketCandle {
+            open_time_ms: 120_000,
+            close_time_ms: 179_999,
+            open: 110.0,
+            high: 112.0,
+            low: 109.0,
+            close: 111.0,
+            volume: 1.0,
+        };
+        let second_fills = core.process_candle(&second).unwrap();
+        assert_eq!(second_fills.len(), 1);
+        assert_eq!(second_fills[0].side, crate::storage::OrderSide::Sell);
+        assert!((second_fills[0].price - 111.0).abs() < 1e-12);
+        assert_eq!(core.portfolio.view().position_quantity, 0.0);
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn paper_execution_uses_recorded_fee_spread_slippage_latency_and_partial_fill_assumptions() {
+        let path = temp_database("execution-assumptions");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let assumptions = ExecutionAssumptions {
+            fee_bps: 10.0,
+            spread_bps: 10.0,
+            slippage_bps: 20.0,
+            latency_ms: 60_000,
+            limit_fill_policy: crate::trading::LimitFillPolicy::Touch,
+            partial_fill_ratio: 0.5,
+        };
+        let mut core = test_core_with_strategy(
+            Arc::clone(&storage),
+            "executionassumptions",
+            Box::new(MarketOrderOnStart),
+            assumptions.clone(),
+        );
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 100.0,
+            low: 100.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let first = MarketCandle {
+            open_time_ms: 60_000,
+            close_time_ms: 119_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        assert!(core.process_candle(&first).unwrap().is_empty());
+
+        let second = MarketCandle {
+            open_time_ms: 120_000,
+            close_time_ms: 179_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        let fills = core.process_candle(&second).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert_eq!(fills[0].status, OrderStatus::PartiallyFilled);
+        assert!((fills[0].quantity - 1.0).abs() < 1e-12);
+        assert!((fills[0].price - 100.25).abs() < 1e-12);
+        assert!((fills[0].fee - 0.10025).abs() < 1e-12);
+
+        let view = core.portfolio.view();
+        assert!((view.position_quantity - 1.0).abs() < 1e-12);
+        assert!((view.fees_paid - 0.10025).abs() < 1e-12);
+        assert_eq!(core.open_orders().len(), 1);
+        assert!((core.open_orders()[0].remaining_quantity - 1.0).abs() < 1e-12);
+
+        let run = storage.trading_run(core.run_id).unwrap();
+        assert_eq!(
+            run.execution_assumptions,
+            serde_json::to_value(&assumptions).unwrap()
+        );
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn paper_limit_fill_policy_uses_trade_through_not_touch_when_configured() {
+        let path = temp_database("trade-through");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let assumptions = ExecutionAssumptions {
+            limit_fill_policy: crate::trading::LimitFillPolicy::TradeThrough,
+            ..ExecutionAssumptions::default()
+        };
+        let mut core = test_core_with_strategy(
+            Arc::clone(&storage),
+            "tradethrough",
+            Box::new(TouchPolicyProbe),
+            assumptions,
+        );
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 101.0,
+            high: 101.0,
+            low: 101.0,
+            close: 101.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+
+        let touch_only = MarketCandle {
+            open_time_ms: 60_000,
+            close_time_ms: 119_999,
+            open: 101.0,
+            high: 102.0,
+            low: 100.0,
+            close: 101.0,
+            volume: 1.0,
+        };
+        assert!(core.process_candle(&touch_only).unwrap().is_empty());
+        assert_eq!(core.open_orders().len(), 1);
+
+        let trades_through = MarketCandle {
+            open_time_ms: 120_000,
+            close_time_ms: 179_999,
+            open: 101.0,
+            high: 102.0,
+            low: 99.9,
+            close: 100.5,
+            volume: 1.0,
+        };
+        let fills = core.process_candle(&trades_through).unwrap();
+        assert_eq!(fills.len(), 1);
+        assert!((fills[0].price - 100.0).abs() < 1e-12);
+        assert!(core.open_orders().is_empty());
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
     }
 
     #[test]
