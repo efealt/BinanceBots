@@ -1190,9 +1190,11 @@ function setBacktestFormBusy(busy) {
   runBacktestButton.disabled = busy;
   runBacktestButton.textContent = busy ? "Backtest running…" : "Run backtest on Render";
   backtestRunForm.querySelectorAll("input, select").forEach((control) => {
-    if (control === backtestFixedAnchor) {
+    if (control.matches("[data-always-disabled]")) {
+      control.disabled = true;
+    } else if (control === backtestFixedAnchor) {
       control.disabled = busy || backtestGridAnchor.value !== "fixed";
-    } else if (!control.hasAttribute("disabled")) {
+    } else {
       control.disabled = busy;
     }
   });
@@ -1299,6 +1301,26 @@ function backtestRequestPayload() {
   const startTime = utcDayStartMs(backtestStartDate.value);
   const endTime = utcDayEndMs(backtestEndDate.value);
   if (startTime === null || endTime === null || startTime > endTime) throw new Error("Start date must be on or before end date.");
+
+  const numericInputs = [
+    ["Initial capital", backtestInitialCapital.value, 0, null],
+    ["Grid spacing", backtestGridSpacing.value, 0, 10_000],
+    ["Levels per side", backtestGridLevels.value, 0, 101],
+    ["Quantity per order", backtestGridQuantity.value, 0, null],
+    ["Fee bps", backtestFeeBps.value, -1, null],
+    ["Spread bps", backtestSpreadBps.value, -1, null],
+    ["Slippage bps", backtestSlippageBps.value, -1, null],
+    ["Latency", backtestLatencyMs.value, -1, null],
+    ["Partial fill ratio", backtestPartialFill.value, 0, 1.0000001],
+  ];
+  for (const [label, raw, minExclusive, maxExclusive] of numericInputs) {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= minExclusive || (maxExclusive !== null && value >= maxExclusive)) {
+      throw new Error(`${label} has an invalid value.`);
+    }
+  }
+  if (!Number.isInteger(Number(backtestGridLevels.value))) throw new Error("Levels per side must be a whole number.");
+  if (!Number.isInteger(Number(backtestLatencyMs.value))) throw new Error("Latency must be a whole number of milliseconds.");
 
   const anchor = backtestGridAnchor.value;
   const fixedAnchor = anchor === "fixed" ? Number(backtestFixedAnchor.value) : null;
