@@ -4,4 +4,5 @@
 *.db-*
 *.sqlite3
 *.sqlite3-*
+!test-data/xagusdt_1m_2026.sqlite3
 .DS_Store

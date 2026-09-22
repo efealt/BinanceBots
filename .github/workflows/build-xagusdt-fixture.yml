@@ -40,7 +40,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add test-data/xagusdt_1m_2026.sqlite3 test-data/xagusdt_1m_2026.manifest.json
+          git add -f test-data/xagusdt_1m_2026.sqlite3 test-data/xagusdt_1m_2026.manifest.json
           if git diff --cached --quiet; then
             echo "Fixture already matches committed files."
             exit 0
