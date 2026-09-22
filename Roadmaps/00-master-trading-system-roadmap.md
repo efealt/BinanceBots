@@ -16,7 +16,6 @@ Detailed implementation roadmaps are created separately for each phase when that
 - The three modes persist the same core event/result concepts so their outputs can be compared directly.
 - Paper simulation may use only information available at that real-time moment. Backtest replay may use only information available at each historical decision time.
 - A historical replay happens only **after the real-time Paper or Live period has ended and the corresponding Binance historical data has become available and been downloaded/verified**.
-- A strategy is eligible for Paper-vs-Backtest or Live-vs-Backtest comparison only when the historical dataset contains the inputs that strategy actually used. If a strategy depends on trades, depth, or other microstructure unavailable in the downloaded history, those inputs must be captured/persisted before that strategy can be fairly replayed.
 - Raw observed Paper/Live results remain immutable. Later calibrated execution assumptions are stored separately from the observations used to derive them.
 - Real Binance order submission remains disabled until the final phase.
 - Before implementing each phase, create a separate detailed roadmap for that phase.
