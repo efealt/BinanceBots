@@ -80,18 +80,35 @@ Deploy BinanceGrid to Render, prove that the application and SQLite data persist
 - [x] Verify authenticated access can use Console, Market, Data Downloader, Backtest, APIs, and WebSockets normally.
 - [x] Verify logout/session invalidation removes access to protected content.
 
-**Implementation and verification (2026-09-21):** Added Rust/Axum single-user login with opaque in-memory sessions, 12-hour expiry, secure/HttpOnly/SameSite=Strict cookie handling on Render, explicit logout invalidation, full protected routing for application files/APIs/WebSocket, a public minimal health endpoint, persistent SQLite authentication auditing for login success/failure/logout with an authenticated Security history page, and cache hardening so protected HTML/API responses are no-store and logout clears the origin cache. Production authentication is enabled with Render environment credentials. Manual verification confirmed direct protected-page access redirects to login after logout, the invalidated session cannot reopen protected content, authenticated Data Downloader writes succeed, Backtest reads the newly downloaded persistent dataset, Market live data streams while authenticated, and normal authenticated navigation does not unexpectedly log the user out. Production activation/verification remains pending until the user-selected Render username/password are configured and `BINANCE_GRID_AUTH_MODE` is switched from the temporary setup value `disabled` to `enabled`.
+**Implementation and verification (2026-09-21):** Added Rust/Axum single-user login with opaque in-memory sessions, 12-hour expiry, secure/HttpOnly/SameSite=Strict cookie handling on Render, explicit logout invalidation, full protected routing for application files/APIs/WebSocket, a public minimal health endpoint, persistent SQLite authentication auditing for login success/failure/logout with an authenticated Security history page, and cache hardening so protected HTML/API responses are no-store and logout clears the origin cache. Production authentication is enabled with Render environment credentials. Manual verification confirmed direct protected-page access redirects to login after logout, the invalidated session cannot reopen protected content, authenticated Data Downloader writes succeed, Backtest reads the newly downloaded persistent dataset, Market live data streams while authenticated, and normal authenticated navigation does not unexpectedly log the user out. Production authentication is enabled and verified on Render.
 
 **Exit:** The hosted application is usable only after single-user authentication, while Render can still perform its minimal health check.
 
 ### Phase 6 — Final hosted-system audit
 
-- [ ] Verify the site remains available after browser refresh/close and does not depend on a local Mac process.
-- [ ] Verify the persistent database survives another controlled restart/redeploy.
-- [ ] Verify unauthenticated access exposes no application pages, market feeds, historical data, diagnostics, bot state, credentials, private keys, or state-changing controls.
-- [ ] Verify the health endpoint exposes only minimal process-health status.
-- [ ] Verify protected HTTP endpoints and WebSocket routes remain inaccessible without authentication.
-- [ ] Verify authenticated access still works after a fresh deploy and browser login.
-- [ ] Record any Render-specific operational settings that future development must preserve.
+- [x] Verify the site remains available after browser refresh/close and does not depend on a local Mac process.
+- [x] Verify the persistent database survives another controlled restart/redeploy.
+- [x] Verify unauthenticated access exposes no application pages, market feeds, historical data, diagnostics, bot state, credentials, private keys, or state-changing controls.
+- [x] Verify the health endpoint exposes only minimal process-health status.
+- [x] Verify protected HTTP endpoints and WebSocket routes remain inaccessible without authentication.
+- [x] Verify authenticated access still works after a fresh deploy and browser login.
+- [x] Record any Render-specific operational settings that future development must preserve.
+
+**Final verification (2026-09-21):**
+- Hosted operation was repeatedly verified from the Render URL after refreshes and browser/session restarts, with no dependency on the user's Mac.
+- The persistent SQLite database survived multiple later Render deployments after the original Phase 3 persistence test; the original BTCUSDT persistence dataset remained present, and later authenticated Data Downloader/Backtest work continued to use the same persistent store.
+- Manual logout/direct-navigation testing confirmed protected pages redirect to the generic login page and protected APIs return authentication-required responses. Cache hardening prevents previously rendered protected HTML/API content from being reused after logout.
+- Code audit confirms all Data, Market, Security, static application pages, and the Market WebSocket route are merged under the authenticated protected router. The only always-public application endpoint is `/api/health`; its response body is only `{"status":"ok"}`.
+- Authenticated access was re-established after fresh deployments and verified across Console, Market, Data Downloader, Backtest, Security, APIs, and live market streaming.
+- Render settings to preserve:
+  - Service: `BinanceGrid` in Frankfurt, Rust runtime, one instance, plan `0.5c-512mb`.
+  - Git source: `efealt/BinanceGrid`, branch `main`, auto-deploy on commit.
+  - Build: `cargo build --release`.
+  - Start: `./target/release/binance-grid`.
+  - Health check: `/api/health`.
+  - Persistent disk: 1 GB mounted at `/var/data`.
+  - Production database path: `/var/data/binance_grid.sqlite3` via `BINANCE_GRID_DATABASE_PATH`.
+  - Authentication: `BINANCE_GRID_AUTH_MODE=enabled`; username/password supplied only through `BINANCE_GRID_AUTH_USERNAME` and `BINANCE_GRID_AUTH_PASSWORD` environment variables. Secret values must never be committed.
+  - Render service URL: `https://binancegrid.onrender.com`.
 
 **Exit:** BinanceGrid is a persistent, remotely accessible, fully private Render deployment ready for subsequent backend bot development.
