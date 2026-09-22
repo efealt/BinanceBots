@@ -50,8 +50,9 @@ fn seed_dataset(path: &std::path::Path) -> (Arc<StorageReader>, i64) {
         connection.execute(
             "INSERT INTO historical_ohlcv
                 (dataset_id, open_time_ms, close_time_ms, open_price, high_price,
-                 low_price, close_price, base_volume)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 10.0)",
+                 low_price, close_price, base_volume, quote_volume, trade_count,
+                 taker_buy_base_volume, taker_buy_quote_volume)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 10.0, 1000.0, 10, 5.0, 500.0)",
             params![dataset_id, open_time, close_time, open, high, low, close],
         ).unwrap();
     }
