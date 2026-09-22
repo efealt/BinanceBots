@@ -1,0 +1,168 @@
+{
+  "archive_sources": [
+    {
+      "rows_in_target_range": 35400,
+      "sha256": "c7234e4c8dd01f14ef236fcade60d199efd14a384ae251174d6cde34e6d9aa23",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-01.zip"
+    },
+    {
+      "rows_in_target_range": 40320,
+      "sha256": "3dde6ae0de59e4aee955f1b0e78efc5549dcf9867c5ae37529f61632e1931def",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-02.zip"
+    },
+    {
+      "rows_in_target_range": 44640,
+      "sha256": "d35cdd7fb0dc8e8a66587cede7eea2f946a86b6f84189eba8d5d3f07b230e5fb",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-03.zip"
+    },
+    {
+      "rows_in_target_range": 43200,
+      "sha256": "27d70226d76d08392509984905a86ccf3b5d54a199538f62f861b38154bc458a",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-04.zip"
+    },
+    {
+      "rows_in_target_range": 44640,
+      "sha256": "907f97051359bd0a0da323e78336fc7dd90ae2eb8599cc4597721646a016bbbd",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-05.zip"
+    },
+    {
+      "rows_in_target_range": 43200,
+      "sha256": "7d8e3a9d568ad30291e846a4793359db57bb8748b004b695e65b29a6847a4191",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-06.zip"
+    },
+    {
+      "rows_in_target_range": 44640,
+      "sha256": "c2d98477347d8b9d41ee50944f58e8743ac8244f0e30704975909ac40010f86d",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-07.zip"
+    },
+    {
+      "rows_in_target_range": 44640,
+      "sha256": "aa5dc999fa5fbac44d24620dd697bcf8b3c5f728369ccff650caedb6b66a3923",
+      "url": "https://data.binance.vision/data/futures/um/monthly/klines/XAGUSDT/1m/XAGUSDT-1m-2026-08.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "6b8abef08c43ac6e5494aec440878b64a3eae02d6c1ab8ab28dcc1f036559a6d",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-01.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "edc6ab246567f95677a97b95b0255df9ac5ccc86528bd26c128c7a34a4e4229c",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-02.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "45ae0c5f08186aafef9f3b440412177d5649d981eacb585461bcc4ba8fc17693",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-03.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "a01cd192006e4953da2734f97fc244a6e97c19b92cdf8cf373e16a70d5538ac0",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-04.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "660a9bb1c995cf18cef252764ec89c031b7ea2a976f63bc7b755723c8a99e4e7",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-05.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "3aa1f6f579cb4d3af6cc3bdfaf3af0985821e771a61bb5084728d71db0fc813d",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-06.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "93345b70511ee9021d1e5beef4b274783288d705a52b662d301c006e5a773cfe",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-07.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "eb7010352c439335d1d4ee26a9bcb110c108d79c9d8f6f929cce0cf6c4ad62f5",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-08.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "f3804254b34d9abe96fb8f4af968a0534ba646327d6773543fed528b5584794c",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-09.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "dd1006fa90df642e702f590f49480820c0e08c026fcc09d5aa95d3c614c4fcb0",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-10.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "255f2e1df02b98453f8040d9c70ec90d9f51b0edc20af443325ea64e2053d9c0",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-11.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "6465cc66249f66c46d9309c16eb9331d5f8a0a6cd64e0554b70e5f97e32afa03",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-12.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "2907e418b96290a52a83942508604953c18094f849f80896693a134a7f895df3",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-13.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "712fafb5d0c408df38d42bbeaaf908b411acbb24e8f900c219b2be740b88bb82",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-14.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "4a825ed5c1dfa43bec66a646055834f26baa98c65eb7e84e1b05c88c829aac2a",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-15.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "406e05d7610175ae4f25ffff0347d8aa9d73d62b923d48caa14a3812d7fc803c",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-16.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "749687931aa4a4c0a1431cb12c1002081c171814d1a98c281f9689afa589d06a",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-17.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "03a9d128900baef5d42b98712faeba2a51cac2ec4359fea7be3cde22bf4a0dd2",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-18.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "387b95b2380a584a6d8f4fab43da4f4f1aaa5a29b801423a7ce9564fe43f7181",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-19.zip"
+    },
+    {
+      "rows_in_target_range": 1440,
+      "sha256": "dc5f9fffa65352d7c298251224ccd6e452ab652625a3e22854cc005a385942fe",
+      "url": "https://data.binance.vision/data/futures/um/daily/klines/XAGUSDT/1m/XAGUSDT-1m-2026-09-20.zip"
+    }
+  ],
+  "contains_auth_rows": false,
+  "contains_trading_run_history": false,
+  "coverage": {
+    "first_open_time_ms": 1767780000000,
+    "first_open_time_utc": "2026-01-07T10:00:00Z",
+    "last_close_time_ms": 1789948799999,
+    "last_close_time_utc": "2026-09-20T23:59:59.999Z",
+    "last_open_time_ms": 1789948740000,
+    "last_open_time_utc": "2026-09-20T23:59:00Z",
+    "row_count": 369480
+  },
+  "database_bytes": 48140288,
+  "database_sha256": "37afda792f5f06cee9e63eca010f6c5b850d2282fe5ecc5a686b213f832c4a7e",
+  "dataset_id": 1,
+  "fixture": "xagusdt_1m_2026.sqlite3",
+  "instrument_id": 1,
+  "interval": "1m",
+  "market_type": "usd_m_perpetual",
+  "ordinary_ci_downloads_market_data": false,
+  "purpose": "Frozen full real-market regression fixture for BinanceGrid Phase 3",
+  "schema_version": 4,
+  "source": "Binance public data archives (data.binance.vision)",
+  "symbol": "XAGUSDT",
+  "venue": "binance"
+}
