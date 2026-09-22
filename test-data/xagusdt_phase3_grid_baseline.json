@@ -1,0 +1,40 @@
+{
+  "active_candles": 369479,
+  "counts": {
+    "decisions": 1,
+    "equity_snapshots": 369479,
+    "fills": 6,
+    "order_intents": 6,
+    "orders": 6,
+    "positions": 6
+  },
+  "execution_assumptions": {
+    "fee_bps": 4.0,
+    "latency_ms": 0,
+    "limit_fill_policy": "touch",
+    "partial_fill_ratio": 1.0,
+    "slippage_bps": 0.0,
+    "spread_bps": 0.0
+  },
+  "final_portfolio": {
+    "average_entry_price": "0.000000000000",
+    "cash": "100009.466800000000",
+    "equity": "100009.466800000000",
+    "fees_paid": "0.193200000000",
+    "position_quantity": "0.000000000000",
+    "realized_pnl": "9.660000000000",
+    "unrealized_pnl": "0.000000000000"
+  },
+  "fixture_sha256": "37afda792f5f06cee9e63eca010f6c5b850d2282fe5ecc5a686b213f832c4a7e",
+  "semantic_result_sha256": "e7c2fff2605a4642df7ea1ab4f26ef3ca5896fbc49c63527b28aba7e6a1f6e93",
+  "strategy_id": "static-grid-fixture",
+  "strategy_parameters": {
+    "anchor": "previous_close",
+    "fixed_anchor_price": null,
+    "levels_per_side": 3,
+    "quantity_per_order": 1.0,
+    "spacing_bps": 100.0,
+    "time_in_force": "gtc"
+  },
+  "strategy_version": "1"
+}

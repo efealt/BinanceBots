@@ -627,19 +627,25 @@ fn full_xagusdt_grid_regression() {
         "execution_assumptions": execution,
         "active_candles": ACTIVE_CANDLES,
         "counts": first_counts,
-        "final_portfolio": first.final_portfolio,
+        "final_portfolio": {
+            "cash": decimal_string(first.final_portfolio.cash).unwrap(),
+            "position_quantity": decimal_string(first.final_portfolio.position_quantity).unwrap(),
+            "average_entry_price": decimal_string(first.final_portfolio.average_entry_price).unwrap(),
+            "realized_pnl": decimal_string(first.final_portfolio.realized_pnl).unwrap(),
+            "unrealized_pnl": decimal_string(first.final_portfolio.unrealized_pnl).unwrap(),
+            "fees_paid": decimal_string(first.final_portfolio.fees_paid).unwrap(),
+            "equity": decimal_string(first.final_portfolio.equity).unwrap()
+        },
         "semantic_result_sha256": first_digest
     });
     println!("PHASE3_REGRESSION_SUMMARY={}", serde_json::to_string(&summary).unwrap());
 
     let baseline_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test-data/xagusdt_phase3_grid_baseline.json");
-    if baseline_path.exists() {
-        let expected: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(&baseline_path).expect("read Phase 3 baseline")
-        ).expect("parse Phase 3 baseline");
-        assert_eq!(summary, expected, "Phase 3 real-data regression baseline changed");
-    }
+    let expected: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&baseline_path).expect("read required Phase 3 baseline")
+    ).expect("parse Phase 3 baseline");
+    assert_eq!(summary, expected, "Phase 3 real-data regression baseline changed");
 
     assert_eq!(file_sha256(&fixture), fixture_before, "committed fixture changed during regression");
 
