@@ -239,6 +239,21 @@ Focused tests verify contiguous reconnect catch-up, missing-minute detection whe
 
 Phase 4.4B does not define service-restart recovery; that remains 4.4C.
 
+## Phase 4.4C Service restart handling
+
+Paper runtime continuity is deliberately **not** reconstructed across a Render/service process restart in Phase 4.
+
+- On PaperManager startup, canonical Paper runs still in `created` or `running` state are detected from SQLite.
+- The current runtime keeps strategy object state, simulated pending-order state, and precise real-time observation continuity in memory. After a process restart, that complete state cannot be proven equivalent to the interrupted runtime.
+- Therefore interrupted Paper runs are terminated explicitly as `failed`; the system never pretends the observation remained continuous.
+- The terminal reason is persisted as:
+  `service_restart_interruption: paper runtime state and realtime chronology cannot be proven`
+- Already terminal Paper runs are left unchanged.
+
+Focused tests verify that both `created` and `running` Paper runs become failed with the persisted interruption reason, while an already stopped run receives no new events.
+
+This is the Phase 4 safe-recovery rule: **recover only when continuity can be proven; because the current in-memory runtime state cannot be reconstructed exactly after process loss, restart recovery terminates rather than resumes.**
+
 ## UI
 
 - **Console** — current bot-console UI shell.

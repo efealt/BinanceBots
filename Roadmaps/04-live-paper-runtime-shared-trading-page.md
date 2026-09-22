@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.3 + 4.4A–4.4B COMPLETE
+Status: IN PROGRESS — 4.1–4.4 COMPLETE
 
 ## Prerequisite
 
@@ -102,9 +102,9 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.4C — Service restart handling
 
-- [ ] Detect Paper runs that were `created` or `running` when the service restarts.
-- [ ] Recover only when chronology can be proven safe; otherwise terminate the interrupted run explicitly.
-- [ ] Persist the restart/interruption reason.
+- [x] Detect Paper runs that were `created` or `running` when the service restarts.
+- [x] Recover only when chronology can be proven safe; otherwise terminate the interrupted run explicitly.
+- [x] Persist the restart/interruption reason.
 
 **Checkpoint:** A Render restart cannot masquerade as uninterrupted Paper observation.
 

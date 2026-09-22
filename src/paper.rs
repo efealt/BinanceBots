@@ -31,6 +31,8 @@ const ARMING_GRACE_MS: i64 = 120_000;
 const MAX_ACTIVE_PAPER_RUNS: usize = 4;
 const MAX_RECENT_RUNTIME_EVENTS: usize = 100;
 const MAX_RECENT_RUNTIME_FILLS: usize = 100;
+const SERVICE_RESTART_FAILURE_REASON: &str =
+    "service_restart_interruption: paper runtime state and realtime chronology cannot be proven";
 
 #[derive(Clone, Debug)]
 pub struct PaperStartConfig {
@@ -131,15 +133,7 @@ impl PaperManager {
         storage: Arc<StorageReader>,
         market: Arc<MarketService>,
     ) -> Result<Arc<Self>, PaperError> {
-        let now = system_now_ms();
-        for run in storage.unfinished_trading_runs(RunMode::Paper)? {
-            storage.set_trading_run_status(
-                run.run_id,
-                RunStatus::Failed,
-                EventTimes::new(now),
-                Some("service_restart_runtime_continuity_not_provable"),
-            )?;
-        }
+        terminate_interrupted_paper_runs(&storage, system_now_ms())?;
 
         Ok(Arc::new(Self {
             storage,
@@ -713,6 +707,26 @@ impl PaperManager {
             push_runtime_event(snapshot, now, "failed", &reason);
         }).await;
     }
+}
+
+fn terminate_interrupted_paper_runs(
+    storage: &StorageReader,
+    event_time_ms: i64,
+) -> Result<Vec<i64>, PaperError> {
+    let interrupted = storage.unfinished_trading_runs(RunMode::Paper)?;
+    let mut failed_run_ids = Vec::with_capacity(interrupted.len());
+
+    for run in interrupted {
+        storage.set_trading_run_status(
+            run.run_id,
+            RunStatus::Failed,
+            EventTimes::new(event_time_ms),
+            Some(SERVICE_RESTART_FAILURE_REASON),
+        )?;
+        failed_run_ids.push(run.run_id);
+    }
+
+    Ok(failed_run_ids)
 }
 
 struct PaperRunCore {
@@ -2145,6 +2159,86 @@ mod tests {
         drop(handle);
         drop(manager);
         drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn service_restart_fails_created_and_running_paper_runs_with_persisted_reason() {
+        let path = temp_database("restart-interrupted");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+
+        let created = test_core(Arc::clone(&storage), "restartcreated");
+        let created_run_id = created.run_id;
+        drop(created);
+
+        let mut running = test_core(Arc::clone(&storage), "restartrunning");
+        let running_run_id = running.run_id;
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        running.start(60_000, &previous).unwrap();
+        drop(running);
+
+        let failed = terminate_interrupted_paper_runs(&storage, 120_000).unwrap();
+        assert_eq!(failed, vec![created_run_id, running_run_id]);
+
+        for run_id in [created_run_id, running_run_id] {
+            let history = storage.trading_run_history(run_id).unwrap();
+            assert_eq!(history.run.status, RunStatus::Failed);
+            assert_eq!(history.run.ended_at_ms, Some(120_000));
+            assert_eq!(
+                history.status_events.last().and_then(|event| event.note.as_deref()),
+                Some(SERVICE_RESTART_FAILURE_REASON)
+            );
+        }
+
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn service_restart_leaves_terminal_paper_runs_unchanged() {
+        let path = temp_database("restart-terminal");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+
+        let mut stopped = test_core(Arc::clone(&storage), "restartstopped");
+        let run_id = stopped.run_id;
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        stopped.start(60_000, &previous).unwrap();
+        stopped.stop(90_000, "user_stop").unwrap();
+        drop(stopped);
+
+        let before = storage.trading_run_history(run_id).unwrap();
+        let before_event_count = before.events.len();
+
+        let failed = terminate_interrupted_paper_runs(&storage, 120_000).unwrap();
+        assert!(failed.is_empty());
+
+        let after = storage.trading_run_history(run_id).unwrap();
+        assert_eq!(after.run.status, RunStatus::Stopped);
+        assert_eq!(after.events.len(), before_event_count);
+        assert_eq!(
+            after.status_events.last().and_then(|event| event.note.as_deref()),
+            Some("user_stop")
+        );
+
         drop(storage);
         cleanup_database(&path);
     }
