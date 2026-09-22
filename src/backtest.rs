@@ -10,6 +10,7 @@ use crate::{
         TradingInterval,
     },
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use thiserror::Error;
