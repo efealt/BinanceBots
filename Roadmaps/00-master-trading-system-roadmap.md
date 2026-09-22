@@ -22,7 +22,7 @@ Detailed implementation roadmaps are created separately for each phase when that
 
 ## Shared run contract
 
-The exact schema belongs to Phase 1, but all three modes use the same conceptual records:
+Phase 1 has implemented the canonical persistence contract. All later phases must consume that shared model rather than create parallel Backtest/Paper/Live result schemas:
 
 ```text
 Run
@@ -38,41 +38,39 @@ Each run records at least its mode, strategy/version, parameters, symbol/market,
 
 ## Sequential phases
 
-### Phase 1 — Unified run model and database foundation
+### Phase 1 — Unified run model and database foundation — COMPLETE
 
-Define the canonical Backtest/Paper/Live data contract first, then add the migrations and storage APIs required to persist it.
+Implemented the canonical Backtest/Paper/Live persistence contract, exact trading-value representation, append-ordered event history, comparison linkage, and shared Rust storage APIs.
 
-The database distinguishes mode through run metadata rather than by creating unrelated result structures for each environment. It also supports linking equivalent runs for later comparison.
-
-**Exit:** The database can represent equivalent Backtest, Paper, and Live runs and their decisions/orders/fills/results before any new engine writes them.
+**Exit achieved:** The database can represent and reconstruct equivalent Backtest, Paper, and Live runs before any trading engine writes them.
 
 ### Phase 2 — Backtest engine
 
-Build the historical-data clock, shared strategy interface, portfolio/order state, deterministic event sequencing, and simulated execution path on top of downloaded data.
+Build the historical clock, shared strategy interface, portfolio/order state, and reusable simulated-execution component on top of downloaded data and the Phase 1 canonical run model.
 
-The simulator supports explicit execution assumptions such as fees, spread, slippage, latency, limit-order fill rules, partial fills, and conservative scenarios without changing strategy logic.
+The historical clock is authoritative: strategy decisions, order creation, fills, and state transitions occur only from information available at that simulated time. Same-timestamp ordering must be deterministic and explicit.
 
-No future candle information may influence a decision or fill that occurs earlier in simulated time.
+Execution assumptions are run configuration, not hidden strategy behavior. The simulator is designed to support fees, spread/slippage, latency, limit-order fill rules, partial fills, and conservative scenarios without changing strategy logic. Paper will reuse this same simulated-execution component later.
 
-**Exit:** A deterministic historical run can consume stored Binance data and persist a complete comparable run through the canonical data model.
+**Exit:** A deterministic backend Backtest run can consume stored Binance data, drive a strategy through the shared interface, reconstruct portfolio/order state, and persist a complete run through the Phase 1 canonical model.
 
 ### Phase 3 — Minimal grid strategy test fixture
 
-Implement one deliberately simple grid strategy through the shared strategy interface.
+Implement one deliberately simple grid strategy through the Phase 2 shared strategy interface.
 
-Its purpose is only to prove signals, order intents, simulated fills, state transitions, persistence, reproducibility, and the Backtest engine end to end. It is not the final trading strategy.
+Its purpose is only to prove signals, order intents, simulated fills, state transitions, persistence, reproducibility, and the Backtest engine end to end. It must not contain Backtest-specific shortcuts that prevent the same strategy code from being used later in Paper and Live.
 
-**Exit:** The simple grid runs end to end in Backtest using only the shared engine and canonical storage model.
+**Exit:** The simple grid runs end to end in Backtest using the shared engine and canonical storage model, with no mode-specific strategy implementation.
 
 ### Phase 4 — Live Paper runtime
 
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
 
-Paper uses the same strategy engine and canonical run model as Backtest. Only the clock/data source and simulated execution environment differ.
+Paper uses the same strategy interface, canonical run model, portfolio/order state model, and simulated-execution component already proven in Backtest. The main change is the clock/data source: historical replay becomes real-time market input.
 
-Paper runs independently of the browser and persists all decisions, order intents, simulated orders/fills, positions, and PnL needed for later replay comparison.
+Paper must run independently of the browser and persist the same decisions, order intents, simulated orders/fills, positions, and equity/PnL records required for later replay comparison.
 
-**Exit:** The same test strategy can run for a real-time period in Paper mode and produce a complete persistent run without any real-money execution.
+**Exit:** The same strategy code can run for a real-time period in Paper mode, survive normal browser disconnects, and produce a complete persistent run without real-money execution.
 
 ### Phase 5 — Paper-period historical replay
 
@@ -93,41 +91,41 @@ After Day 1 history becomes available:
 
 **Exit:** The system contains a temporally aligned Paper run and Backtest replay covering the same completed market interval.
 
-### Phase 6 — Paper vs Backtest validation and calibration
+### Phase 6 — Paper vs Backtest validation
 
 Build comparison tooling for the aligned Paper and Backtest runs before any live trading is attempted.
 
-Compare signal timing, intended orders, simulated fills, position path, PnL, drawdown, fees, slippage assumptions, missed/partial fills, and other execution differences.
+Compare decision timing, intended orders, simulated fills, event ordering, position path, PnL, drawdown, fees, and any divergence between the real-time Paper path and the later historical replay.
 
-Use the observed differences to improve realistic and conservative Backtest/Paper execution assumptions while keeping the original raw runs unchanged.
+The purpose here is to validate chronology, reproducibility, persistence, and consistency between real-time and historical execution of the same system. Paper is still simulated execution, so this phase does **not** claim to measure real exchange fill quality. Raw runs remain unchanged.
 
-**Exit:** We can quantify how closely Backtest reproduces Paper and have evidence-based simulation settings before connecting strategy execution to real money.
+**Exit:** We can explain and quantify any Backtest-vs-Paper divergence before introducing real-money execution.
 
 ### Phase 7 — Live-account integration and execution readiness
 
-Add authenticated Binance account connectivity and the real execution infrastructure, but keep **strategy-driven live order submission disabled**.
+Add authenticated Binance account connectivity and the real execution infrastructure, but keep **strategy-driven live order submission disabled** throughout this phase.
 
-This phase establishes account/balance/position reads, open-order state, private order/fill updates, fees, exchange filters and rounding, idempotent client order IDs, reconnect/reconciliation, stale-data protection, risk limits, emergency-stop behavior, and persistent execution audit records.
+Establish account/balance/position reads, open-order state, private order/fill updates, fees, exchange filters and rounding, idempotent client order IDs, reconnect/reconciliation, stale-data protection, risk limits, emergency-stop behavior, and persistent execution audit records.
 
-The live executor sits behind the same order-intent interface used by Backtest and Paper, but it is not permitted to submit strategy orders yet.
+The real executor must consume the same order-intent contract used by Backtest/Paper and write actual exchange acknowledgements/fills into the same Phase 1 canonical run model. Readiness is proven without permitting automated strategy orders.
 
-**Exit:** The system can observe and reconcile the live Binance account and has a fully integrated execution/safety path, while automated real-money order submission remains off.
+**Exit:** The system can observe/reconcile the live Binance account and has a verified execution/safety path, while automated real-money submission remains disabled.
 
 ### Phase 8 — Live trading and final three-way validation
 
-Only after Backtest and Paper have been compared and the live-account execution/safety path has been verified do we enable strategy-driven Live orders.
+Only after Backtest/Paper validation is complete and Phase 7 execution/safety readiness is proven do we enable strategy-driven Live orders. This is the first phase in which the strategy may submit real-money orders.
 
-Run the same strategy version/configuration in Live and, where useful, Paper over the same real-time period. Persist actual Binance acknowledgements, fills, fees, timestamps, positions, and PnL in the canonical run model.
+Run the same strategy version/configuration in Live and, where useful, Paper over the same real-time period. Persist actual Binance acknowledgements, fills, fees, timestamps, positions, and PnL through the canonical run model.
 
 After that Live period has ended and the corresponding Binance historical data becomes available:
 
 1. download and verify the same historical interval;
 2. replay the same strategy/configuration as Backtest;
-3. align Backtest, Paper, and Live runs;
-4. compare signals, intended orders, fill prices/timing, slippage, fees, partial/missed fills, position paths, PnL, and drawdown;
-5. calibrate realistic and conservative simulation assumptions from measured Live execution differences without altering the raw runs.
+3. align Backtest, Paper, and Live runs through their comparison identifier;
+4. compare decisions, intended orders, fill prices/timing, slippage, fees, partial/missed fills, position paths, PnL, and drawdown;
+5. use measured Live execution differences to calibrate realistic and conservative Backtest/Paper execution assumptions without altering any raw run.
 
-**Exit:** The system has proven the same strategy through Backtest → Paper → Live in chronological order and can quantify how realistically Backtest and Paper represent actual Live execution.
+**Exit:** The system has proven one strategy implementation through Backtest → Paper → Live and can quantify how realistically the simulated modes represent actual exchange execution.
 
 ## Intended flow
 
@@ -142,7 +140,7 @@ Phase 4   Paper in real time
    ↓
 Phase 5   Later historical replay of that Paper period
    ↓
-Phase 6   Paper ↔ Backtest comparison/calibration
+Phase 6   Paper ↔ Backtest validation
    ↓
 Phase 7   Live account + execution/safety infrastructure
           REAL ORDERS STILL OFF
