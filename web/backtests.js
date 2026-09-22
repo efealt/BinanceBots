@@ -1181,8 +1181,14 @@ function syncBacktestSetupContext(resetDates = false) {
     return;
   }
   backtestRunContext.textContent = `${dataset.symbol} · ${TIMEFRAME_LABELS[interval]} · backend replay`;
-  if (resetDates || !backtestStartDate.value) backtestStartDate.value = utcDateInput(dataset.start_time_ms);
-  if (resetDates || !backtestEndDate.value) backtestEndDate.value = utcDateInput(dataset.end_time_ms);
+  const minimumDate = utcDateInput(dataset.start_time_ms);
+  const maximumDate = utcDateInput(dataset.end_time_ms);
+  backtestStartDate.min = minimumDate;
+  backtestStartDate.max = maximumDate;
+  backtestEndDate.min = minimumDate;
+  backtestEndDate.max = maximumDate;
+  if (resetDates || !backtestStartDate.value) backtestStartDate.value = minimumDate;
+  if (resetDates || !backtestEndDate.value) backtestEndDate.value = maximumDate;
 }
 
 function setBacktestFormBusy(busy) {
@@ -1423,6 +1429,7 @@ backtestRunForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   backtestFormError.hidden = true;
   backtestResultEmpty.hidden = false;
+  backtestResultEmpty.textContent = "Backtest is running on the Render backend…";
   backtestResultContent.hidden = true;
   setBacktestProgress(0, "Submitting backend job…", "Queued");
 
@@ -1452,6 +1459,7 @@ backtestRunForm.addEventListener("submit", async (event) => {
     setBacktestFormBusy(false);
     backtestFormError.hidden = false;
     backtestFormError.textContent = error.message || "Could not start the backtest.";
+    backtestResultEmpty.textContent = "Configure the strategy above and start a historical replay.";
     setBacktestProgress(0, "Backtest was not started.", "No run");
   }
 });

@@ -8,6 +8,10 @@ on:
       - "src/backtest.rs"
       - "src/backtest/**"
       - "src/trading/**"
+      - "src/api/**"
+      - "web/backtests.html"
+      - "web/backtests.js"
+      - "web/styles.css"
       - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -21,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Check backtest JavaScript syntax
+        run: node --check web/backtests.js
       - name: Run Rust tests
         run: cargo test --all-targets
       - name: Run full frozen XAGUSDT grid regression
