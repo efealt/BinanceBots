@@ -167,6 +167,14 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .backtest-chart-swatch--weekend { background: var(--chart-weekend-key); }
 .backtest-chart-swatch--after-hours { background: var(--chart-after-hours-key); }
 .diagnostics-section { margin-bottom: 16px; }
+.diagnostics-heading-row { margin-bottom: 0; }
+.diagnostics-heading-actions { display: flex; align-items: center; gap: 10px; }
+.diagnostics-toggle { width: auto; min-width: 96px; margin: 0; padding: 8px 12px; gap: 8px; }
+.diagnostics-toggle-icon { display: inline-block; font-size: 1rem; line-height: 1; transition: transform 160ms ease; }
+.diagnostics-section:not(.is-collapsed) .diagnostics-toggle-icon { transform: rotate(180deg); }
+.diagnostics-content { margin-top: 18px; }
+.diagnostics-section.is-collapsed { padding-bottom: 22px; }
+.diagnostics-section.is-collapsed .diagnostics-content { display: none; }
 .diagnostic-rows { display: grid; gap: 22px; margin-top: 22px; }
 .diagnostic-row { min-width: 0; padding-top: 20px; border-top: 1px solid var(--border); }
 .diagnostic-row:first-child { padding-top: 0; border-top: 0; }
