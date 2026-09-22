@@ -254,6 +254,23 @@ Focused tests verify that both `created` and `running` Paper runs become failed 
 
 This is the Phase 4 safe-recovery rule: **recover only when continuity can be proven; because the current in-memory runtime state cannot be reconstructed exactly after process loss, restart recovery terminates rather than resumes.**
 
+## Phase 4.5A Trading control endpoints and Live lock
+
+The authenticated backend control surface for Paper trading is registered under the existing protected application router:
+
+- `POST /api/trading/runs` — create/start a Paper run.
+- `GET /api/trading/runs` — list persisted/current Paper runs.
+- `GET /api/trading/runs/{run_id}` — inspect one Paper run.
+- `POST /api/trading/runs/{run_id}/stop` — stop one Paper run.
+
+These routes are merged only into the server's protected router, which is wrapped by the existing `require_auth` middleware. They are not added to the public router.
+
+Phase 4 enforces the Paper/Live boundary server-side. The create/start request must declare a mode; `paper` is accepted and `live` is rejected with HTTP 423 Locked before market-data access or Paper runtime creation. The remaining control endpoints are backed exclusively by `PaperManager`; no Live manager, Live run creation route, or real-order executor is exposed in Phase 4.
+
+Focused tests verify the mode gate, including case/whitespace handling, and prove that a Live start request is rejected before any market/runtime access.
+
+Phase 4.5A does not certify the completeness of the snapshot payload or the WebSocket reconnect contract; those remain 4.5B and 4.5C.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

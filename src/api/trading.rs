@@ -68,11 +68,7 @@ async fn start_run(
     State(manager): State<Arc<PaperManager>>,
     Json(request): Json<StartTradingRunRequest>,
 ) -> Result<(StatusCode, Json<PaperSnapshot>), TradingApiError> {
-    match request.mode.trim().to_ascii_lowercase().as_str() {
-        "paper" => {}
-        "live" => return Err(TradingApiError::LiveLocked),
-        _ => return Err(TradingApiError::Invalid("mode must be paper or live".into())),
-    }
+    require_phase4_paper_mode(&request.mode)?;
 
     let market_type = MarketType::parse(request.market_type.trim())?;
     let replay_interval = TradingInterval::parse(request.replay_interval.trim())
@@ -198,6 +194,14 @@ async fn stream_runtime(
     }
 }
 
+fn require_phase4_paper_mode(mode: &str) -> Result<(), TradingApiError> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "paper" => Ok(()),
+        "live" => Err(TradingApiError::LiveLocked),
+        _ => Err(TradingApiError::Invalid("mode must be paper or live".into())),
+    }
+}
+
 fn validate_run_id(run_id: i64) -> Result<(), TradingApiError> {
     if run_id <= 0 {
         return Err(TradingApiError::Invalid("run_id must be positive".into()));
@@ -264,5 +268,85 @@ impl std::fmt::Display for TradingApiError {
             Self::Market(error) => error.fmt(formatter),
             Self::Storage(error) => error.fmt(formatter),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{market::MarketService, storage::StorageReader};
+    use std::sync::Arc;
+
+    fn temp_database(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "binance-grid-trading-api-{label}-{}-{}.sqlite3",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ))
+    }
+
+    fn cleanup_database(path: &std::path::Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn phase4_mode_gate_accepts_paper_and_rejects_live() {
+        assert!(require_phase4_paper_mode("paper").is_ok());
+        assert!(require_phase4_paper_mode(" PAPER ").is_ok());
+        assert!(matches!(
+            require_phase4_paper_mode("live"),
+            Err(TradingApiError::LiveLocked)
+        ));
+        assert!(matches!(
+            require_phase4_paper_mode(" LIVE "),
+            Err(TradingApiError::LiveLocked)
+        ));
+        assert!(matches!(
+            require_phase4_paper_mode("backtest"),
+            Err(TradingApiError::Invalid(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn live_start_is_rejected_before_market_or_paper_runtime_access() {
+        let path = temp_database("live-lock");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let manager = PaperManager::new(
+            Arc::clone(&storage),
+            Arc::new(MarketService::new()),
+        )
+        .unwrap();
+
+        let request = StartTradingRunRequest {
+            mode: "live".into(),
+            symbol: "THIS_DOES_NOT_NEED_TO_EXIST".into(),
+            market_type: "spot".into(),
+            replay_interval: "1m".into(),
+            initial_capital: "1000".into(),
+            strategy_id: "static-grid-fixture".into(),
+            grid: GridRequest {
+                anchor: "previous_close".into(),
+                fixed_anchor_price: None,
+                spacing_bps: 100.0,
+                levels_per_side: 1,
+                quantity_per_order: 1.0,
+            },
+            execution: ExecutionAssumptions::default(),
+        };
+
+        let error = start_run(State(manager), Json(request))
+            .await
+            .err()
+            .expect("Live start must be server-side locked");
+        assert!(matches!(error, TradingApiError::LiveLocked));
+
+        drop(storage);
+        cleanup_database(&path);
     }
 }

@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.4 COMPLETE
+Status: IN PROGRESS — 4.1–4.4 + 4.5A COMPLETE
 
 ## Prerequisite
 
@@ -114,8 +114,8 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.5A — Control endpoints + Live lock
 
-- [ ] Add authenticated endpoints to create/start, stop, inspect, and list Paper runs.
-- [ ] Reject every `mode=live` start/control path server-side in Phase 4.
+- [x] Add authenticated endpoints to create/start, stop, inspect, and list Paper runs.
+- [x] Reject every `mode=live` start/control path server-side in Phase 4.
 
 **Checkpoint:** Paper can be controlled through authenticated backend APIs and Live cannot be started.
 
