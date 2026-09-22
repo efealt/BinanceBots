@@ -82,6 +82,7 @@ impl SimulatedExecution {
 
     pub fn process_candle(&mut self, candle: &MarketCandle) -> Result<Vec<SimulatedFill>, String> {
         let mut fills = Vec::new();
+        let assumptions = self.assumptions.clone();
 
         for order in &mut self.pending {
             if order.remaining_quantity <= 0.0 || order.eligible_from_ms > candle.open_time_ms {
@@ -89,10 +90,10 @@ impl SimulatedExecution {
             }
 
             let maybe_price = match order.intent.order_type {
-                OrderType::Market => Some(self.market_fill_price(order.intent.side, candle.open)?),
+                OrderType::Market => Some(market_fill_price(&assumptions, order.intent.side, candle.open)?),
                 OrderType::Limit => {
                     let limit = order.intent.price.expect("validated limit price");
-                    if self.limit_is_fillable(order.intent.side, limit, candle) {
+                    if limit_is_fillable(&assumptions, order.intent.side, limit, candle) {
                         Some(limit)
                     } else {
                         None
@@ -102,7 +103,7 @@ impl SimulatedExecution {
             };
 
             let Some(price) = maybe_price else { continue };
-            let chunk = (order.original_quantity * self.assumptions.partial_fill_ratio)
+            let chunk = (order.original_quantity * assumptions.partial_fill_ratio)
                 .min(order.remaining_quantity);
             if chunk <= 0.0 {
                 continue;
@@ -115,7 +116,7 @@ impl SimulatedExecution {
             order.filled_quantity += chunk;
             order.filled_notional += notional;
             let average_fill_price = order.filled_notional / order.filled_quantity;
-            let fee = notional * self.assumptions.fee_bps / 10_000.0;
+            let fee = notional * assumptions.fee_bps / 10_000.0;
             let status = if order.remaining_quantity == 0.0 {
                 OrderStatus::Filled
             } else {
@@ -148,25 +149,26 @@ impl SimulatedExecution {
         self.pending.drain(..).collect()
     }
 
-    fn market_fill_price(&self, side: OrderSide, open: f64) -> Result<f64, String> {
-        if !open.is_finite() || open <= 0.0 {
-            return Err("market open must be finite and positive".into());
-        }
-        let half_spread = self.assumptions.spread_bps / 2.0;
-        let adverse_bps = half_spread + self.assumptions.slippage_bps;
-        let multiplier = match side {
-            OrderSide::Buy => 1.0 + adverse_bps / 10_000.0,
-            OrderSide::Sell => 1.0 - adverse_bps / 10_000.0,
-        };
-        Ok(open * multiplier)
-    }
+}
 
-    fn limit_is_fillable(&self, side: OrderSide, limit: f64, candle: &MarketCandle) -> bool {
-        match (side, self.assumptions.limit_fill_policy) {
-            (OrderSide::Buy, LimitFillPolicy::Touch) => candle.low <= limit,
-            (OrderSide::Sell, LimitFillPolicy::Touch) => candle.high >= limit,
-            (OrderSide::Buy, LimitFillPolicy::TradeThrough) => candle.low < limit,
-            (OrderSide::Sell, LimitFillPolicy::TradeThrough) => candle.high > limit,
-        }
+fn market_fill_price(assumptions: &ExecutionAssumptions, side: OrderSide, open: f64) -> Result<f64, String> {
+    if !open.is_finite() || open <= 0.0 {
+        return Err("market open must be finite and positive".into());
+    }
+    let half_spread = assumptions.spread_bps / 2.0;
+    let adverse_bps = half_spread + assumptions.slippage_bps;
+    let multiplier = match side {
+        OrderSide::Buy => 1.0 + adverse_bps / 10_000.0,
+        OrderSide::Sell => 1.0 - adverse_bps / 10_000.0,
+    };
+    Ok(open * multiplier)
+}
+
+fn limit_is_fillable(assumptions: &ExecutionAssumptions, side: OrderSide, limit: f64, candle: &MarketCandle) -> bool {
+    match (side, assumptions.limit_fill_policy) {
+        (OrderSide::Buy, LimitFillPolicy::Touch) => candle.low <= limit,
+        (OrderSide::Sell, LimitFillPolicy::Touch) => candle.high >= limit,
+        (OrderSide::Buy, LimitFillPolicy::TradeThrough) => candle.low < limit,
+        (OrderSide::Sell, LimitFillPolicy::TradeThrough) => candle.high > limit,
     }
 }
