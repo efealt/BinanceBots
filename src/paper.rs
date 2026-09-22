@@ -2523,7 +2523,7 @@ mod tests {
         assert_eq!(snapshot.best_bid, Some(100.9));
         assert_eq!(snapshot.best_ask, Some(101.1));
         assert_eq!(snapshot.mid_price, Some(101.0));
-        let candle = snapshot.latest_base_candle.expect("latest base candle");
+        let candle = snapshot.latest_base_candle.as_ref().expect("latest base candle");
         assert_eq!(candle.open_time_ms, 120_000);
         assert!(!candle.is_closed);
         assert_eq!(candle.close, 101.0);
