@@ -77,6 +77,20 @@ Before the first active backtest candle is processed, the strategy receives an `
 
 The strategy interface is mode-neutral and the simulated execution component is reusable by later Paper mode. Execution assumptions are explicit run metadata and currently support fees, spread/slippage, latency, touch vs trade-through limit fills, and deterministic partial fills. The Phase 2 engine itself contains no trading strategy.
 
+## Phase 3 grid fixture and real-data regression
+
+Phase 3 adds one deliberately simple mode-neutral `StaticGridStrategy` as an engineering fixture. It is configured through the shared strategy interface with an anchor source, spacing in basis points, levels per side, quantity per order, and time-in-force. The initial grid is emitted only through `on_start`; normal candle callbacks do not contain a Backtest-specific execution path.
+
+The repository contains a frozen full real-market XAGUSDT USD-M 1-minute SQLite regression fixture at `test-data/xagusdt_1m_2026.sqlite3`. It contains 369,480 Binance public-data candles from 2026-01-07 10:00 UTC through 2026-09-20 23:59 UTC, uses schema version 4, contains no authentication rows or production trading-run history, and is checksum-locked by `test-data/xagusdt_1m_2026.manifest.json`.
+
+Core trading CI copies the frozen fixture to a temporary writable database and runs the production Backtest engine twice over 369,479 active candles after one pre-roll candle. The Phase 3 engineering configuration uses a previous-close anchor, 100 bps spacing, three levels per side, quantity 1, GTC limits, 4 bps simulated fees, touch fills, zero latency, and full fills. These are regression-fixture values, not a trading recommendation or optimized strategy parameters.
+
+The locked semantic regression result contains 1 decision, 6 order intents, 6 orders, 6 fills, 6 position snapshots, and 369,479 equity snapshots. Its semantic result SHA-256 is `e7c2fff2605a4642df7ea1ab4f26ef3ca5896fbc49c63527b28aba7e6a1f6e93`. CI fails if the fixture checksum or the deterministic semantic baseline changes unexpectedly.
+
+Backtest equity persistence batches consecutive equity snapshots without changing event order. Buffered equity is flushed before any later fill/strategy event and at run completion, preserving the canonical event sequence while making full-history regression practical.
+
+Phase 3 remains backend-only. The strategy code is deployed on Render, but Phase 3 did not claim or perform a production-database XAGUSDT run because no safe backend invocation surface exists yet. The master Phase 3.5 UI checkpoint will expose authenticated user-triggered Backtest execution and inspection.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

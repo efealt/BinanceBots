@@ -54,13 +54,17 @@ Execution assumptions are run configuration, not hidden strategy behavior. The s
 
 **Exit achieved:** A deterministic backend Backtest run consumes stored Binance data, drives a strategy through the shared interface, reconstructs portfolio/order state, and persists a complete run through the Phase 1 canonical model. Automated verification covers resting-order intrabar fills, prevention of retroactive same-candle fills, deterministic replay, fees/slippage, limit policies, latency, partial fills, accounting, and failed-run preservation.
 
-### Phase 3 — Minimal grid strategy test fixture
+### Phase 3 — Minimal grid strategy test fixture — COMPLETE
 
-Implement one deliberately simple grid strategy through the Phase 2 shared strategy interface.
+Implemented a deliberately simple mode-neutral static grid through the Phase 2 strategy interface, plus a frozen full real XAGUSDT 1-minute SQLite regression fixture committed to GitHub.
 
-Its purpose is only to prove signals, order intents, simulated fills, state transitions, persistence, reproducibility, and the Backtest engine end to end. The initial grid should be created through the shared `on_start` hook so those orders are resting before the first active candle is processed. It must not contain Backtest-specific shortcuts that prevent the same strategy code from being used later in Paper and Live.
+The fixture contains 369,480 Binance public-data candles from 2026-01-07 10:00 UTC through 2026-09-20 23:59 UTC. Ordinary CI does not re-download it. GitHub Actions copies the committed fixture to a temporary writable database and runs the actual Backtest engine twice over 369,479 active candles after one pre-roll candle. Controlled tests cover resting-order same-candle fills, multiple resting levels, and prevention of retroactive fills for orders created after a candle closes.
 
-**Exit:** The simple grid runs end to end in Backtest using the shared engine and canonical storage model, with no mode-specific strategy implementation.
+The locked real-data regression produces 1 decision, 6 order intents, 6 orders, 6 fills, 6 position snapshots, and 369,479 equity snapshots with semantic checksum `e7c2fff2605a4642df7ea1ab4f26ef3ca5896fbc49c63527b28aba7e6a1f6e93`. The fixture and semantic baseline are checksum-guarded in CI.
+
+Phase 3 did not expose a frontend or Paper runtime. The same strategy code is deployed on Render, but no production-database XAGUSDT run is claimed because Phase 3 intentionally has no authenticated run-trigger surface yet.
+
+**Exit achieved:** The simple grid runs end to end through the shared Backtest engine and canonical storage model on the full committed real XAGUSDT regression dataset, with deterministic repeatability and no mode-specific strategy implementation.
 
 ### Phase 3.5 — Backtest Strategy UI checkpoint
 
