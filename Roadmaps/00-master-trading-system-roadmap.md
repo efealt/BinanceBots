@@ -76,13 +76,15 @@ Automated verification is green and the implementation is deployed live. The aut
 
 **Exit achieved:** The user can independently launch and inspect a historical strategy run through the hosted application while the backend remains the sole owner of strategy execution and persistence.
 
-### Phase 3.6 — Visual Backtest Analysis
+### Phase 3.6 — Visual Backtest Analysis — IMPLEMENTED / VISUAL SMOKE PENDING
 
-Add complete run visualization before Paper trading: underlying replay price with persisted order/grid levels and fill markers, strategy equity against a constant Buy & Hold benchmark of the same underlying, drawdown comparison, signed position/exposure, and explicit strategy/run parameter summary.
+Implemented complete run visualization before Paper trading: underlying replay price with persisted order/grid lifetimes and fill markers, strategy equity against a constant Buy & Hold benchmark of the same underlying, drawdown comparison, signed position/exposure, and explicit strategy/run parameter summary.
 
 Buy & Hold always starts with the same initial capital at the first active replay candle open and holds the underlying continuously through the effective Backtest period. Strategy equity remains the persisted canonical series, so flat/no-exposure periods remain flat while Buy & Hold continues to move.
 
-**Exit:** A completed Backtest run can be visually audited over its full effective period without changing strategy logic.
+Automated verification is green and the code is deployed live. The remaining gate is authenticated visual inspection of production Run #1 so the rendered chart meaning/layout is verified rather than inferred from tests.
+
+**Exit:** Mark COMPLETE after Run #1 is visually confirmed on the hosted Backtest page.
 
 ### Phase 4 — Live Paper runtime
 

@@ -427,6 +427,20 @@ fn static_grid_allows_multiple_preexisting_levels_to_fill_in_same_candle() {
     assert!(history.fills.iter().all(|fill| fill.event.event_time_ms == 119_999));
     assert_eq!(history.equity.len(), 1);
 
+    let equity_points = reader.trading_run_equity_points(result.run_id).unwrap();
+    assert_eq!(equity_points.len(), 1);
+    assert_eq!(equity_points[0].event_time_ms, 119_999);
+
+    let position_points = reader.trading_run_position_points(result.run_id).unwrap();
+    assert_eq!(position_points.len(), 4);
+    assert!(position_points.iter().all(|point| point.event_time_ms == 119_999));
+
+    let order_levels = reader.trading_run_order_levels(result.run_id).unwrap();
+    assert_eq!(order_levels.len(), 4);
+    assert!(order_levels.iter().all(|level| level.active_from_ms == 60_000));
+    assert!(order_levels.iter().all(|level| level.active_to_ms == Some(119_999)));
+    assert!(order_levels.iter().all(|level| level.final_status == Some(OrderStatus::Filled)));
+
     cleanup(&path);
 }
 

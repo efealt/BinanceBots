@@ -103,9 +103,33 @@ The current UI strategy is the Phase 3 `static-grid-fixture`. It exposes initial
 
 Completed results are reconstructed from canonical run persistence rather than browser state. The UI shows total return, final equity, max drawdown, fees, fill count, final position, realized PnL, effective replay range, pre-roll status, and a complete fill audit. The most recent run ID is kept in browser local storage only as a convenience pointer; the run itself remains in SQLite.
 
-### Current Phase 3.5 verification status
+### Phase 3.5 verification
 
-GitHub Actions verifies JavaScript syntax, the Rust suite, backend replay aggregation/pre-roll behavior, and the full frozen XAGUSDT regression. The Phase 3.5 code is deployed and live on Render. A final authenticated production-UI smoke run against the Render-resident historical database still requires an invocation from an authenticated browser session; no unauthenticated test endpoint was added.
+GitHub Actions verifies JavaScript syntax, the Rust suite, backend replay aggregation/pre-roll behavior, and the full frozen XAGUSDT regression. The Phase 3.5 code is deployed and live on Render. The authenticated production XAGUSDT run was launched from the hosted page, reached 100%, persisted as Run #1, and returned coherent fills/KPIs.
+
+## Phase 3.6 Visual Backtest Analysis
+
+Completed Backtest runs now expose a dedicated authenticated analysis endpoint at `/api/backtests/runs/{run_id}/analysis`. The endpoint returns the complete persisted strategy equity series, position-change events, and persisted priced order levels with activation/terminal times. It does not duplicate the historical market dataset in the response; the browser reuses the complete historical dataset already loaded for the Backtest page or fetches that same stored dataset when inspecting a run whose dataset is not currently selected.
+
+The visual layer never changes strategy or execution behavior. Strategy equity is read directly from canonical persisted equity snapshots. Position quantity is reconstructed from persisted position snapshots. Grid/order lines are reconstructed from canonical orders and terminal order-state events.
+
+Every completed run is compared with a constant **Buy & Hold** benchmark of the same underlying over exactly the effective active Backtest period. The benchmark starts with the same initial capital, buys at the first active replay candle open, and holds continuously. Benchmark equity is `initial_capital × candle_close / first_active_open`. It is a raw underlying-return benchmark and does not apply the strategy's fees, spread, slippage, latency, or partial-fill assumptions.
+
+Because strategy equity remains the persisted canonical series, a zero-position/cash-only period can remain flat while Buy & Hold continues moving with the underlying. This is intentional and makes out-of-market periods visible.
+
+The completed-run analysis surface contains:
+- full replay OHLC with persisted buy/sell order-level lifetimes and buy/sell fill markers;
+- Strategy Equity versus Buy & Hold, both in quote-currency equity;
+- Strategy Drawdown versus Buy & Hold Drawdown, in percent;
+- signed base-asset position quantity and gross market exposure as percent of strategy equity;
+- an explicit strategy/run parameter summary;
+- the exact fill-audit table retained below the charts.
+
+Dense 1-minute runs keep all records available and use zoomable ECharts views rather than truncating the run. Pure visualization math for Buy & Hold, drawdown, and position/exposure is isolated in `web/backtest-analysis-math.js` and covered by Node tests.
+
+### Current Phase 3.6 verification status
+
+Automated verification covers the analysis math, JavaScript syntax, Rust storage/read paths, the existing Rust suite, and the full frozen XAGUSDT regression. The analysis implementation is deployed live on Render. Final authenticated visual validation of the rendered production Run #1 remains a browser-session checkpoint; no public bypass endpoint was added.
 
 ## UI
 
