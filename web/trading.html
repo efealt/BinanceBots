@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-1" />
+    <link rel="stylesheet" href="/styles.css?v=trading-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -85,6 +85,125 @@
           </article>
         </section>
 
+
+        <section class="panel trading-control-panel" aria-labelledby="trading-control-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Paper controls</p>
+              <h2 id="trading-control-heading">Strategy configuration</h2>
+            </div>
+            <span id="trading-config-lock-badge" class="badge badge--muted">Editable</span>
+          </div>
+
+          <form id="trading-paper-form" class="trading-paper-form">
+            <div class="trading-form-section">
+              <div class="backtest-section-heading">
+                <div>
+                  <strong>Run</strong>
+                  <span>Paper uses backend Binance public market data and never submits real exchange orders.</span>
+                </div>
+              </div>
+              <div class="trading-parameter-grid">
+                <label class="field">Symbol
+                  <input id="trading-config-symbol" class="field-control" data-trading-config value="BTCUSDT" autocomplete="off" required />
+                </label>
+                <label class="field">Market
+                  <select id="trading-config-market-type" class="field-control" data-trading-config>
+                    <option value="spot" selected>Spot</option>
+                    <option value="usd_m_perpetual">USD-M perpetual</option>
+                  </select>
+                </label>
+                <label class="field">Replay interval
+                  <select id="trading-config-interval" class="field-control" data-trading-config>
+                    <option value="1m" selected>1 minute</option>
+                    <option value="1h">1 hour</option>
+                    <option value="1d">1 day</option>
+                  </select>
+                </label>
+                <label class="field">Initial capital
+                  <input id="trading-config-capital" class="field-control" data-trading-config type="number" min="0.01" step="0.01" value="100000" required />
+                </label>
+                <label class="field">Strategy
+                  <select id="trading-config-strategy" class="field-control" data-trading-config>
+                    <option value="static-grid-fixture" selected>Static grid fixture</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="trading-form-section">
+              <div class="backtest-section-heading">
+                <div>
+                  <strong>Static grid parameters</strong>
+                  <span>Current fixture places the initial resting grid once; it does not replenish levels.</span>
+                </div>
+              </div>
+              <div class="trading-parameter-grid trading-parameter-grid--wide">
+                <label class="field">Anchor
+                  <select id="trading-config-anchor" class="field-control" data-trading-config>
+                    <option value="previous_close" selected>Previous completed close</option>
+                    <option value="fixed">Fixed price</option>
+                  </select>
+                </label>
+                <label class="field">Fixed anchor price
+                  <input id="trading-config-fixed-anchor" class="field-control" data-trading-config type="number" min="0.00000001" step="any" placeholder="Used only for Fixed price" disabled />
+                </label>
+                <label class="field">Grid spacing · bps
+                  <input id="trading-config-spacing" class="field-control" data-trading-config type="number" min="0.01" max="9999" step="0.01" value="100" required />
+                </label>
+                <label class="field">Levels per side
+                  <input id="trading-config-levels" class="field-control" data-trading-config type="number" min="1" max="100" step="1" value="3" required />
+                </label>
+                <label class="field">Quantity per order
+                  <input id="trading-config-quantity" class="field-control" data-trading-config type="number" min="0.00000001" step="any" value="1" required />
+                </label>
+                <label class="field">Time in force
+                  <input class="field-control" value="GTC" disabled />
+                </label>
+              </div>
+            </div>
+
+            <div class="trading-form-section">
+              <div class="backtest-section-heading">
+                <div>
+                  <strong>Execution assumptions</strong>
+                  <span>The same simulator assumptions used by Backtest are recorded canonically on the Paper run.</span>
+                </div>
+              </div>
+              <div class="trading-parameter-grid trading-parameter-grid--wide">
+                <label class="field">Fee · bps
+                  <input id="trading-config-fee" class="field-control" data-trading-config type="number" min="0" step="0.01" value="4" required />
+                </label>
+                <label class="field">Spread · bps
+                  <input id="trading-config-spread" class="field-control" data-trading-config type="number" min="0" step="0.01" value="0" required />
+                </label>
+                <label class="field">Slippage · bps
+                  <input id="trading-config-slippage" class="field-control" data-trading-config type="number" min="0" step="0.01" value="0" required />
+                </label>
+                <label class="field">Latency · ms
+                  <input id="trading-config-latency" class="field-control" data-trading-config type="number" min="0" step="1" value="0" required />
+                </label>
+                <label class="field">Limit fill policy
+                  <select id="trading-config-limit-policy" class="field-control" data-trading-config>
+                    <option value="touch" selected>Touch</option>
+                    <option value="trade_through">Trade-through</option>
+                  </select>
+                </label>
+                <label class="field">Partial fill ratio
+                  <input id="trading-config-partial-fill" class="field-control" data-trading-config type="number" min="0.01" max="1" step="0.01" value="1" required />
+                </label>
+              </div>
+            </div>
+
+            <div id="trading-control-error" class="backtest-form-error" role="alert" hidden></div>
+            <div class="trading-control-actions">
+              <button id="trading-start-button" class="button button--primary" type="submit">Start Paper</button>
+              <button id="trading-stop-button" class="button button--secondary" type="button" disabled>Stop Paper</button>
+              <span id="trading-control-status" class="panel-note" role="status">Ready to start a backend Paper run.</span>
+            </div>
+          </form>
+        </section>
+
         <section class="panel trading-context-panel">
           <div class="panel-heading">
             <div>
@@ -118,6 +237,6 @@
       </main>
     </div>
 
-    <script src="/trading.js?v=1"></script>
+    <script src="/trading.js?v=2"></script>
   </body>
 </html>

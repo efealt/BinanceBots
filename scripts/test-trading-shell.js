@@ -37,3 +37,39 @@ if (!trading.includes("Live execution is locked server-side until Phase 8.")) {
 }
 
 console.log("Trading shell contract OK");
+
+for (const required of [
+  'id="trading-paper-form"',
+  'id="trading-config-symbol"',
+  'id="trading-config-market-type"',
+  'id="trading-config-interval"',
+  'id="trading-config-capital"',
+  'id="trading-config-strategy"',
+  'id="trading-config-anchor"',
+  'id="trading-config-spacing"',
+  'id="trading-config-levels"',
+  'id="trading-config-quantity"',
+  'id="trading-config-fee"',
+  'id="trading-config-spread"',
+  'id="trading-config-slippage"',
+  'id="trading-config-latency"',
+  'id="trading-config-limit-policy"',
+  'id="trading-config-partial-fill"',
+  'id="trading-start-button"',
+  'id="trading-stop-button"',
+]) {
+  if (!trading.includes(required)) throw new Error("Trading controls are missing " + required);
+}
+
+const tradingJs = fs.readFileSync("web/trading.js", "utf8");
+for (const required of [
+  'requestJson("/api/trading/runs"',
+  '"/api/trading/runs/" + currentRunId + "/stop"',
+  'setConfigLocked(Boolean(snapshot.runtime_active))',
+  'paperModeButton.disabled = locked',
+  'applySnapshotToConfig(snapshot)',
+]) {
+  if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
+}
+
+console.log("Trading control contract OK");

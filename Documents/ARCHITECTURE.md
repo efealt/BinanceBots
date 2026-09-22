@@ -332,6 +332,20 @@ Focused frontend checks verify the Trading navigation entry on all app pages, re
 
 Phase 4.6A does not add strategy configuration, Start/Stop controls, charts, or portfolio/order audit panels; those remain 4.6B–4.6D.
 
+## Phase 4.6B Trading configuration and run controls
+
+The shared authenticated Trading page now operates the Phase 4 Paper control API.
+
+- The page exposes market/symbol, replay interval, initial capital, current strategy, static-grid parameters, and the exact Paper execution assumptions used by the shared simulator.
+- Existing Paper snapshots repopulate the form from backend/canonical state; configuration is not reconstructed from browser-local state.
+- **Start Paper** sends the visible configuration to `POST /api/trading/runs`, renders the returned authoritative snapshot, then attaches to the run stream.
+- **Stop Paper** calls `POST /api/trading/runs/{run_id}/stop`, then renders the returned persisted terminal snapshot.
+- While a Paper runtime is active, strategy/configuration controls and the Paper mode selector are locked. The Stop control remains available.
+- Live remains disabled independently of this browser locking; the Phase 4 server-side Live rejection from 4.5A remains the safety boundary.
+- After a terminal run is loaded, the form becomes editable again and uses that run's recorded strategy/execution values as the starting point for a later Paper run.
+
+The controls deliberately do not add chart/order/fill visualization; those are Phase 4.6C and 4.6D.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

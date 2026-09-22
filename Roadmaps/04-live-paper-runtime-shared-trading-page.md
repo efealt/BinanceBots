@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.5 + 4.6A COMPLETE
+Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6B COMPLETE
 
 ## Prerequisite
 
@@ -149,10 +149,10 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.6B — Configuration + run controls
 
-- [ ] Expose the current strategy parameters and Paper execution assumptions.
-- [ ] Add **Start Paper** and **Stop** controls.
-- [ ] Lock configuration while a run is active.
-- [ ] Prevent mode changes while a run is active.
+- [x] Expose the current strategy parameters and Paper execution assumptions.
+- [x] Add **Start Paper** and **Stop** controls.
+- [x] Lock configuration while a run is active.
+- [x] Prevent mode changes while a run is active.
 
 **Checkpoint:** A Paper run can be safely configured and controlled from the page.
 
