@@ -411,6 +411,33 @@ pub struct TradingRunHistory {
 
 
 #[derive(Clone, Debug, Serialize)]
+pub struct TradingAuditEvent {
+    pub event: TradingRunEvent,
+    pub label: String,
+    pub note: Option<String>,
+    pub order_id: Option<i64>,
+    pub side: Option<OrderSide>,
+    pub order_type: Option<OrderType>,
+    pub status: Option<OrderStatus>,
+    pub price: Option<ExactDecimal>,
+    pub quantity: Option<ExactDecimal>,
+    pub filled_quantity: Option<ExactDecimal>,
+    pub fee: Option<ExactDecimal>,
+    pub position_quantity: Option<ExactDecimal>,
+    pub equity: Option<ExactDecimal>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingAuditPage {
+    pub events: Vec<TradingAuditEvent>,
+    pub total_events: i64,
+    pub first_sequence: Option<i64>,
+    pub last_sequence: Option<i64>,
+    pub has_earlier: bool,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct TradingRunCounts {
     pub decisions: i64,
     pub order_intents: i64,

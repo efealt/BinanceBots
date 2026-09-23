@@ -40,6 +40,21 @@ const partialFillInput = document.querySelector("#trading-config-partial-fill");
 const tradingChartElement = document.querySelector("#trading-live-chart");
 const tradingChartStatus = document.querySelector("#trading-chart-status");
 const tradingChartBadge = document.querySelector("#trading-chart-badge");
+const portfolioBadge = document.querySelector("#trading-portfolio-badge");
+const portfolioPosition = document.querySelector("#trading-portfolio-position");
+const portfolioCash = document.querySelector("#trading-portfolio-cash");
+const portfolioEquity = document.querySelector("#trading-portfolio-equity");
+const portfolioExposure = document.querySelector("#trading-portfolio-exposure");
+const portfolioRealized = document.querySelector("#trading-portfolio-realized");
+const portfolioUnrealized = document.querySelector("#trading-portfolio-unrealized");
+const portfolioFees = document.querySelector("#trading-portfolio-fees");
+const portfolioMark = document.querySelector("#trading-portfolio-mark");
+const ordersBadge = document.querySelector("#trading-orders-badge");
+const ordersBody = document.querySelector("#trading-orders-body");
+const ordersStatus = document.querySelector("#trading-orders-status");
+const auditBody = document.querySelector("#trading-audit-body");
+const auditStatus = document.querySelector("#trading-audit-status");
+const auditLoadAllButton = document.querySelector("#trading-audit-load-all");
 
 let stream = null;
 let reconnectTimer = null;
@@ -52,6 +67,15 @@ let chartOrderLevels = new Map();
 let chartFillMarkers = new Map();
 let chartBootstrapToken = 0;
 let chartRefreshInFlight = false;
+let auditRunId = null;
+let auditEvents = [];
+let auditTotalEvents = 0;
+let auditHasEarlier = false;
+let auditHasMore = false;
+let auditFullMode = false;
+let auditRequestToken = 0;
+let auditRefreshInFlight = false;
+let auditLastRefreshAt = 0;
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -458,6 +482,285 @@ function syncChartFromSnapshot(snapshot) {
   }
 }
 
+
+function formatOperationalNumber(value, maximumFractionDigits = 8) {
+  const number = numeric(value);
+  if (number === null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits,
+    minimumFractionDigits: 0,
+  }).format(number);
+}
+
+function formatPercent(value) {
+  const number = numeric(value);
+  return number === null ? "—" : number.toFixed(2) + "%";
+}
+
+function formatAge(timestamp) {
+  const eventTime = numeric(timestamp);
+  if (eventTime === null) return "—";
+  const seconds = Math.max(0, Math.floor((Date.now() - eventTime) / 1000));
+  if (seconds < 60) return seconds + "s";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + "m " + (seconds % 60) + "s";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "h " + (minutes % 60) + "m";
+  const days = Math.floor(hours / 24);
+  return days + "d " + (hours % 24) + "h";
+}
+
+function formatUtcTimestamp(timestamp) {
+  const value = numeric(timestamp);
+  if (value === null) return "—";
+  return new Date(value).toISOString().replace("T", " ").replace("Z", "");
+}
+
+function renderPortfolio(snapshot) {
+  const portfolio = snapshot.portfolio ?? {};
+  const position = numeric(portfolio.position_quantity) ?? 0;
+  const equity = numeric(portfolio.equity);
+  const mark = numeric(snapshot.mark_price)
+    ?? numeric(snapshot.mid_price)
+    ?? numeric(snapshot.latest_base_candle?.close)
+    ?? numeric(snapshot.latest_replay_candle?.close)
+    ?? numeric(portfolio.average_entry_price);
+  const exposure = equity !== null && equity > 0 && mark !== null
+    ? (Math.abs(position * mark) / equity) * 100
+    : null;
+
+  portfolioPosition.textContent = formatOperationalNumber(position);
+  portfolioCash.textContent = formatOperationalNumber(portfolio.cash);
+  portfolioEquity.textContent = formatOperationalNumber(portfolio.equity);
+  portfolioExposure.textContent = formatPercent(exposure);
+  portfolioRealized.textContent = formatOperationalNumber(portfolio.realized_pnl);
+  portfolioUnrealized.textContent = formatOperationalNumber(portfolio.unrealized_pnl);
+  portfolioFees.textContent = formatOperationalNumber(portfolio.fees_paid);
+  portfolioMark.textContent = formatOperationalNumber(mark);
+  portfolioBadge.textContent = snapshot.runtime_active ? "Live snapshot" : "Persisted final";
+}
+
+function emptyTableRow(columnCount, message) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.className = "empty-row";
+  cell.colSpan = columnCount;
+  cell.textContent = message;
+  row.appendChild(cell);
+  return row;
+}
+
+function tableCell(value, className = "") {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  if (className) cell.className = className;
+  return cell;
+}
+
+function renderOpenOrders(snapshot) {
+  const orders = [...(snapshot.open_orders ?? [])].sort(
+    (left, right) => (left.submitted_at_ms ?? 0) - (right.submitted_at_ms ?? 0)
+  );
+  ordersBody.replaceChildren();
+  ordersBadge.textContent = orders.length + " open";
+
+  if (!orders.length) {
+    ordersBody.appendChild(emptyTableRow(8, snapshot.runtime_active ? "No active Paper orders." : "No open orders in this persisted terminal state."));
+    ordersStatus.textContent = snapshot.runtime_active
+      ? "Backend snapshot currently has no resting orders."
+      : "Terminal Paper snapshot · no live orders.";
+    return;
+  }
+
+  for (const order of orders) {
+    const row = document.createElement("tr");
+    const side = String(order.side ?? "").toLowerCase();
+    const original = numeric(order.original_quantity) ?? 0;
+    const filled = numeric(order.filled_quantity) ?? 0;
+    const remaining = numeric(order.remaining_quantity) ?? Math.max(0, original - filled);
+    const fillPercent = original > 0 ? Math.min(100, Math.max(0, (filled / original) * 100)) : 0;
+    const fillState = filled > 0 ? "Partial · " + fillPercent.toFixed(1) + "%" : "Resting";
+
+    row.appendChild(tableCell("#" + order.order_id));
+    row.appendChild(tableCell(humanize(side), "trading-side trading-side--" + side));
+    row.appendChild(tableCell(formatOperationalNumber(order.price)));
+    row.appendChild(tableCell(formatOperationalNumber(original)));
+    row.appendChild(tableCell(formatOperationalNumber(filled)));
+    row.appendChild(tableCell(formatOperationalNumber(remaining)));
+    row.appendChild(tableCell(fillState));
+    row.appendChild(tableCell(formatAge(order.submitted_at_ms)));
+    ordersBody.appendChild(row);
+  }
+
+  ordersStatus.textContent = orders.length + " backend-owned open order" + (orders.length === 1 ? "" : "s") + " · updated " + formatUtcTimestamp(snapshot.updated_at_ms) + " UTC";
+}
+
+function auditEventDetails(item) {
+  const parts = [];
+  if (item.order_id != null) parts.push("Order #" + item.order_id);
+  if (item.side) parts.push(humanize(item.side));
+  if (item.order_type) parts.push(humanize(item.order_type));
+  if (item.quantity != null) parts.push("Qty " + String(item.quantity));
+  if (item.price != null) parts.push("@ " + String(item.price));
+  if (item.filled_quantity != null) parts.push("Filled " + String(item.filled_quantity));
+  if (item.fee != null) parts.push("Fee " + String(item.fee));
+  if (item.position_quantity != null) parts.push("Position " + String(item.position_quantity));
+  if (item.equity != null) parts.push("Equity " + String(item.equity));
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+function renderAuditEvents() {
+  auditBody.replaceChildren();
+  if (!auditEvents.length) {
+    auditBody.appendChild(emptyTableRow(4, "No canonical events are persisted for this run yet."));
+  } else {
+    for (const item of auditEvents) {
+      const row = document.createElement("tr");
+      const event = item.event ?? {};
+      const eventCell = tableCell(humanize(item.label || event.event_kind || "event"), "trading-event-kind");
+      const detailCell = tableCell(auditEventDetails(item));
+      if (item.note) {
+        const note = document.createElement("span");
+        note.className = "trading-event-note";
+        note.textContent = item.note;
+        detailCell.appendChild(note);
+      }
+      row.appendChild(tableCell(String(event.run_sequence ?? "—")));
+      row.appendChild(tableCell(formatUtcTimestamp(event.event_time_ms)));
+      row.appendChild(eventCell);
+      row.appendChild(detailCell);
+      auditBody.appendChild(row);
+    }
+  }
+
+  const shown = auditEvents.length;
+  const mode = auditFullMode ? "complete audit" : "latest canonical events";
+  auditStatus.textContent = "Showing " + shown + " of " + auditTotalEvents + " persisted events · " + mode + ".";
+  auditLoadAllButton.disabled = auditFullMode && !auditHasMore;
+  auditLoadAllButton.textContent = auditFullMode && !auditHasMore ? "Complete audit loaded" : "Load complete audit";
+}
+
+function resetAudit(message = "No Paper run selected.") {
+  auditRequestToken += 1;
+  auditRunId = null;
+  auditEvents = [];
+  auditTotalEvents = 0;
+  auditHasEarlier = false;
+  auditHasMore = false;
+  auditFullMode = false;
+  auditRefreshInFlight = false;
+  auditLastRefreshAt = 0;
+  auditBody.replaceChildren(emptyTableRow(4, message));
+  auditStatus.textContent = message;
+  auditLoadAllButton.disabled = true;
+  auditLoadAllButton.textContent = "Load complete audit";
+}
+
+async function loadAuditTail(runId, quiet = false) {
+  const token = ++auditRequestToken;
+  auditRefreshInFlight = true;
+  if (!quiet) auditStatus.textContent = "Loading latest canonical events for Run #" + runId + "…";
+  try {
+    const page = await fetchJson("/api/trading/runs/" + runId + "/audit?limit=250");
+    if (token !== auditRequestToken || currentRunId !== runId) return;
+    auditRunId = runId;
+    auditEvents = page.events ?? [];
+    auditTotalEvents = Number(page.total_events ?? auditEvents.length);
+    auditHasEarlier = Boolean(page.has_earlier);
+    auditHasMore = Boolean(page.has_more);
+    auditFullMode = !auditHasEarlier;
+    auditLastRefreshAt = Date.now();
+    renderAuditEvents();
+  } catch (error) {
+    if (token === auditRequestToken && currentRunId === runId) {
+      auditStatus.textContent = "Could not load canonical audit · " + error.message;
+    }
+  } finally {
+    if (token === auditRequestToken) auditRefreshInFlight = false;
+  }
+}
+
+async function appendNewAuditEvents(runId) {
+  if (auditRefreshInFlight || auditRunId !== runId) return;
+  auditRefreshInFlight = true;
+  try {
+    const lastSequence = auditEvents.length ? auditEvents[auditEvents.length - 1].event.run_sequence : 0;
+    const page = await fetchJson("/api/trading/runs/" + runId + "/audit?after_sequence=" + lastSequence + "&limit=500");
+    if (currentRunId !== runId || auditRunId !== runId) return;
+    if (page.events?.length) {
+      const bySequence = new Map(auditEvents.map((item) => [item.event.run_sequence, item]));
+      for (const item of page.events) bySequence.set(item.event.run_sequence, item);
+      auditEvents = Array.from(bySequence.values()).sort((a, b) => a.event.run_sequence - b.event.run_sequence);
+    }
+    auditTotalEvents = Number(page.total_events ?? auditTotalEvents);
+    auditHasMore = Boolean(page.has_more);
+    auditLastRefreshAt = Date.now();
+    renderAuditEvents();
+  } catch (error) {
+    auditStatus.textContent = "Canonical audit refresh failed · " + error.message;
+  } finally {
+    auditRefreshInFlight = false;
+  }
+}
+
+async function loadCompleteAudit(runId) {
+  if (!runId || auditRefreshInFlight) return;
+  const token = ++auditRequestToken;
+  auditRefreshInFlight = true;
+  auditLoadAllButton.disabled = true;
+  auditLoadAllButton.textContent = "Loading complete audit…";
+  auditStatus.textContent = "Retrieving every persisted event for Run #" + runId + "…";
+  try {
+    const all = [];
+    let afterSequence = 0;
+    let total = 0;
+    while (true) {
+      const page = await fetchJson("/api/trading/runs/" + runId + "/audit?after_sequence=" + afterSequence + "&limit=500");
+      if (token !== auditRequestToken || currentRunId !== runId) return;
+      all.push(...(page.events ?? []));
+      total = Number(page.total_events ?? total);
+      auditStatus.textContent = "Loading complete audit · " + all.length + " of " + total + " events…";
+      if (!page.has_more || page.last_sequence == null) break;
+      const nextSequence = Number(page.last_sequence);
+      if (!Number.isFinite(nextSequence) || nextSequence <= afterSequence) {
+        throw new Error("Audit pagination did not advance.");
+      }
+      afterSequence = nextSequence;
+    }
+    auditRunId = runId;
+    auditEvents = all;
+    auditTotalEvents = total;
+    auditHasEarlier = false;
+    auditHasMore = false;
+    auditFullMode = true;
+    auditLastRefreshAt = Date.now();
+    renderAuditEvents();
+  } catch (error) {
+    if (token === auditRequestToken && currentRunId === runId) {
+      auditStatus.textContent = "Could not load complete audit · " + error.message;
+      auditLoadAllButton.disabled = false;
+      auditLoadAllButton.textContent = "Load complete audit";
+    }
+  } finally {
+    if (token === auditRequestToken) auditRefreshInFlight = false;
+  }
+}
+
+function syncAuditFromSnapshot(snapshot) {
+  const runId = snapshot?.run_id;
+  if (!runId) return;
+  if (auditRunId !== runId) {
+    void loadAuditTail(runId);
+    return;
+  }
+  if (Date.now() - auditLastRefreshAt < 2000 || auditRefreshInFlight) return;
+  if (auditFullMode) {
+    void appendNewAuditEvents(runId);
+  } else {
+    void loadAuditTail(runId, true);
+  }
+}
+
 function showControlError(message) {
   controlError.textContent = message;
   controlError.hidden = !message;
@@ -578,6 +881,14 @@ function renderNoRun() {
   setConfigLocked(false);
   setControlStatus("Ready to start a backend Paper run.");
   resetTradingChart("No Paper run selected.");
+  portfolioBadge.textContent = "Snapshot";
+  for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
+    element.textContent = "—";
+  }
+  ordersBadge.textContent = "0 open";
+  ordersBody.replaceChildren(emptyTableRow(8, "No active Paper orders."));
+  ordersStatus.textContent = "No Paper run selected.";
+  resetAudit("No Paper run selected.");
 }
 
 function renderSnapshot(snapshot) {
@@ -599,6 +910,9 @@ function renderSnapshot(snapshot) {
     ? ("Run #" + snapshot.run_id + " is active. Stop it before changing configuration.")
     : ("Loaded persisted Run #" + snapshot.run_id + ". Configuration is editable for the next Paper run."));
   syncChartFromSnapshot(snapshot);
+  renderPortfolio(snapshot);
+  renderOpenOrders(snapshot);
+  syncAuditFromSnapshot(snapshot);
 
   if (!snapshot.runtime_active) {
     setDot(feedDot, "pending");
@@ -735,6 +1049,10 @@ tradingForm.addEventListener("submit", async (event) => {
     setConfigLocked(false);
     setControlStatus("Paper run was not started.");
   }
+});
+
+auditLoadAllButton.addEventListener("click", () => {
+  if (currentRunId) void loadCompleteAudit(currentRunId);
 });
 
 stopButton.addEventListener("click", async () => {

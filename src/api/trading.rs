@@ -44,6 +44,12 @@ struct RunsQuery {
     limit: Option<usize>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct AuditQuery {
+    after_sequence: Option<i64>,
+    limit: Option<usize>,
+}
+
 #[derive(Serialize)]
 struct RunsResponse<T> {
     runs: Vec<T>,
@@ -61,6 +67,7 @@ pub fn router(manager: Arc<PaperManager>) -> Router {
         .route("/api/trading/runs", post(start_run).get(list_runs))
         .route("/api/trading/runs/{run_id}", get(run_snapshot))
         .route("/api/trading/runs/{run_id}/chart", get(run_chart))
+        .route("/api/trading/runs/{run_id}/audit", get(run_audit))
         .route("/api/trading/runs/{run_id}/stop", post(stop_run))
         .route("/api/trading/runs/{run_id}/stream", get(run_stream))
         .with_state(manager)
@@ -134,6 +141,21 @@ async fn run_chart(
 ) -> Result<Json<PaperChartSnapshot>, TradingApiError> {
     validate_run_id(run_id)?;
     Ok(Json(manager.chart_snapshot(run_id).await?))
+}
+
+async fn run_audit(
+    State(manager): State<Arc<PaperManager>>,
+    Path(run_id): Path<i64>,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<crate::storage::TradingAuditPage>, TradingApiError> {
+    validate_run_id(run_id)?;
+    if query.after_sequence.is_some_and(|value| value < 0) {
+        return Err(TradingApiError::Invalid(
+            "after_sequence must be zero or positive".into(),
+        ));
+    }
+    let limit = query.limit.unwrap_or(250).clamp(1, 500);
+    Ok(Json(manager.audit_page(run_id, query.after_sequence, limit)?))
 }
 
 async fn list_runs(

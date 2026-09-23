@@ -189,6 +189,108 @@ impl StorageReader {
         })
     }
 
+
+    pub fn trading_run_audit_page(
+        &self,
+        run_id: i64,
+        after_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<TradingAuditPage, StorageError> {
+        self.trading_run(run_id)?;
+        if after_sequence.is_some_and(|value| value < 0) {
+            return Err(StorageError::InvalidTradingValue {
+                field: "after_sequence",
+                value: after_sequence.unwrap_or_default().to_string(),
+            });
+        }
+
+        let limit = limit.clamp(1, 500);
+        let limit_i64: i64 = limit.try_into().map_err(|_| StorageError::ValueTooLarge)?;
+        let connection = self.open()?;
+        let (total_events, min_sequence, max_sequence): (i64, Option<i64>, Option<i64>) =
+            connection.query_row(
+                "SELECT COUNT(*), MIN(run_sequence), MAX(run_sequence)
+                 FROM trading_run_events WHERE run_id = ?1",
+                params![run_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+
+        let selection = if after_sequence.is_some() {
+            "SELECT event_id, run_id, run_sequence, event_kind, event_time_ms,
+                    exchange_time_ms, received_at_ms, persisted_at_ms
+             FROM trading_run_events
+             WHERE run_id = ?1 AND run_sequence > ?2
+             ORDER BY run_sequence
+             LIMIT ?3"
+        } else {
+            "SELECT event_id, run_id, run_sequence, event_kind, event_time_ms,
+                    exchange_time_ms, received_at_ms, persisted_at_ms
+             FROM trading_run_events
+             WHERE run_id = ?1
+             ORDER BY run_sequence DESC
+             LIMIT ?2"
+        };
+        let sql = format!(
+            "WITH selected AS ({selection})
+             SELECT
+                e.event_id, e.run_id, e.run_sequence, e.event_kind, e.event_time_ms,
+                e.exchange_time_ms, e.received_at_ms, e.persisted_at_ms,
+                COALESCE(rs.status, d.decision_type, os.status, e.event_kind) AS label,
+                COALESCE(rs.note, os.reject_reason) AS note,
+                COALESCE(f.order_id, os.order_id) AS order_id,
+                COALESCE(fill_order.side, state_order.side, i.side) AS side,
+                COALESCE(fill_order.order_type, state_order.order_type, i.order_type) AS order_type,
+                os.status,
+                COALESCE(f.price_decimal, i.price_decimal, state_order.price_decimal) AS price_decimal,
+                COALESCE(f.quantity_decimal, i.quantity_decimal, state_order.quantity_decimal) AS quantity_decimal,
+                os.filled_quantity_decimal,
+                f.fee_decimal,
+                p.position_quantity_decimal,
+                q.equity_decimal
+             FROM selected e
+             LEFT JOIN trading_run_status_events rs ON rs.event_id = e.event_id
+             LEFT JOIN trading_decisions d ON d.event_id = e.event_id
+             LEFT JOIN trading_order_intents i ON i.event_id = e.event_id
+             LEFT JOIN trading_order_state_events os ON os.event_id = e.event_id
+             LEFT JOIN trading_orders state_order ON state_order.order_id = os.order_id
+             LEFT JOIN trading_fills f ON f.event_id = e.event_id
+             LEFT JOIN trading_orders fill_order ON fill_order.order_id = f.order_id
+             LEFT JOIN trading_position_snapshots p ON p.event_id = e.event_id
+             LEFT JOIN trading_equity_snapshots q ON q.event_id = e.event_id
+             ORDER BY e.run_sequence"
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let events = if let Some(after_sequence) = after_sequence {
+            statement
+                .query_map(params![run_id, after_sequence, limit_i64], map_audit_event)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            statement
+                .query_map(params![run_id, limit_i64], map_audit_event)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        let first_sequence = events.first().map(|event| event.event.run_sequence);
+        let last_sequence = events.last().map(|event| event.event.run_sequence);
+        let has_earlier = match (first_sequence, min_sequence) {
+            (Some(first), Some(minimum)) => first > minimum,
+            _ => false,
+        };
+        let has_more = match (last_sequence, max_sequence) {
+            (Some(last), Some(maximum)) => last < maximum,
+            _ => false,
+        };
+
+        Ok(TradingAuditPage {
+            events,
+            total_events,
+            first_sequence,
+            last_sequence,
+            has_earlier,
+            has_more,
+        })
+    }
+
     pub fn trading_run_counts(&self, run_id: i64) -> Result<TradingRunCounts, StorageError> {
         self.trading_run(run_id)?;
         let connection = self.open()?;
@@ -495,6 +597,25 @@ fn map_event_at(
         exchange_time_ms: row.get(offset + 5)?,
         received_at_ms: row.get(offset + 6)?,
         persisted_at_ms: row.get(offset + 7)?,
+    })
+}
+
+
+fn map_audit_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<TradingAuditEvent> {
+    Ok(TradingAuditEvent {
+        event: map_event_at(row, 0)?,
+        label: row.get(8)?,
+        note: row.get(9)?,
+        order_id: row.get(10)?,
+        side: optional_enum_from_row(row, 11, OrderSide::parse)?,
+        order_type: optional_enum_from_row(row, 12, OrderType::parse)?,
+        status: optional_enum_from_row(row, 13, OrderStatus::parse)?,
+        price: optional_decimal_from_row(row, 14)?,
+        quantity: optional_decimal_from_row(row, 15)?,
+        filled_quantity: optional_decimal_from_row(row, 16)?,
+        fee: optional_decimal_from_row(row, 17)?,
+        position_quantity: optional_decimal_from_row(row, 18)?,
+        equity: optional_decimal_from_row(row, 19)?,
     })
 }
 

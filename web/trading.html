@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-3" />
+    <link rel="stylesheet" href="/styles.css?v=trading-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -225,6 +225,86 @@
           <p id="trading-chart-status" class="panel-note trading-chart-status" role="status">Loading chart state…</p>
         </section>
 
+
+        <section class="panel trading-portfolio-panel" aria-labelledby="trading-portfolio-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Paper portfolio</p>
+              <h2 id="trading-portfolio-heading">Position and account state</h2>
+            </div>
+            <span id="trading-portfolio-badge" class="badge badge--muted">Snapshot</span>
+          </div>
+
+          <div class="backtest-kpi-grid trading-portfolio-grid">
+            <div class="backtest-kpi"><span>Position / inventory</span><strong id="trading-portfolio-position">—</strong></div>
+            <div class="backtest-kpi"><span>Cash</span><strong id="trading-portfolio-cash">—</strong></div>
+            <div class="backtest-kpi"><span>Equity</span><strong id="trading-portfolio-equity">—</strong></div>
+            <div class="backtest-kpi"><span>Exposure</span><strong id="trading-portfolio-exposure">—</strong></div>
+            <div class="backtest-kpi"><span>Realized PnL</span><strong id="trading-portfolio-realized">—</strong></div>
+            <div class="backtest-kpi"><span>Unrealized PnL</span><strong id="trading-portfolio-unrealized">—</strong></div>
+            <div class="backtest-kpi"><span>Fees paid</span><strong id="trading-portfolio-fees">—</strong></div>
+            <div class="backtest-kpi"><span>Mark price</span><strong id="trading-portfolio-mark">—</strong></div>
+          </div>
+        </section>
+
+        <section class="panel trading-orders-panel" aria-labelledby="trading-orders-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Execution state</p>
+              <h2 id="trading-orders-heading">Open orders</h2>
+            </div>
+            <span id="trading-orders-badge" class="badge badge--muted">0 open</span>
+          </div>
+
+          <div class="table-wrap trading-table-wrap">
+            <table class="run-table trading-orders-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Side</th>
+                  <th>Price</th>
+                  <th>Original qty</th>
+                  <th>Filled</th>
+                  <th>Remaining</th>
+                  <th>Fill state</th>
+                  <th>Age</th>
+                </tr>
+              </thead>
+              <tbody id="trading-orders-body">
+                <tr><td class="empty-row" colspan="8">No active Paper orders.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="trading-orders-status" class="panel-note trading-table-status">Waiting for Paper snapshot.</p>
+        </section>
+
+        <section class="panel trading-audit-panel" aria-labelledby="trading-audit-heading">
+          <div class="panel-heading trading-audit-heading">
+            <div>
+              <p class="eyebrow">Canonical run record</p>
+              <h2 id="trading-audit-heading">Event and fill audit</h2>
+            </div>
+            <button id="trading-audit-load-all" class="button button--secondary" type="button">Load complete audit</button>
+          </div>
+
+          <div class="table-wrap trading-table-wrap trading-audit-table-wrap">
+            <table class="run-table trading-audit-table">
+              <thead>
+                <tr>
+                  <th>Seq</th>
+                  <th>Event time · UTC</th>
+                  <th>Event</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="trading-audit-body">
+                <tr><td class="empty-row" colspan="4">No canonical events loaded.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="trading-audit-status" class="panel-note trading-table-status">The latest canonical events load automatically. Use “Load complete audit” to retrieve every persisted event.</p>
+        </section>
+
         <section class="panel trading-context-panel">
           <div class="panel-heading">
             <div>
@@ -259,6 +339,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
-    <script src="/trading.js?v=3"></script>
+    <script src="/trading.js?v=4"></script>
   </body>
 </html>

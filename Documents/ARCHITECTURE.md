@@ -360,13 +360,27 @@ The Trading page now includes a live ECharts candlestick view backed only by ser
 
 Phase 4.6C does not add portfolio, open-order table, exposure, or full event-log panels; those remain Phase 4.6D.
 
+## Phase 4.6D Portfolio, open orders, and canonical audit
+
+The Trading page now exposes the complete Paper operational state required for monitoring and exact run auditability.
+
+- Portfolio cards render backend snapshot values for current position/inventory, cash, equity, realized PnL, unrealized PnL, fees paid, mark price, and gross exposure as `abs(position × mark) / equity`.
+- Active Paper snapshots expose open orders with side, price, original quantity, filled quantity, remaining quantity, partial-fill state, and backend submission age. Terminal persisted runs correctly show no live open orders.
+- `PaperSnapshot.mark_price` is synchronized from the backend Binance mid/last candle while active and reconstructed from the latest persisted position snapshot after the runtime ends, so terminal exposure is not estimated from browser-local data.
+- `GET /api/trading/runs/{run_id}/audit` exposes the canonical append-ordered run event stream. The default response returns the latest 250 events for operational viewing.
+- Audit pagination uses canonical `run_sequence` through `after_sequence` with a maximum page size of 500. The page's **Load complete audit** action walks every page from sequence zero until the server reports no later events, so long runs remain fully accessible rather than silently truncated.
+- Audit rows preserve event time plus event-specific fields such as order side/type, price, quantity, filled quantity, fee, position quantity, equity, status, and persisted run notes where applicable.
+- While a run remains active, the page refreshes the canonical tail periodically; when the complete audit is loaded, later canonical events append after the last known sequence.
+
+The audit API reads SQLite canonical records directly. The browser's bounded recent-event buffer remains a live convenience only and is not treated as the historical source of truth.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
 - **Market** — live market chart, quote, depth, trades, and indicators.
 - **Data Downloader** — historical dataset creation, catalog, date editing, and missing-data import.
 - **Backtest** — stored OHLCV charting and research diagnostics.
-- **Trading** — shared authenticated Paper/Live execution workspace with Paper controls, live Binance candles, canonical order-lifetime overlays, and fill markers; Live remains locked.
+- **Trading** — shared authenticated Paper/Live execution workspace with Paper controls, live Binance candles, order/fill overlays, portfolio/exposure state, open orders, and complete canonical audit access; Live remains locked.
 - **Security** — authenticated login-history audit view.
 
 ## Storage

@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6C COMPLETE
+Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6D COMPLETE
 
 ## Prerequisite
 
@@ -166,10 +166,10 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.6D — Portfolio, orders, and audit panels
 
-- [ ] Show current position/inventory, cash, equity, realized/unrealized PnL, fees, and exposure.
-- [ ] Show open orders with side, price, quantity, fill state, and age.
-- [ ] Show the event/fill audit stream with clear names and timestamps.
-- [ ] Preserve access to the complete run record rather than silently truncating it.
+- [x] Show current position/inventory, cash, equity, realized/unrealized PnL, fees, and exposure.
+- [x] Show open orders with side, price, quantity, fill state, and age.
+- [x] Show the event/fill audit stream with clear names and timestamps.
+- [x] Preserve access to the complete run record rather than silently truncating it.
 
 **Checkpoint:** The page provides both operational monitoring and exact auditability.
 

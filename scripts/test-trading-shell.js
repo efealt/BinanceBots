@@ -26,6 +26,16 @@ for (const required of [
   'id="trading-connection-label"',
   'id="trading-live-chart"',
   'id="trading-chart-status"',
+  'id="trading-portfolio-position"',
+  'id="trading-portfolio-cash"',
+  'id="trading-portfolio-equity"',
+  'id="trading-portfolio-exposure"',
+  'id="trading-portfolio-realized"',
+  'id="trading-portfolio-unrealized"',
+  'id="trading-portfolio-fees"',
+  'id="trading-orders-body"',
+  'id="trading-audit-body"',
+  'id="trading-audit-load-all"',
 ]) {
   if (!trading.includes(required)) {
     throw new Error(`Trading shell is missing ${required}`);
@@ -79,6 +89,12 @@ for (const required of [
   'type: "custom"',
   'name: "Buy fills"',
   'name: "Sell fills"',
+  'renderPortfolio(snapshot)',
+  'renderOpenOrders(snapshot)',
+  'syncAuditFromSnapshot(snapshot)',
+  '"/api/trading/runs/" + runId + "/audit?limit=250"',
+  '"/api/trading/runs/" + runId + "/audit?after_sequence="',
+  'loadCompleteAudit(currentRunId)',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }
@@ -87,13 +103,28 @@ const tradingApi = fs.readFileSync("src/api/trading.rs", "utf8");
 if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/chart", get(run_chart))')) {
   throw new Error("Trading API is missing the authenticated chart bootstrap route");
 }
+if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/audit", get(run_audit))')) {
+  throw new Error("Trading API is missing the authenticated canonical audit route");
+}
 const paper = fs.readFileSync("src/paper.rs", "utf8");
 for (const required of [
   "trading_run_order_levels(run_id)",
   "trading_run_fill_audit(run_id)",
   'MarketKey::new(&snapshot.symbol, "1m", market_type)',
+  'trading_run_audit_page(run_id, after_sequence, limit)',
+  'pub mark_price: Option<f64>',
 ]) {
   if (!paper.includes(required)) throw new Error("Paper chart contract is missing: " + required);
 }
 
-console.log("Trading control + live chart contract OK");
+const storageRead = fs.readFileSync("src/storage/runs/read.rs", "utf8");
+for (const required of [
+  "pub fn trading_run_audit_page",
+  "WITH selected AS",
+  "LIMIT ?3",
+  "ORDER BY e.run_sequence",
+]) {
+  if (!storageRead.includes(required)) throw new Error("Canonical audit pagination contract is missing: " + required);
+}
+
+console.log("Trading control + chart + operations/audit contract OK");

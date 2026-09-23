@@ -575,3 +575,35 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 @media (max-width: 760px) {
   .trading-live-chart { height: 430px; min-height: 320px; }
 }
+
+
+/* Trading page · Phase 4.6D portfolio, orders, and audit */
+.trading-portfolio-panel, .trading-orders-panel, .trading-audit-panel { margin-top: 0; }
+.trading-portfolio-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.trading-table-wrap { margin-top: 16px; }
+.trading-orders-table { min-width: 980px; }
+.trading-audit-table { min-width: 900px; }
+.trading-orders-table td, .trading-audit-table td { font-variant-numeric: tabular-nums; }
+.trading-orders-table td:not(:first-child), .trading-orders-table th:not(:first-child) { text-align: right; }
+.trading-audit-table td:nth-child(1), .trading-audit-table th:nth-child(1) { width: 74px; }
+.trading-audit-table td:nth-child(2), .trading-audit-table th:nth-child(2) { width: 190px; }
+.trading-audit-table td:nth-child(3), .trading-audit-table th:nth-child(3) { width: 170px; }
+.trading-audit-table td:last-child { min-width: 360px; white-space: normal; line-height: 1.45; }
+.trading-side { font-weight: 800; letter-spacing: 0.03em; }
+.trading-side--buy { color: var(--bid); }
+.trading-side--sell { color: var(--ask); }
+.trading-table-status { margin: 10px 0 0; }
+.trading-audit-heading { gap: 16px; }
+.trading-audit-heading .button { width: auto; margin: 0; white-space: nowrap; }
+.trading-audit-table-wrap { max-height: 520px; overflow: auto; }
+.trading-audit-table thead { position: sticky; top: 0; z-index: 1; }
+.trading-audit-table .trading-event-kind { font-weight: 700; }
+.trading-event-note { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
+@media (max-width: 900px) {
+  .trading-portfolio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .trading-portfolio-grid { grid-template-columns: 1fr; }
+  .trading-audit-heading { align-items: flex-start; flex-direction: column; }
+  .trading-audit-heading .button { width: 100%; }
+}

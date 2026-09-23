@@ -4,7 +4,7 @@ use crate::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderStateInput, OrderStatus, OrderType,
         PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader,
-        TradingFillAudit, TradingOrderLevel, TradingRunSpec,
+        TradingAuditPage, TradingFillAudit, TradingOrderLevel, TradingRunSpec,
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
@@ -116,6 +116,7 @@ pub struct PaperSnapshot {
     pub best_bid: Option<f64>,
     pub best_ask: Option<f64>,
     pub mid_price: Option<f64>,
+    pub mark_price: Option<f64>,
     pub latest_base_candle: Option<PaperBaseCandleView>,
     pub portfolio: PortfolioView,
     pub open_orders: Vec<PaperOpenOrderView>,
@@ -278,6 +279,10 @@ impl PaperManager {
             best_bid: market_snapshot.quote.best_bid,
             best_ask: market_snapshot.quote.best_ask,
             mid_price: market_snapshot.quote.mid_price,
+            mark_price: market_snapshot
+                .quote
+                .mid_price
+                .or_else(|| market_snapshot.candles.last().map(|candle| candle.close)),
             latest_base_candle: market_snapshot.candles.last().map(paper_base_candle),
             portfolio: core.portfolio.view(),
             open_orders: Vec::new(),
@@ -346,6 +351,19 @@ impl PaperManager {
             return Ok(handle.snapshot.read().await.clone());
         }
         self.persisted_snapshot(run_id)
+    }
+
+    pub fn audit_page(
+        &self,
+        run_id: i64,
+        after_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<TradingAuditPage, PaperError> {
+        let run = self.storage.trading_run(run_id)?;
+        if run.mode != RunMode::Paper {
+            return Err(PaperError::RunNotFound(run_id));
+        }
+        Ok(self.storage.trading_run_audit_page(run_id, after_sequence, limit)?)
     }
 
     pub async fn chart_snapshot(&self, run_id: i64) -> Result<PaperChartSnapshot, PaperError> {
@@ -438,6 +456,10 @@ impl PaperManager {
             .and_then(|value| value.average_entry_price.as_ref())
             .and_then(|value| value.as_str().parse::<f64>().ok())
             .unwrap_or(0.0);
+        let mark_price = position
+            .as_ref()
+            .and_then(|value| value.mark_price.as_ref())
+            .and_then(|value| value.as_str().parse::<f64>().ok());
         let realized_pnl = equity
             .final_realized_pnl
             .as_ref()
@@ -508,6 +530,7 @@ impl PaperManager {
             best_bid: None,
             best_ask: None,
             mid_price: None,
+            mark_price,
             latest_base_candle: None,
             portfolio: PortfolioView {
                 cash,
@@ -1325,6 +1348,10 @@ fn apply_market_snapshot(snapshot: &mut PaperSnapshot, market: &MarketSnapshot) 
     snapshot.best_bid = market.quote.best_bid;
     snapshot.best_ask = market.quote.best_ask;
     snapshot.mid_price = market.quote.mid_price;
+    snapshot.mark_price = market
+        .quote
+        .mid_price
+        .or_else(|| market.candles.last().map(|candle| candle.close));
     snapshot.latest_base_candle = market.candles.last().map(paper_base_candle);
 }
 
@@ -2480,6 +2507,7 @@ mod tests {
             best_bid: None,
             best_ask: None,
             mid_price: None,
+            mark_price: None,
             latest_base_candle: None,
             portfolio: PortfolioState::new(1000.0).unwrap().view(),
             open_orders: Vec::new(),
@@ -2523,6 +2551,7 @@ mod tests {
         assert_eq!(snapshot.best_bid, Some(100.9));
         assert_eq!(snapshot.best_ask, Some(101.1));
         assert_eq!(snapshot.mid_price, Some(101.0));
+        assert_eq!(snapshot.mark_price, Some(101.0));
         let candle = snapshot.latest_base_candle.as_ref().expect("latest base candle");
         assert_eq!(candle.open_time_ms, 120_000);
         assert!(!candle.is_closed);
@@ -2583,6 +2612,7 @@ mod tests {
             best_bid: None,
             best_ask: None,
             mid_price: None,
+            mark_price: None,
             latest_base_candle: None,
             portfolio: core.portfolio.view(),
             open_orders: core.open_orders(),

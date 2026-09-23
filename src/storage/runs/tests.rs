@@ -197,6 +197,35 @@ fn persists_reconstructs_and_links_all_run_modes() {
     assert!(linked.iter().any(|run| run.run_id == paper.run_id));
     assert!(linked.iter().any(|run| run.run_id == live.run_id));
 
+    let tail = reopened.trading_run_audit_page(backtest.run_id, None, 3).unwrap();
+    assert_eq!(tail.events.len(), 3);
+    assert_eq!(tail.total_events, history.events.len() as i64);
+    assert!(tail.has_earlier);
+    assert!(!tail.has_more);
+    assert_eq!(tail.last_sequence, history.events.last().map(|event| event.run_sequence));
+
+    let first_page = reopened.trading_run_audit_page(backtest.run_id, Some(0), 4).unwrap();
+    assert_eq!(first_page.events.len(), 4);
+    assert!(!first_page.has_earlier);
+    assert!(first_page.has_more);
+    let first_last = first_page.last_sequence.unwrap();
+    let second_page = reopened.trading_run_audit_page(backtest.run_id, Some(first_last), 500).unwrap();
+    assert_eq!(
+        first_page.events.len() + second_page.events.len(),
+        history.events.len()
+    );
+    assert!(!second_page.has_more);
+    let fill_event = first_page
+        .events
+        .iter()
+        .chain(second_page.events.iter())
+        .find(|event| event.event.event_kind == RunEventKind::Fill)
+        .expect("fill audit event");
+    assert_eq!(fill_event.side, Some(OrderSide::Buy));
+    assert_eq!(fill_event.order_type, Some(OrderType::Limit));
+    assert_eq!(fill_event.price.as_ref().unwrap().as_str(), "60000.123456789012345678");
+    assert_eq!(fill_event.quantity.as_ref().unwrap().as_str(), "0.001");
+
     let connection = Connection::open(&path).unwrap();
     connection.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
     connection.execute("DELETE FROM trading_runs WHERE run_id = ?1", params![backtest.run_id]).unwrap();
