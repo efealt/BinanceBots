@@ -135,7 +135,7 @@ fn seed_backtest_dataset(
                     (dataset_id, open_time_ms, close_time_ms, open_price, high_price,
                      low_price, close_price, base_volume, quote_volume, trade_count,
                      taker_buy_base_volume, taker_buy_quote_volume)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, NULL, NULL, NULL)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 10, ?10, ?11)",
                 params![
                     dataset_id,
                     candle.open_time_ms,
@@ -144,7 +144,10 @@ fn seed_backtest_dataset(
                     candle.high,
                     candle.low,
                     candle.close,
-                    candle.volume
+                    candle.volume,
+                    candle.close * candle.volume,
+                    candle.volume * 0.5,
+                    candle.close * candle.volume * 0.5
                 ],
             )
             .unwrap();
