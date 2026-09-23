@@ -374,13 +374,27 @@ The Trading page now exposes the complete Paper operational state required for m
 
 The audit API reads SQLite canonical records directly. The browser's bounded recent-event buffer remains a live convenience only and is not treated as the historical source of truth.
 
+## Phase 4.7 Shared Paper/Live UI contract
+
+The Trading page now has an explicit mode-neutral frontend contract instead of scattering Paper-specific field names and routes through every renderer.
+
+- `web/trading-contract.js` owns the shared monitoring model for run status, market state, strategy identity, portfolio/equity/PnL/fees/exposure, open orders, recent fills, and recent runtime events.
+- Raw backend snapshots are normalized into that monitoring model before the shared status, chart, portfolio, orders, and audit surfaces render.
+- Paper-specific control and transport behavior is isolated behind a Paper adapter: list/snapshot/chart/audit/stream/start/stop routes plus the Paper start payload builder.
+- A separate Live adapter already exists as a locked contract with `executionKind = binance_private`. It exposes no usable execution endpoints in Phase 4 and throws if asked to build a Live start payload, preserving the server-side Phase 4 Live lock as the real safety boundary.
+- The current Paper strategy/configuration form is explicitly a `data-mode-panel="paper"` setup panel. A separate hidden Live safety/setup panel occupies the same slot for future Phase 7/8 account/risk controls, so the core monitoring page is not duplicated.
+- Mode styling is driven by `data-trading-mode`. Paper uses the normal application accent; future Live mode uses the sell/risk color family across the mode selector and shared monitoring surfaces so real execution is visually unmistakable.
+- Dedicated frontend tests compare the Paper and Live normalized model shapes and verify that Live remains locked while Paper continues to use the existing authenticated Trading API.
+
+This refactor does not add private Binance account access, user-data streams, signing, or order submission. Those remain later-phase responsibilities.
+
 ## UI
 
 - **Console** — current bot-console UI shell.
 - **Market** — live market chart, quote, depth, trades, and indicators.
 - **Data Downloader** — historical dataset creation, catalog, date editing, and missing-data import.
 - **Backtest** — stored OHLCV charting and research diagnostics.
-- **Trading** — shared authenticated Paper/Live execution workspace with Paper controls, live Binance candles, order/fill overlays, portfolio/exposure state, open orders, and complete canonical audit access; Live remains locked.
+- **Trading** — one shared authenticated Paper/Live monitoring workspace with mode adapters, Paper-specific setup, future Live safety/setup isolation, live market/order/fill visualization, portfolio/exposure state, open orders, and complete canonical audit access; Live remains locked.
 - **Security** — authenticated login-history audit view.
 
 ## Storage

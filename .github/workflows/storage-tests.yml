@@ -15,7 +15,9 @@ on:
       - "web/backtests.js"
       - "web/trading.html"
       - "web/trading.js"
+      - "web/trading-contract.js"
       - "scripts/test-trading-shell.js"
+      - "scripts/test-trading-contract.js"
       - "web/backtest-analysis-math.js"
       - "scripts/test-backtest-analysis.js"
       - "web/styles.css"
@@ -37,10 +39,13 @@ jobs:
           node --check web/backtests.js
           node --check web/backtest-analysis-math.js
           node --check web/trading.js
+          node --check web/trading-contract.js
       - name: Test backtest analysis math
         run: node scripts/test-backtest-analysis.js
       - name: Test Trading page shell
         run: node scripts/test-trading-shell.js
+      - name: Test Trading shared mode contract
+        run: node scripts/test-trading-contract.js
       - name: Run Rust tests
         run: cargo test --all-targets
       - name: Run full frozen XAGUSDT grid regression

@@ -607,3 +607,48 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
   .trading-audit-heading { align-items: flex-start; flex-direction: column; }
   .trading-audit-heading .button { width: 100%; }
 }
+
+
+/* Trading page · Phase 4.7 shared Paper/Live contract */
+body[data-trading-mode="paper"] { --trading-mode-accent: var(--accent); }
+body[data-trading-mode="live"] { --trading-mode-accent: var(--ask); }
+body[data-trading-mode="live"] .trading-mode-block,
+body[data-trading-mode="live"] .trading-status-card,
+body[data-trading-mode="live"] .trading-chart-panel,
+body[data-trading-mode="live"] .trading-portfolio-panel,
+body[data-trading-mode="live"] .trading-orders-panel,
+body[data-trading-mode="live"] .trading-audit-panel,
+body[data-trading-mode="live"] .trading-context-panel {
+  border-color: color-mix(in srgb, var(--ask) 58%, var(--border));
+}
+.trading-mode-option--live {
+  color: var(--ask);
+  border: 1px solid color-mix(in srgb, var(--ask) 52%, transparent);
+}
+.trading-mode-option--live.is-active {
+  background: var(--ask);
+  color: white;
+}
+.trading-live-safety-panel {
+  margin-top: 0;
+  border-color: color-mix(in srgb, var(--ask) 62%, var(--border));
+  background: color-mix(in srgb, var(--ask-soft) 46%, var(--surface));
+}
+.trading-live-safety-panel[hidden],
+[data-mode-panel][hidden] { display: none; }
+.trading-live-badge {
+  border-color: color-mix(in srgb, var(--ask) 65%, var(--border));
+  background: var(--ask-soft);
+  color: var(--ask);
+}
+.trading-live-safety-copy {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--ask) 45%, var(--border));
+  border-radius: 12px;
+  background: var(--surface);
+}
+.trading-live-safety-copy strong { color: var(--ask); }
+.trading-live-safety-copy span { color: var(--muted); font-size: 0.82rem; line-height: 1.55; }

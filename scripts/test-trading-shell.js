@@ -36,6 +36,8 @@ for (const required of [
   'id="trading-orders-body"',
   'id="trading-audit-body"',
   'id="trading-audit-load-all"',
+  'data-mode-panel="paper"',
+  'data-mode-panel="live"',
 ]) {
   if (!trading.includes(required)) {
     throw new Error(`Trading shell is missing ${required}`);
@@ -76,27 +78,49 @@ for (const required of [
 if (!trading.includes("https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js")) {
   throw new Error("Trading chart must load the pinned ECharts runtime");
 }
+if (!trading.includes('/trading-contract.js?v=1')) {
+  throw new Error("Trading page must load the shared mode contract before page behavior");
+}
+if (!trading.includes('data-trading-mode="paper"')) {
+  throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
+}
 
 const tradingJs = fs.readFileSync("web/trading.js", "utf8");
 for (const required of [
-  'requestJson("/api/trading/runs"',
-  '"/api/trading/runs/" + currentRunId + "/stop"',
-  'setConfigLocked(Boolean(snapshot.runtime_active))',
-  'paperModeButton.disabled = locked',
+  'TradingContract.normalizeSnapshot(snapshot)',
+  'activeAdapter.urls.start()',
+  'activeAdapter.urls.stop(currentRunId)',
+  'activeAdapter.urls.chart(runId)',
+  'activeAdapter.urls.auditTail(runId, 250)',
+  'activeAdapter.urls.auditAfter(runId, afterSequence, 500)',
+  'activeAdapter.urls.stream(runId)',
+  'activeAdapter.buildStartPayload(buildStartConfiguration())',
+  'setConfigLocked(Boolean(monitor.run.runtimeActive))',
   'applySnapshotToConfig(snapshot)',
-  '"/api/trading/runs/" + runId + "/chart"',
+  'syncChartFromMonitor(monitor)',
+  'renderPortfolio(monitor)',
+  'renderOpenOrders(monitor)',
+  'syncAuditFromMonitor(monitor)',
   'type: "candlestick"',
   'type: "custom"',
   'name: "Buy fills"',
   'name: "Sell fills"',
-  'renderPortfolio(snapshot)',
-  'renderOpenOrders(snapshot)',
-  'syncAuditFromSnapshot(snapshot)',
-  '"/api/trading/runs/" + runId + "/audit?limit=250"',
-  '"/api/trading/runs/" + runId + "/audit?after_sequence="',
   'loadCompleteAudit(currentRunId)',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
+}
+
+const tradingContract = fs.readFileSync("web/trading-contract.js", "utf8");
+for (const required of [
+  'mode: "paper"',
+  'executionKind: "simulated"',
+  'mode: "live"',
+  'executionKind: "binance_private"',
+  'locked: true',
+  'function normalizeSnapshot(snapshot)',
+  'function adapterFor(mode)',
+]) {
+  if (!tradingContract.includes(required)) throw new Error("Shared Trading mode contract is missing: " + required);
 }
 
 const tradingApi = fs.readFileSync("src/api/trading.rs", "utf8");
@@ -127,4 +151,4 @@ for (const required of [
   if (!storageRead.includes(required)) throw new Error("Canonical audit pagination contract is missing: " + required);
 }
 
-console.log("Trading control + chart + operations/audit contract OK");
+console.log("Trading shared Paper/Live UI contract OK");

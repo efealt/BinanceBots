@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.5 + 4.6A–4.6D COMPLETE
+Status: IN PROGRESS — 4.1–4.7 COMPLETE
 
 ## Prerequisite
 
@@ -177,10 +177,10 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ## 4.7 — Paper/Live shared UI contract
 
-- [ ] Keep the frontend monitoring model mode-neutral: market, orders, fills, position, equity/PnL, fees, status, and events use one contract.
-- [ ] Keep execution-specific behavior behind adapters: Phase 4 simulated execution, Phase 8 real Binance execution.
-- [ ] Permit mode-specific setup/safety panels without duplicating the core page.
-- [ ] Keep future Live styling unmistakable from Paper.
+- [x] Keep the frontend monitoring model mode-neutral: market, orders, fills, position, equity/PnL, fees, status, and events use one contract.
+- [x] Keep execution-specific behavior behind adapters: Phase 4 simulated execution, Phase 8 real Binance execution.
+- [x] Permit mode-specific setup/safety panels without duplicating the core page.
+- [x] Keep future Live styling unmistakable from Paper.
 
 **Checkpoint:** Phase 7/8 can extend/unlock this same Trading page instead of replacing it.
 

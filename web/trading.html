@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-4" />
+    <link rel="stylesheet" href="/styles.css?v=trading-5" />
   </head>
-  <body>
+  <body data-trading-mode="paper">
     <div class="app-shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Binance Grid home">
@@ -50,7 +50,7 @@
             <span class="trading-mode-label">Execution mode</span>
             <div class="trading-mode-selector" role="group" aria-label="Execution mode">
               <button id="trading-mode-paper" class="trading-mode-option is-active" type="button" aria-pressed="true">PAPER</button>
-              <button id="trading-mode-live" class="trading-mode-option trading-mode-option--locked" type="button" aria-pressed="false" disabled>LIVE <span>Locked</span></button>
+              <button id="trading-mode-live" class="trading-mode-option trading-mode-option--live trading-mode-option--locked" type="button" aria-pressed="false" disabled>LIVE <span>Locked</span></button>
             </div>
             <p class="trading-mode-note">Live execution is locked server-side until Phase 8.</p>
           </div>
@@ -59,11 +59,11 @@
         <section class="trading-status-grid" aria-label="Trading runtime status">
           <article class="status-card trading-status-card">
             <div class="card-header">
-              <p>Paper run</p>
+              <p>Trading run</p>
               <span id="trading-run-badge" class="badge badge--muted">Checking</span>
             </div>
             <strong id="trading-run-id">—</strong>
-            <span id="trading-run-status">Looking for a Paper run…</span>
+            <span id="trading-run-status">Looking for a trading run…</span>
           </article>
 
           <article class="status-card trading-status-card">
@@ -72,7 +72,7 @@
               <span class="status-dot pending" id="trading-feed-dot"></span>
             </div>
             <strong id="trading-feed-label">Unknown</strong>
-            <span id="trading-feed-detail">No Paper runtime selected</span>
+            <span id="trading-feed-detail">No trading runtime selected</span>
           </article>
 
           <article class="status-card trading-status-card">
@@ -86,7 +86,7 @@
         </section>
 
 
-        <section class="panel trading-control-panel" aria-labelledby="trading-control-heading">
+        <section class="panel trading-control-panel" data-mode-panel="paper" aria-labelledby="trading-control-heading">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Paper controls</p>
@@ -204,10 +204,24 @@
           </form>
         </section>
 
+        <section class="panel trading-live-safety-panel" data-mode-panel="live" aria-labelledby="trading-live-safety-heading" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Live safety boundary</p>
+              <h2 id="trading-live-safety-heading">Real Binance execution</h2>
+            </div>
+            <span class="badge trading-live-badge">LOCKED</span>
+          </div>
+          <div class="trading-live-safety-copy">
+            <strong>Live execution is not available in Phase 4.</strong>
+            <span>This mode will use the same market, orders, fills, portfolio, PnL, status, and audit surface while exchange-specific setup and safety controls remain isolated in this panel.</span>
+          </div>
+        </section>
+
         <section class="panel trading-chart-panel" aria-labelledby="trading-chart-heading">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Live Paper market</p>
+              <p class="eyebrow">Shared market monitor</p>
               <h2 id="trading-chart-heading">Candles, order lifetimes, and fills</h2>
             </div>
             <span id="trading-chart-badge" class="badge badge--muted">Binance 1m</span>
@@ -229,7 +243,7 @@
         <section class="panel trading-portfolio-panel" aria-labelledby="trading-portfolio-heading">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Paper portfolio</p>
+              <p class="eyebrow">Portfolio monitor</p>
               <h2 id="trading-portfolio-heading">Position and account state</h2>
             </div>
             <span id="trading-portfolio-badge" class="badge badge--muted">Snapshot</span>
@@ -308,7 +322,7 @@
         <section class="panel trading-context-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Paper workspace</p>
+              <p class="eyebrow">Shared workspace</p>
               <h2>Runtime context</h2>
             </div>
             <span class="badge">Backend owned</span>
@@ -333,12 +347,13 @@
             </div>
           </div>
 
-          <p class="panel-note trading-runtime-note">Closing or refreshing this page does not stop a Paper run. Runtime ownership remains on the Render backend.</p>
+          <p class="panel-note trading-runtime-note">Closing or refreshing this page does not stop a trading run. Runtime ownership remains on the Render backend.</p>
         </section>
       </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
-    <script src="/trading.js?v=4"></script>
+    <script src="/trading-contract.js?v=1"></script>
+    <script src="/trading.js?v=5"></script>
   </body>
 </html>

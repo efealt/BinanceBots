@@ -1,3 +1,5 @@
+const TradingContract = window.BinanceGridTradingContract;
+if (!TradingContract) throw new Error("Shared Trading contract failed to load");
 const themeToggle = document.querySelector("#theme-toggle");
 const runIdElement = document.querySelector("#trading-run-id");
 const runStatusElement = document.querySelector("#trading-run-status");
@@ -15,6 +17,8 @@ const marketTypeElement = document.querySelector("#trading-market-type");
 const intervalElement = document.querySelector("#trading-interval");
 const strategyElement = document.querySelector("#trading-strategy");
 const paperModeButton = document.querySelector("#trading-mode-paper");
+const liveModeButton = document.querySelector("#trading-mode-live");
+const modePanels = Array.from(document.querySelectorAll("[data-mode-panel]"));
 const tradingForm = document.querySelector("#trading-paper-form");
 const configLockBadge = document.querySelector("#trading-config-lock-badge");
 const startButton = document.querySelector("#trading-start-button");
@@ -60,6 +64,9 @@ let stream = null;
 let reconnectTimer = null;
 let currentRunId = null;
 let currentSnapshot = null;
+let currentMonitor = null;
+let activeMode = "paper";
+let activeAdapter = TradingContract.adapterFor(activeMode);
 let tradingChart = null;
 let chartRunId = null;
 let chartCandles = [];
@@ -97,6 +104,21 @@ function humanize(value) {
   return String(value ?? "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function setTradingMode(mode) {
+  const adapter = TradingContract.adapterFor(mode);
+  activeMode = adapter.mode;
+  activeAdapter = adapter;
+  document.body.dataset.tradingMode = adapter.theme;
+  paperModeButton.classList.toggle("is-active", adapter.mode === "paper");
+  paperModeButton.setAttribute("aria-pressed", String(adapter.mode === "paper"));
+  liveModeButton.classList.toggle("is-active", adapter.mode === "live");
+  liveModeButton.setAttribute("aria-pressed", String(adapter.mode === "live"));
+  liveModeButton.disabled = TradingContract.adapterFor("live").locked || Boolean(currentMonitor?.run.runtimeActive);
+  for (const panel of modePanels) {
+    panel.hidden = panel.dataset.modePanel !== adapter.mode;
+  }
 }
 
 function setConnection(state, detail) {
@@ -160,11 +182,11 @@ function resetTradingChart(message = "No Paper run selected.") {
 
 function normalizeOrderLevel(order) {
   const price = numeric(order.price);
-  const quantity = numeric(order.quantity ?? order.original_quantity);
-  const activeFrom = numeric(order.active_from_ms ?? order.submitted_at_ms);
+  const quantity = numeric(order.quantity ?? order.original_quantity ?? order.originalQuantity);
+  const activeFrom = numeric(order.active_from_ms ?? order.submitted_at_ms ?? order.submittedAtMs);
   if (price === null || activeFrom === null) return null;
   return {
-    order_id: Number(order.order_id),
+    order_id: Number(order.order_id ?? order.id),
     side: String(order.side || "").toLowerCase(),
     price,
     quantity: quantity ?? 0,
@@ -177,10 +199,10 @@ function normalizeOrderLevel(order) {
 function normalizeFill(fill) {
   const price = numeric(fill.price);
   const quantity = numeric(fill.quantity);
-  const eventTime = numeric(fill.event_time_ms);
+  const eventTime = numeric(fill.event_time_ms ?? fill.eventTimeMs);
   if (price === null || eventTime === null) return null;
   return {
-    order_id: Number(fill.order_id),
+    order_id: Number(fill.order_id ?? fill.orderId),
     side: String(fill.side || "").toLowerCase(),
     price,
     quantity: quantity ?? 0,
@@ -244,7 +266,7 @@ function renderTradingChart() {
     const overlayCount = chartOrderLevels.size;
     const fillCount = chartFillMarkers.size;
     setChartStatus(
-      currentSnapshot?.runtime_active
+      currentMonitor?.run.runtimeActive
         ? "Waiting for Binance 1-minute candles."
         : "No live candle window is retained for this inactive run · " + overlayCount + " persisted order levels · " + fillCount + " persisted fills."
     );
@@ -396,7 +418,7 @@ function renderTradingChart() {
     ],
   }, true);
 
-  tradingChartBadge.textContent = "Binance 1m · " + (currentSnapshot?.symbol || "market");
+  tradingChartBadge.textContent = "Binance 1m · " + (currentMonitor?.market.symbol || "market");
   setChartStatus(
     chartCandles.length + " live-feed candles · " + chartOrderLevels.size + " canonical order levels · " + chartFillMarkers.size + " persisted fills · UTC"
   );
@@ -407,7 +429,9 @@ async function loadChartBootstrap(runId, quiet = false) {
   if (!quiet) setChartStatus("Loading chart state for Run #" + runId + "…");
   chartRefreshInFlight = true;
   try {
-    const payload = await fetchJson("/api/trading/runs/" + runId + "/chart");
+    const chartUrl = activeAdapter.urls.chart(runId);
+    if (!chartUrl) throw new Error(activeAdapter.label + " chart adapter is unavailable.");
+    const payload = await fetchJson(chartUrl);
     if (token !== chartBootstrapToken || currentRunId !== runId) return;
     chartRunId = runId;
     chartCandles = [];
@@ -432,20 +456,20 @@ async function loadChartBootstrap(runId, quiet = false) {
   }
 }
 
-function syncChartFromSnapshot(snapshot) {
-  if (!snapshot?.run_id) return;
-  if (chartRunId !== snapshot.run_id) {
-    void loadChartBootstrap(snapshot.run_id);
+function syncChartFromMonitor(monitor) {
+  if (!monitor?.run.id) return;
+  if (chartRunId !== monitor.run.id) {
+    void loadChartBootstrap(monitor.run.id);
     return;
   }
 
-  if (snapshot.latest_base_candle) upsertChartCandle(snapshot.latest_base_candle);
+  if (monitor.market.latestBaseCandle) upsertChartCandle(monitor.market.latestBaseCandle);
 
   let overlaysChanged = false;
   const activeOrderIds = new Set();
-  for (const raw of snapshot.open_orders ?? []) {
-    activeOrderIds.add(Number(raw.order_id));
-    if (!chartOrderLevels.has(Number(raw.order_id))) {
+  for (const raw of monitor.orders) {
+    activeOrderIds.add(Number(raw.id));
+    if (!chartOrderLevels.has(Number(raw.id))) {
       const order = normalizeOrderLevel(raw);
       if (order) {
         chartOrderLevels.set(order.order_id, order);
@@ -454,7 +478,7 @@ function syncChartFromSnapshot(snapshot) {
     }
   }
 
-  for (const raw of snapshot.recent_fills ?? []) {
+  for (const raw of monitor.fills) {
     const fill = normalizeFill(raw);
     if (!fill) continue;
     const key = fillKey(fill);
@@ -470,15 +494,15 @@ function syncChartFromSnapshot(snapshot) {
     if (orderFills.length) {
       order.active_to_ms = Math.max(...orderFills.map((fill) => fill.event_time_ms));
       overlaysChanged = true;
-    } else if (!snapshot.runtime_active && snapshot.ended_at_ms) {
-      order.active_to_ms = snapshot.ended_at_ms;
+    } else if (!monitor.run.runtimeActive && monitor.run.endedAtMs) {
+      order.active_to_ms = monitor.run.endedAtMs;
       overlaysChanged = true;
     }
   }
 
   renderTradingChart();
   if (overlaysChanged && !chartRefreshInFlight) {
-    void loadChartBootstrap(snapshot.run_id, true);
+    void loadChartBootstrap(monitor.run.id, true);
   }
 }
 
@@ -516,28 +540,17 @@ function formatUtcTimestamp(timestamp) {
   return new Date(value).toISOString().replace("T", " ").replace("Z", "");
 }
 
-function renderPortfolio(snapshot) {
-  const portfolio = snapshot.portfolio ?? {};
-  const position = numeric(portfolio.position_quantity) ?? 0;
-  const equity = numeric(portfolio.equity);
-  const mark = numeric(snapshot.mark_price)
-    ?? numeric(snapshot.mid_price)
-    ?? numeric(snapshot.latest_base_candle?.close)
-    ?? numeric(snapshot.latest_replay_candle?.close)
-    ?? numeric(portfolio.average_entry_price);
-  const exposure = equity !== null && equity > 0 && mark !== null
-    ? (Math.abs(position * mark) / equity) * 100
-    : null;
-
-  portfolioPosition.textContent = formatOperationalNumber(position);
+function renderPortfolio(monitor) {
+  const portfolio = monitor.portfolio;
+  portfolioPosition.textContent = formatOperationalNumber(portfolio.positionQuantity);
   portfolioCash.textContent = formatOperationalNumber(portfolio.cash);
   portfolioEquity.textContent = formatOperationalNumber(portfolio.equity);
-  portfolioExposure.textContent = formatPercent(exposure);
-  portfolioRealized.textContent = formatOperationalNumber(portfolio.realized_pnl);
-  portfolioUnrealized.textContent = formatOperationalNumber(portfolio.unrealized_pnl);
-  portfolioFees.textContent = formatOperationalNumber(portfolio.fees_paid);
-  portfolioMark.textContent = formatOperationalNumber(mark);
-  portfolioBadge.textContent = snapshot.runtime_active ? "Live snapshot" : "Persisted final";
+  portfolioExposure.textContent = formatPercent(portfolio.grossExposurePercent);
+  portfolioRealized.textContent = formatOperationalNumber(portfolio.realizedPnl);
+  portfolioUnrealized.textContent = formatOperationalNumber(portfolio.unrealizedPnl);
+  portfolioFees.textContent = formatOperationalNumber(portfolio.feesPaid);
+  portfolioMark.textContent = formatOperationalNumber(monitor.market.markPrice);
+  portfolioBadge.textContent = monitor.run.runtimeActive ? "Live snapshot" : "Persisted final";
 }
 
 function emptyTableRow(columnCount, message) {
@@ -557,42 +570,42 @@ function tableCell(value, className = "") {
   return cell;
 }
 
-function renderOpenOrders(snapshot) {
-  const orders = [...(snapshot.open_orders ?? [])].sort(
-    (left, right) => (left.submitted_at_ms ?? 0) - (right.submitted_at_ms ?? 0)
+function renderOpenOrders(monitor) {
+  const orders = [...monitor.orders].sort(
+    (left, right) => (left.submittedAtMs ?? 0) - (right.submittedAtMs ?? 0)
   );
   ordersBody.replaceChildren();
   ordersBadge.textContent = orders.length + " open";
 
   if (!orders.length) {
-    ordersBody.appendChild(emptyTableRow(8, snapshot.runtime_active ? "No active Paper orders." : "No open orders in this persisted terminal state."));
-    ordersStatus.textContent = snapshot.runtime_active
+    ordersBody.appendChild(emptyTableRow(8, monitor.run.runtimeActive ? "No active orders." : "No open orders in this persisted terminal state."));
+    ordersStatus.textContent = monitor.run.runtimeActive
       ? "Backend snapshot currently has no resting orders."
-      : "Terminal Paper snapshot · no live orders.";
+      : "Terminal snapshot · no live orders.";
     return;
   }
 
   for (const order of orders) {
     const row = document.createElement("tr");
-    const side = String(order.side ?? "").toLowerCase();
-    const original = numeric(order.original_quantity) ?? 0;
-    const filled = numeric(order.filled_quantity) ?? 0;
-    const remaining = numeric(order.remaining_quantity) ?? Math.max(0, original - filled);
+    const side = order.side;
+    const original = order.originalQuantity;
+    const filled = order.filledQuantity;
+    const remaining = order.remainingQuantity;
     const fillPercent = original > 0 ? Math.min(100, Math.max(0, (filled / original) * 100)) : 0;
     const fillState = filled > 0 ? "Partial · " + fillPercent.toFixed(1) + "%" : "Resting";
 
-    row.appendChild(tableCell("#" + order.order_id));
+    row.appendChild(tableCell("#" + order.id));
     row.appendChild(tableCell(humanize(side), "trading-side trading-side--" + side));
     row.appendChild(tableCell(formatOperationalNumber(order.price)));
     row.appendChild(tableCell(formatOperationalNumber(original)));
     row.appendChild(tableCell(formatOperationalNumber(filled)));
     row.appendChild(tableCell(formatOperationalNumber(remaining)));
     row.appendChild(tableCell(fillState));
-    row.appendChild(tableCell(formatAge(order.submitted_at_ms)));
+    row.appendChild(tableCell(formatAge(order.submittedAtMs)));
     ordersBody.appendChild(row);
   }
 
-  ordersStatus.textContent = orders.length + " backend-owned open order" + (orders.length === 1 ? "" : "s") + " · updated " + formatUtcTimestamp(snapshot.updated_at_ms) + " UTC";
+  ordersStatus.textContent = orders.length + " backend-owned open order" + (orders.length === 1 ? "" : "s") + " · updated " + formatUtcTimestamp(monitor.run.updatedAtMs) + " UTC";
 }
 
 function auditEventDetails(item) {
@@ -661,7 +674,9 @@ async function loadAuditTail(runId, quiet = false) {
   auditRefreshInFlight = true;
   if (!quiet) auditStatus.textContent = "Loading latest canonical events for Run #" + runId + "…";
   try {
-    const page = await fetchJson("/api/trading/runs/" + runId + "/audit?limit=250");
+    const auditUrl = activeAdapter.urls.auditTail(runId, 250);
+    if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
+    const page = await fetchJson(auditUrl);
     if (token !== auditRequestToken || currentRunId !== runId) return;
     auditRunId = runId;
     auditEvents = page.events ?? [];
@@ -685,7 +700,9 @@ async function appendNewAuditEvents(runId) {
   auditRefreshInFlight = true;
   try {
     const lastSequence = auditEvents.length ? auditEvents[auditEvents.length - 1].event.run_sequence : 0;
-    const page = await fetchJson("/api/trading/runs/" + runId + "/audit?after_sequence=" + lastSequence + "&limit=500");
+    const auditUrl = activeAdapter.urls.auditAfter(runId, lastSequence, 500);
+    if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
+    const page = await fetchJson(auditUrl);
     if (currentRunId !== runId || auditRunId !== runId) return;
     if (page.events?.length) {
       const bySequence = new Map(auditEvents.map((item) => [item.event.run_sequence, item]));
@@ -715,7 +732,9 @@ async function loadCompleteAudit(runId) {
     let afterSequence = 0;
     let total = 0;
     while (true) {
-      const page = await fetchJson("/api/trading/runs/" + runId + "/audit?after_sequence=" + afterSequence + "&limit=500");
+      const auditUrl = activeAdapter.urls.auditAfter(runId, afterSequence, 500);
+      if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
+      const page = await fetchJson(auditUrl);
       if (token !== auditRequestToken || currentRunId !== runId) return;
       all.push(...(page.events ?? []));
       total = Number(page.total_events ?? total);
@@ -746,8 +765,8 @@ async function loadCompleteAudit(runId) {
   }
 }
 
-function syncAuditFromSnapshot(snapshot) {
-  const runId = snapshot?.run_id;
+function syncAuditFromMonitor(monitor) {
+  const runId = monitor?.run.id;
   if (!runId) return;
   if (auditRunId !== runId) {
     void loadAuditTail(runId);
@@ -767,7 +786,7 @@ function showControlError(message) {
 }
 
 function syncFixedAnchorState() {
-  fixedAnchorInput.disabled = Boolean(currentSnapshot?.runtime_active) || anchorInput.value !== "fixed";
+  fixedAnchorInput.disabled = Boolean(currentMonitor?.run.runtimeActive) || activeMode !== "paper" || anchorInput.value !== "fixed";
 }
 
 function setConfigLocked(locked) {
@@ -777,7 +796,8 @@ function setConfigLocked(locked) {
   configLockBadge.textContent = locked ? "Locked · active run" : "Editable";
   startButton.disabled = locked;
   stopButton.disabled = !locked;
-  paperModeButton.disabled = locked;
+  paperModeButton.disabled = locked || activeMode !== "paper";
+  liveModeButton.disabled = TradingContract.adapterFor("live").locked || locked;
   syncFixedAnchorState();
 }
 
@@ -815,7 +835,7 @@ function applySnapshotToConfig(snapshot) {
   syncFixedAnchorState();
 }
 
-function buildStartRequest() {
+function buildStartConfiguration() {
   const symbol = symbolInput.value.trim().toUpperCase();
   if (!/^[A-Z0-9]+$/.test(symbol)) {
     throw new Error("Symbol must contain only letters and numbers.");
@@ -823,7 +843,6 @@ function buildStartRequest() {
   const anchor = anchorInput.value;
   const fixedAnchorPrice = anchor === "fixed" ? numberValue(fixedAnchorInput, "Fixed anchor price") : null;
   return {
-    mode: "paper",
     symbol,
     market_type: marketTypeInput.value,
     replay_interval: replayIntervalInput.value,
@@ -865,72 +884,78 @@ async function requestJson(url, options = {}) {
 
 function renderNoRun() {
   currentSnapshot = null;
+  currentMonitor = null;
   currentRunId = null;
   runIdElement.textContent = "No run";
-  runStatusElement.textContent = "No Paper run has been created yet.";
+  runStatusElement.textContent = "No " + activeAdapter.label + " run has been created yet.";
   runBadgeElement.textContent = "Idle";
   setDot(feedDot, "pending");
   feedLabel.textContent = "Inactive";
-  feedDetail.textContent = "No backend Paper runtime selected";
+  feedDetail.textContent = "No backend " + activeAdapter.label + " runtime selected";
   setDot(topDot, "pending");
-  topLabel.textContent = "Paper mode";
+  topLabel.textContent = activeAdapter.label + " mode";
   symbolElement.textContent = "—";
   marketTypeElement.textContent = "—";
   intervalElement.textContent = "—";
   strategyElement.textContent = "—";
   setConfigLocked(false);
-  setControlStatus("Ready to start a backend Paper run.");
+  setControlStatus(activeAdapter.locked ? activeAdapter.lockReason : "Ready to start a backend " + activeAdapter.label + " run.");
   resetTradingChart("No Paper run selected.");
   portfolioBadge.textContent = "Snapshot";
   for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
     element.textContent = "—";
   }
   ordersBadge.textContent = "0 open";
-  ordersBody.replaceChildren(emptyTableRow(8, "No active Paper orders."));
-  ordersStatus.textContent = "No Paper run selected.";
-  resetAudit("No Paper run selected.");
+  ordersBody.replaceChildren(emptyTableRow(8, "No active orders."));
+  ordersStatus.textContent = "No trading run selected.";
+  resetAudit("No trading run selected.");
 }
 
 function renderSnapshot(snapshot) {
+  const monitor = TradingContract.normalizeSnapshot(snapshot);
+  setTradingMode(monitor.run.mode);
   currentSnapshot = snapshot;
-  currentRunId = snapshot.run_id;
-  runIdElement.textContent = `Run #${snapshot.run_id}`;
-  runStatusElement.textContent = snapshot.runtime_active
-    ? `Backend runtime · ${humanize(snapshot.runtime_status)}`
-    : `Persisted run · ${humanize(snapshot.canonical_status)}`;
-  runBadgeElement.textContent = humanize(snapshot.runtime_status || snapshot.canonical_status);
+  currentMonitor = monitor;
+  currentRunId = monitor.run.id;
+  runIdElement.textContent = "Run #" + monitor.run.id;
+  runStatusElement.textContent = monitor.run.runtimeActive
+    ? "Backend runtime · " + humanize(monitor.run.runtimeStatus)
+    : "Persisted run · " + humanize(monitor.run.canonicalStatus);
+  runBadgeElement.textContent = humanize(monitor.run.runtimeStatus || monitor.run.canonicalStatus);
 
-  symbolElement.textContent = snapshot.symbol || "—";
-  marketTypeElement.textContent = humanize(snapshot.market_type) || "—";
-  intervalElement.textContent = snapshot.replay_interval || "—";
-  strategyElement.textContent = snapshot.strategy_id || "—";
-  applySnapshotToConfig(snapshot);
-  setConfigLocked(Boolean(snapshot.runtime_active));
-  setControlStatus(snapshot.runtime_active
-    ? ("Run #" + snapshot.run_id + " is active. Stop it before changing configuration.")
-    : ("Loaded persisted Run #" + snapshot.run_id + ". Configuration is editable for the next Paper run."));
-  syncChartFromSnapshot(snapshot);
-  renderPortfolio(snapshot);
-  renderOpenOrders(snapshot);
-  syncAuditFromSnapshot(snapshot);
+  symbolElement.textContent = monitor.market.symbol || "—";
+  marketTypeElement.textContent = humanize(monitor.market.marketType) || "—";
+  intervalElement.textContent = monitor.market.replayInterval || "—";
+  strategyElement.textContent = monitor.strategy.id || "—";
+  if (monitor.run.mode === "paper") applySnapshotToConfig(snapshot);
+  setConfigLocked(Boolean(monitor.run.runtimeActive));
+  setControlStatus(monitor.run.runtimeActive
+    ? ("Run #" + monitor.run.id + " is active. Stop it before changing " + activeAdapter.label + " setup.")
+    : (activeAdapter.locked
+      ? activeAdapter.lockReason
+      : "Loaded persisted Run #" + monitor.run.id + ". " + activeAdapter.label + " setup is editable for the next run."));
+  syncChartFromMonitor(monitor);
+  renderPortfolio(monitor);
+  renderOpenOrders(monitor);
+  syncAuditFromMonitor(monitor);
 
-  if (!snapshot.runtime_active) {
+  if (!monitor.run.runtimeActive) {
     setDot(feedDot, "pending");
     feedLabel.textContent = "Runtime inactive";
     feedDetail.textContent = "Persisted state only · no live feed claimed";
     setDot(topDot, "pending");
-    topLabel.textContent = "Paper · inactive";
+    topLabel.textContent = activeAdapter.label + " · inactive";
     return;
   }
 
-  const feedState = snapshot.feed_status || "loading";
+  const feedState = monitor.market.feedStatus || "loading";
   setDot(feedDot, feedState);
   feedLabel.textContent = humanize(feedState);
-  feedDetail.textContent = snapshot.symbol
-    ? `${snapshot.symbol} · Binance public 1m base feed`
+  feedDetail.textContent = monitor.market.symbol
+    ? monitor.market.symbol + " · Binance public 1m base feed"
     : "Binance public market data";
   setDot(topDot, feedState === "live" ? "live" : feedState);
-  topLabel.textContent = `Paper · ${humanize(snapshot.runtime_status)}`;
+  topLabel.textContent = activeAdapter.label + " · " + humanize(monitor.run.runtimeStatus);
 }
 
 async function fetchJson(url) {
@@ -945,7 +970,7 @@ async function fetchJson(url) {
 }
 
 function selectRun(runs) {
-  return runs.find((run) => ["arming", "running"].includes(run.runtime_status)) ?? runs[0] ?? null;
+  return TradingContract.selectRun(runs);
 }
 
 function closeStream() {
@@ -959,7 +984,7 @@ function closeStream() {
 function scheduleReconnect(runId) {
   window.clearTimeout(reconnectTimer);
   reconnectTimer = window.setTimeout(() => {
-    if (currentSnapshot?.runtime_active && currentRunId === runId) {
+    if (currentMonitor?.run.runtimeActive && currentRunId === runId) {
       connectStream(runId);
     }
   }, 1500);
@@ -967,13 +992,18 @@ function scheduleReconnect(runId) {
 
 function connectStream(runId) {
   closeStream();
-  if (!currentSnapshot?.runtime_active || currentRunId !== runId) {
+  if (!currentMonitor?.run.runtimeActive || currentRunId !== runId) {
     return;
   }
 
   setConnection("connecting", `Opening stream for Run #${runId}`);
+  const streamPath = activeAdapter.urls.stream(runId);
+  if (!streamPath) {
+    setConnection("error", activeAdapter.label + " stream adapter is unavailable.");
+    return;
+  }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  stream = new WebSocket(`${protocol}//${window.location.host}/api/trading/runs/${runId}/stream`);
+  stream = new WebSocket(protocol + "//" + window.location.host + streamPath);
 
   stream.addEventListener("open", () => {
     setConnection("streaming", `Authenticated Run #${runId} stream`);
@@ -992,11 +1022,11 @@ function connectStream(runId) {
 
   stream.addEventListener("close", () => {
     stream = null;
-    if (currentSnapshot?.runtime_active && currentRunId === runId) {
+    if (currentMonitor?.run.runtimeActive && currentRunId === runId) {
       setConnection("reconnecting", `Run #${runId} stream disconnected`);
       scheduleReconnect(runId);
     } else {
-      setConnection("connected", "Protected Paper state loaded");
+      setConnection("connected", "Protected " + activeAdapter.label + " state loaded");
     }
   });
 
@@ -1006,9 +1036,11 @@ function connectStream(runId) {
 }
 
 async function initializeTradingStatus() {
-  setConnection("connecting", "Reading protected Paper state");
+  setConnection("connecting", "Reading protected " + activeAdapter.label + " state");
   try {
-    const listing = await fetchJson("/api/trading/runs?limit=100");
+    const runsUrl = activeAdapter.urls.runs(100);
+    if (!runsUrl) throw new Error(activeAdapter.label + " runtime adapter is unavailable.");
+    const listing = await fetchJson(runsUrl);
     const selected = selectRun(listing.runs ?? []);
     if (!selected) {
       renderNoRun();
@@ -1016,7 +1048,9 @@ async function initializeTradingStatus() {
       return;
     }
 
-    const snapshot = await fetchJson(`/api/trading/runs/${selected.run_id}`);
+    const snapshotUrl = activeAdapter.urls.snapshot(selected.run_id);
+    if (!snapshotUrl) throw new Error(activeAdapter.label + " snapshot adapter is unavailable.");
+    const snapshot = await fetchJson(snapshotUrl);
     renderSnapshot(snapshot);
     setConnection("connected", `Loaded Run #${selected.run_id}`);
     if (snapshot.runtime_active) {
@@ -1029,17 +1063,26 @@ async function initializeTradingStatus() {
 }
 
 anchorInput.addEventListener("change", syncFixedAnchorState);
+paperModeButton.addEventListener("click", () => {
+  if (!currentMonitor?.run.runtimeActive) setTradingMode("paper");
+});
+liveModeButton.addEventListener("click", () => {
+  const live = TradingContract.adapterFor("live");
+  if (!live.locked && !currentMonitor?.run.runtimeActive) setTradingMode("live");
+});
 
 tradingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (currentSnapshot?.runtime_active) return;
+  if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
   showControlError("");
   startButton.disabled = true;
-  setControlStatus("Starting Paper runtime on Render…");
+  setControlStatus("Starting " + activeAdapter.label + " runtime on Render…");
   try {
-    const snapshot = await requestJson("/api/trading/runs", {
+    const startUrl = activeAdapter.urls.start();
+    if (!startUrl) throw new Error(activeAdapter.label + " start adapter is unavailable.");
+    const snapshot = await requestJson(startUrl, {
       method: "POST",
-      body: JSON.stringify(buildStartRequest()),
+      body: JSON.stringify(activeAdapter.buildStartPayload(buildStartConfiguration())),
     });
     renderSnapshot(snapshot);
     setConnection("connected", "Created Run #" + snapshot.run_id);
@@ -1047,7 +1090,7 @@ tradingForm.addEventListener("submit", async (event) => {
   } catch (error) {
     showControlError(error.message);
     setConfigLocked(false);
-    setControlStatus("Paper run was not started.");
+    setControlStatus(activeAdapter.label + " run was not started.");
   }
 });
 
@@ -1056,12 +1099,14 @@ auditLoadAllButton.addEventListener("click", () => {
 });
 
 stopButton.addEventListener("click", async () => {
-  if (!currentSnapshot?.runtime_active || !currentRunId) return;
+  if (!currentMonitor?.run.runtimeActive || !currentRunId) return;
   showControlError("");
   stopButton.disabled = true;
   setControlStatus("Stopping Run #" + currentRunId + "…");
   try {
-    const snapshot = await requestJson("/api/trading/runs/" + currentRunId + "/stop", { method: "POST" });
+    const stopUrl = activeAdapter.urls.stop(currentRunId);
+    if (!stopUrl) throw new Error(activeAdapter.label + " stop adapter is unavailable.");
+    const snapshot = await requestJson(stopUrl, { method: "POST" });
     closeStream();
     renderSnapshot(snapshot);
     setConnection("connected", "Run #" + snapshot.run_id + " stopped; persisted state loaded");
@@ -1083,6 +1128,7 @@ if (tradingChartElement && "ResizeObserver" in window) {
 }
 
 initializeTheme();
+setTradingMode("paper");
 ensureTradingChart();
 syncFixedAnchorState();
 setConfigLocked(false);
