@@ -388,6 +388,19 @@ The Trading page now has an explicit mode-neutral frontend contract instead of s
 
 This refactor does not add private Binance account access, user-data streams, signing, or order submission. Those remain later-phase responsibilities.
 
+## Phase 4.8A Automated parity and safety verification
+
+Phase 4 now has a dedicated automated verification suite that exercises the chronology and safety contract independently of the production UI.
+
+- A synthetic completed-candle sequence is fed through both the historical Backtest engine and the Paper core with the same static-grid strategy, execution assumptions, pre-roll candle, and active candles. The test compares decisions, order intents, created orders, order-state transitions, fills, position snapshots, equity/accounting snapshots, non-status event ordering, and final portfolio values.
+- Mid-interval starts are checked against the shared UTC interval boundary calculation, and bootstrap verification accepts only the immediately previous completed replay candle.
+- Backend snapshot integrity checks explicitly cover duplicate, out-of-order, stale-history, and missing-candle/gap cases.
+- Stop verification confirms a second stop produces no additional canonical event, while reconnect verification enforces snapshot-first bootstrap and monotonically newer stream revisions without making the browser runtime owner.
+- The Phase 4 API Live gate is tested with an otherwise-invalid Live request, proving the request is rejected as Live-locked before market/configuration validation or Paper runtime creation. No Paper or Live run is created.
+- CI runs the focused Phase 4 verification tests, the complete Rust suite, and then the pre-existing frozen XAGUSDT Backtest/grid regression unchanged.
+
+These tests add verification only; they do not change strategy rules, Paper execution semantics, or enable any Binance private-account behavior.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

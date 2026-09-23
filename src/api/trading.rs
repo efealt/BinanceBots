@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_start_is_rejected_before_market_or_paper_runtime_access() {
+    async fn phase4_verification_live_start_is_rejected_before_any_validation_or_runtime_access() {
         let path = temp_database("live-lock");
         let storage = Arc::new(StorageReader::new(path.clone()));
         storage.initialize().unwrap();
@@ -404,18 +404,21 @@ mod tests {
         let request = StartTradingRunRequest {
             mode: "live".into(),
             symbol: "THIS_DOES_NOT_NEED_TO_EXIST".into(),
-            market_type: "spot".into(),
-            replay_interval: "1m".into(),
-            initial_capital: "1000".into(),
-            strategy_id: "static-grid-fixture".into(),
+            market_type: "definitely_invalid".into(),
+            replay_interval: "definitely_invalid".into(),
+            initial_capital: "definitely_invalid".into(),
+            strategy_id: "definitely_invalid".into(),
             grid: GridRequest {
-                anchor: "previous_close".into(),
-                fixed_anchor_price: None,
-                spacing_bps: 100.0,
-                levels_per_side: 1,
-                quantity_per_order: 1.0,
+                anchor: "definitely_invalid".into(),
+                fixed_anchor_price: Some(-1.0),
+                spacing_bps: -1.0,
+                levels_per_side: 0,
+                quantity_per_order: -1.0,
             },
-            execution: ExecutionAssumptions::default(),
+            execution: ExecutionAssumptions {
+                fee_bps: -1.0,
+                ..ExecutionAssumptions::default()
+            },
         };
 
         let error = start_run(State(manager), Json(request))
@@ -423,6 +426,8 @@ mod tests {
             .err()
             .expect("Live start must be server-side locked");
         assert!(matches!(error, TradingApiError::LiveLocked));
+        assert!(storage.trading_runs_by_mode(crate::storage::RunMode::Live, 10).unwrap().is_empty());
+        assert!(storage.trading_runs_by_mode(crate::storage::RunMode::Paper, 10).unwrap().is_empty());
 
         drop(storage);
         cleanup_database(&path);

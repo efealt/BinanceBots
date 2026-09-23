@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.7 COMPLETE
+Status: IN PROGRESS — 4.1–4.8A COMPLETE
 
 ## Prerequisite
 
@@ -190,12 +190,12 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.8A — Automated parity + safety verification
 
-- [ ] Feed the same synthetic completed-candle sequence through Backtest and Paper and compare decisions, intents, fills, accounting, and ordering.
-- [ ] Verify start-at-mid-interval arming and previous-candle bootstrap.
-- [ ] Verify duplicate/out-of-order/stale/gap handling.
-- [ ] Verify idempotent stop and snapshot/live-stream reconnect behavior.
-- [ ] Verify every Phase 4 Live-mode start path is rejected server-side.
-- [ ] Run the existing Backtest/grid regression unchanged.
+- [x] Feed the same synthetic completed-candle sequence through Backtest and Paper and compare decisions, intents, fills, accounting, and ordering.
+- [x] Verify start-at-mid-interval arming and previous-candle bootstrap.
+- [x] Verify duplicate/out-of-order/stale/gap handling.
+- [x] Verify idempotent stop and snapshot/live-stream reconnect behavior.
+- [x] Verify every Phase 4 Live-mode start path is rejected server-side.
+- [x] Run the existing Backtest/grid regression unchanged.
 
 **Checkpoint:** Automated tests prove the Phase 4 chronology and safety contract without using production UI behavior as evidence.
 

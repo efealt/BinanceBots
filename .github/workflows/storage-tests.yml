@@ -8,6 +8,7 @@ on:
       - "src/backtest.rs"
       - "src/backtest/**"
       - "src/paper.rs"
+      - "src/paper/**"
       - "src/main.rs"
       - "src/trading/**"
       - "src/api/**"
@@ -46,6 +47,8 @@ jobs:
         run: node scripts/test-trading-shell.js
       - name: Test Trading shared mode contract
         run: node scripts/test-trading-contract.js
+      - name: Run Phase 4 parity + safety verification
+        run: cargo test phase4_ -- --nocapture
       - name: Run Rust tests
         run: cargo test --all-targets
       - name: Run full frozen XAGUSDT grid regression

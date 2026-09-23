@@ -1434,6 +1434,9 @@ pub enum PaperError {
 }
 
 #[cfg(test)]
+mod phase4_verification;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
