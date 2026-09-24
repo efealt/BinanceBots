@@ -2,7 +2,7 @@ use crate::{
     market::{Candle, FeedStatus, MarketError, MarketKey, MarketService, MarketSnapshot, MarketType},
     storage::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
-        LiquidityRole, OrderIntentInput, OrderStateInput, OrderStatus, OrderType,
+        LiquidityRole, OrderIntentInput, OrderSide, OrderStateInput, OrderStatus, OrderType,
         PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader,
         TradingAuditPage, TradingFillAudit, TradingOrderLevel, TradingRunSpec,
     },
@@ -44,6 +44,41 @@ pub struct PaperStartConfig {
     pub strategy_id: String,
     pub grid_config: StaticGridConfig,
     pub execution: ExecutionAssumptions,
+}
+
+#[derive(Clone, Debug)]
+pub struct PaperPreviewConfig {
+    pub symbol: String,
+    pub market_type: MarketType,
+    pub replay_interval: TradingInterval,
+    pub initial_capital: ExactDecimal,
+    pub strategy_id: String,
+    pub grid_config: StaticGridConfig,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PaperPreviewLevel {
+    pub intent_key: Option<String>,
+    pub level: u32,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub price: ExactDecimal,
+    pub quantity: ExactDecimal,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PaperPreviewSnapshot {
+    pub active: bool,
+    pub symbol: String,
+    pub market_type: String,
+    pub replay_interval: String,
+    pub strategy_id: String,
+    pub strategy_version: String,
+    pub preview_boundary_ms: i64,
+    pub previous_candle_close_ms: Option<i64>,
+    pub anchor_price: Option<ExactDecimal>,
+    pub levels: Vec<PaperPreviewLevel>,
+    pub updated_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -205,6 +240,34 @@ impl PaperManager {
         }))
     }
 
+    pub async fn preview(&self, config: PaperPreviewConfig) -> Result<PaperPreviewSnapshot, PaperError> {
+        validate_preview_config(&config)?;
+
+        let symbol = config.symbol.trim().to_ascii_uppercase();
+        let now = system_now_ms();
+        // Preview uses the latest fully-known replay boundary. Live-Paper itself arms for
+        // the next boundary, so a previous-close preview can legitimately move before Start.
+        let preview_boundary = config.replay_interval.bucket_open_ms(now);
+        let key = MarketKey::new(
+            &symbol,
+            config.replay_interval.as_str(),
+            config.market_type,
+        )?;
+        let market_snapshot = self.market.snapshot_for(key).await?;
+        let previous = previous_completed_replay_candle(
+            &market_snapshot.candles,
+            preview_boundary,
+            config.replay_interval,
+        );
+
+        build_preview_snapshot(
+            &config,
+            preview_boundary,
+            previous.as_ref(),
+            now,
+        )
+    }
+
     pub async fn start(self: &Arc<Self>, config: PaperStartConfig) -> Result<PaperSnapshot, PaperError> {
         validate_start_config(&config)?;
         self.storage.trading_bot(config.bot_id)?;
@@ -216,7 +279,7 @@ impl PaperManager {
             .storage
             .ensure_market_instrument(&symbol, config.market_type.as_str())?;
 
-        let strategy = build_strategy(&config)?;
+        let strategy = build_strategy(&config.strategy_id, &config.grid_config)?;
         let strategy_id = strategy.id().to_string();
         let strategy_version = strategy.version().to_string();
         let strategy_params = strategy.parameters();
@@ -1283,15 +1346,108 @@ impl ReplayAggregator {
     }
 }
 
-fn build_strategy(config: &PaperStartConfig) -> Result<Box<dyn Strategy + Send>, PaperError> {
-    match config.strategy_id.as_str() {
+fn build_strategy(
+    strategy_id: &str,
+    grid_config: &StaticGridConfig,
+) -> Result<Box<dyn Strategy + Send>, PaperError> {
+    match strategy_id {
         "static-grid-fixture" => Ok(Box::new(
-            StaticGridStrategy::new(config.grid_config.clone()).map_err(PaperError::Invalid)?,
+            StaticGridStrategy::new(grid_config.clone()).map_err(PaperError::Invalid)?,
         )),
         other => Err(PaperError::Invalid(format!(
-            "unsupported Paper strategy: {other}"
+            "unsupported Live-Paper strategy: {other}"
         ))),
     }
+}
+
+fn validate_preview_config(config: &PaperPreviewConfig) -> Result<(), PaperError> {
+    if config.strategy_id != "static-grid-fixture" {
+        return Err(PaperError::Invalid(
+            "Live-Paper preview currently exposes only static-grid-fixture".into(),
+        ));
+    }
+    let capital = config
+        .initial_capital
+        .as_str()
+        .parse::<f64>()
+        .map_err(|_| PaperError::Invalid("initial capital is not representable".into()))?;
+    if !capital.is_finite() || capital <= 0.0 {
+        return Err(PaperError::Invalid("initial capital must be positive".into()));
+    }
+    config.grid_config.validate().map_err(PaperError::Invalid)?;
+    Ok(())
+}
+
+fn build_preview_snapshot(
+    config: &PaperPreviewConfig,
+    boundary_ms: i64,
+    previous: Option<&MarketCandle>,
+    updated_at_ms: i64,
+) -> Result<PaperPreviewSnapshot, PaperError> {
+    let initial_cash = config
+        .initial_capital
+        .as_str()
+        .parse::<f64>()
+        .map_err(|_| PaperError::Invalid("initial capital is not representable".into()))?;
+    let portfolio = PortfolioState::new(initial_cash).map_err(PaperError::Simulation)?;
+    let mut strategy = build_strategy(&config.strategy_id, &config.grid_config)?;
+
+    if strategy.requires_previous_candle() && previous.is_none() {
+        return Err(PaperError::Invalid(format!(
+            "preview requires a completed {} candle before boundary {}",
+            config.replay_interval.as_str(),
+            boundary_ms
+        )));
+    }
+
+    let context = StrategyStartContext {
+        now_ms: boundary_ms,
+        previous_candle: previous,
+        portfolio: portfolio.view(),
+    };
+    let output = strategy.on_start(&context).map_err(PaperError::Strategy)?;
+    let anchor_price = output
+        .decisions
+        .iter()
+        .find_map(|decision| decision.payload.get("anchor_price").and_then(Value::as_f64))
+        .map(exact)
+        .transpose()?;
+
+    let mut levels = Vec::with_capacity(output.order_intents.len());
+    for intent in output.order_intents {
+        validate_intent(&intent)?;
+        let price = intent.price.ok_or_else(|| {
+            PaperError::Invalid("preview supports priced initial grid intents only".into())
+        })?;
+        let level = intent
+            .metadata
+            .get("grid_level")
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| PaperError::Invalid("preview grid intent is missing grid_level".into()))?;
+        levels.push(PaperPreviewLevel {
+            intent_key: intent.intent_key,
+            level,
+            side: intent.side,
+            order_type: intent.order_type,
+            price: exact(price)?,
+            quantity: exact(intent.quantity)?,
+        });
+    }
+
+    Ok(PaperPreviewSnapshot {
+        active: false,
+        symbol: config.symbol.trim().to_ascii_uppercase(),
+        market_type: config.market_type.as_str().into(),
+        replay_interval: config.replay_interval.as_str().into(),
+        strategy_id: strategy.id().into(),
+        strategy_version: strategy.version().into(),
+        preview_boundary_ms: boundary_ms,
+        previous_candle_close_ms: previous.map(|candle| candle.close_time_ms),
+        anchor_price,
+        levels,
+        updated_at_ms,
+    })
 }
 
 fn validate_start_config(config: &PaperStartConfig) -> Result<(), PaperError> {
@@ -1300,7 +1456,7 @@ fn validate_start_config(config: &PaperStartConfig) -> Result<(), PaperError> {
     }
     if config.strategy_id != "static-grid-fixture" {
         return Err(PaperError::Invalid(
-            "Phase 4 currently exposes only static-grid-fixture".into(),
+            "Live-Paper currently exposes only static-grid-fixture".into(),
         ));
     }
     let capital = config
@@ -1993,6 +2149,62 @@ mod tests {
             execution: SimulatedExecution::new(ExecutionAssumptions::default()).unwrap(),
             status: RunStatus::Created,
         }
+    }
+
+    #[test]
+    fn preview_grid_matches_live_paper_initial_orders_for_same_boundary() {
+        let path = temp_database("preview-live-parity");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+
+        let grid = StaticGridConfig {
+            anchor: crate::trading::GridAnchor::PreviousClose,
+            fixed_anchor_price: None,
+            spacing_bps: 50.0,
+            levels_per_side: 3,
+            quantity_per_order: 1.25,
+            time_in_force: crate::storage::TimeInForce::Gtc,
+        };
+        let config = PaperPreviewConfig {
+            symbol: "XAGUSDT".into(),
+            market_type: MarketType::UsdMarginedPerpetual,
+            replay_interval: TradingInterval::OneMinute,
+            initial_capital: ExactDecimal::new("100000").unwrap(),
+            strategy_id: "static-grid-fixture".into(),
+            grid_config: grid.clone(),
+        };
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 63.9,
+            high: 64.0,
+            low: 63.8,
+            close: 63.95,
+            volume: 10.0,
+        };
+        let preview = build_preview_snapshot(&config, 60_000, Some(&previous), 60_000).unwrap();
+
+        let strategy = Box::new(StaticGridStrategy::new(grid).unwrap());
+        let mut core = test_core_with_strategy(
+            Arc::clone(&storage),
+            "previewliveparity",
+            strategy,
+            ExecutionAssumptions::default(),
+        );
+        core.start(60_000, &previous).unwrap();
+        let live_levels = storage.trading_run_order_levels(core.run_id).unwrap();
+
+        assert_eq!(preview.levels.len(), live_levels.len());
+        for (preview_level, live_level) in preview.levels.iter().zip(live_levels.iter()) {
+            assert_eq!(preview_level.side, live_level.side);
+            assert_eq!(preview_level.order_type, live_level.order_type);
+            assert_eq!(preview_level.price.as_str(), live_level.price.as_str());
+            assert_eq!(preview_level.quantity.as_str(), live_level.quantity.as_str());
+        }
+
+        drop(core);
+        drop(storage);
+        cleanup_database(&path);
     }
 
     #[test]

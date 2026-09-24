@@ -449,6 +449,20 @@ Forward execution is now keyed by **Bot → Run**, not by one global current run
 - Concurrency tests exercise two simultaneously running Bot cores and prove orders, fills, portfolios, run events, and canonical audit pages remain separated by `run_id`.
 - **Live-Real-Account** execution remains server-side locked.
 
+## Phase 4.8B Phase 4 — Side-effect-free pre-trade preview
+
+Trading now supports a backend-derived **Show on graph** preview before Live-Paper execution.
+
+- `POST /api/trading/preview` accepts the visible Live-Paper configuration without requiring a saved Bot. It validates the same configuration contract used by Start and calls the same static-grid strategy initialization semantics entirely in memory.
+- Preview is deliberately non-canonical and side-effect free: it does not create or update Bots, Runs, order intents, orders, fills, positions, equity snapshots, or audit events.
+- Previous-close preview uses the latest fully-known replay boundary so it never relies on an unfinished future candle. The response includes `preview_boundary_ms` and the reference anchor; Live-Paper still recalculates at the Run's actual future arming boundary, so a moving previous close can legitimately change between preview and Start.
+- The existing TradingView Lightweight Charts surface draws dotted `PREVIEW BUY/SELL` price lines and an explicit **Preview · not active** badge. Preview state never masquerades as canonical execution state.
+- Strategy-defining edits (symbol, market, replay interval, strategy, anchor, fixed anchor, spacing, levels, quantity) mark the preview stale. Stale levels use warning styling and the action becomes **Update preview**.
+- Selecting another Bot or opening a New Bot clears the prior preview. When a Live-Paper Run becomes active, preview overlays are removed and replaced by the Run's canonical order/fill overlays.
+- A Rust parity test proves that preview levels and persisted Live-Paper initial orders match exactly for the same strategy configuration, previous candle, and market boundary.
+- **Live-Real-Account** remains server-side locked.
+
+
 ## UI
 
 - **Console** — current bot-console UI shell.

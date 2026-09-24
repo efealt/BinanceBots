@@ -30,6 +30,7 @@ const botStatus = document.querySelector("#trading-bot-status");
 const newBotButton = document.querySelector("#trading-new-bot-button");
 const botNameInput = document.querySelector("#trading-bot-name");
 const saveBotButton = document.querySelector("#trading-save-bot-button");
+const previewButton = document.querySelector("#trading-preview-button");
 const symbolInput = document.querySelector("#trading-config-symbol");
 const marketTypeInput = document.querySelector("#trading-config-market-type");
 const replayIntervalInput = document.querySelector("#trading-config-interval");
@@ -49,6 +50,7 @@ const partialFillInput = document.querySelector("#trading-config-partial-fill");
 const tradingChartElement = document.querySelector("#trading-live-chart");
 const tradingChartStatus = document.querySelector("#trading-chart-status");
 const tradingChartBadge = document.querySelector("#trading-chart-badge");
+const previewBadge = document.querySelector("#trading-preview-badge");
 const chartLastPrice = document.querySelector("#trading-chart-last-price");
 const chartOpen = document.querySelector("#trading-chart-open");
 const chartHigh = document.querySelector("#trading-chart-high");
@@ -80,6 +82,7 @@ let marketStreamKey = null;
 let chartFillMarkersPlugin = null;
 let chartOrderSeries = new Map();
 let chartOrderPriceLines = new Map();
+let chartPreviewPriceLines = new Map();
 let tradingChartCrosshairBound = false;
 let currentRunId = null;
 let currentSnapshot = null;
@@ -112,6 +115,10 @@ let selectedBot = null;
 let selectedBotBaseline = null;
 let botDraftMode = true;
 let botSelectionToken = 0;
+let currentPreview = null;
+let previewFingerprint = null;
+let previewStale = false;
+let previewRequestToken = 0;
 
 function marketTypeLabel(marketType) {
   return marketType === "spot" ? "Spot" : marketType === "usd_m_perpetual" ? "USD-M perpetual" : humanize(marketType);
@@ -410,6 +417,7 @@ function chartPalette() {
   return {
     bid: styles.getPropertyValue("--bid").trim(),
     ask: styles.getPropertyValue("--ask").trim(),
+    preview: styles.getPropertyValue("--pending").trim(),
   };
 }
 
@@ -520,12 +528,129 @@ function resetRunOverlays() {
   chartFillMarkersPlugin?.setMarkers([]);
 }
 
+function resetPreviewOverlays() {
+  const chart = ensureTradingChart();
+  if (!chart) return;
+  for (const line of chartPreviewPriceLines.values()) {
+    chart.series.removePriceLine(line);
+  }
+  chartPreviewPriceLines = new Map();
+}
+
+function previewConfigFingerprint() {
+  return JSON.stringify({
+    symbol: symbolInput.value.trim().toUpperCase(),
+    market_type: marketTypeInput.value,
+    replay_interval: replayIntervalInput.value,
+    strategy_id: strategyInput.value,
+    anchor: anchorInput.value,
+    fixed_anchor_price: fixedAnchorInput.value,
+    spacing_bps: spacingInput.value,
+    levels_per_side: levelsInput.value,
+    quantity_per_order: quantityInput.value,
+  });
+}
+
+function previewMatchesSelectedMarket() {
+  if (!currentPreview) return false;
+  return currentPreview.symbol === symbolInput.value.trim().toUpperCase()
+    && currentPreview.market_type === marketTypeInput.value;
+}
+
+function updatePreviewUi() {
+  if (!currentPreview) {
+    previewButton.textContent = "Show on graph";
+    previewButton.classList.remove("button--warning");
+    previewBadge.hidden = true;
+    previewBadge.classList.remove("is-stale");
+    return;
+  }
+  if (previewStale) {
+    previewButton.textContent = "Update preview";
+    previewButton.classList.add("button--warning");
+    previewBadge.textContent = "Preview stale · not active";
+    previewBadge.classList.add("is-stale");
+  } else {
+    previewButton.textContent = "Show on graph";
+    previewButton.classList.remove("button--warning");
+    previewBadge.textContent = "Preview · not active";
+    previewBadge.classList.remove("is-stale");
+  }
+  previewBadge.hidden = false;
+}
+
+function clearPreview(render = true) {
+  previewRequestToken += 1;
+  currentPreview = null;
+  previewFingerprint = null;
+  previewStale = false;
+  resetPreviewOverlays();
+  updatePreviewUi();
+  if (render) renderTradingChart();
+}
+
+function refreshPreviewStaleness() {
+  if (!currentPreview || currentMonitor?.run.runtimeActive) return;
+  previewStale = previewFingerprint !== previewConfigFingerprint();
+  updatePreviewUi();
+  renderRunOverlays();
+  renderTradingChart();
+}
+
+function renderPreviewOverlays() {
+  const chart = ensureTradingChart();
+  if (!chart) return;
+  const shouldRender = Boolean(
+    currentPreview
+      && !currentMonitor?.run.runtimeActive
+      && chartCandles.length
+      && previewMatchesSelectedMarket()
+  );
+  if (!shouldRender) {
+    resetPreviewOverlays();
+    return;
+  }
+
+  const palette = chartPalette();
+  const required = new Set();
+  for (const level of currentPreview.levels ?? []) {
+    const price = numeric(level.price);
+    if (price === null) continue;
+    const side = String(level.side ?? "").toLowerCase();
+    const key = side + "-" + String(level.level);
+    required.add(key);
+    const color = previewStale ? palette.preview : (side === "buy" ? palette.bid : palette.ask);
+    const options = {
+      price,
+      color,
+      lineWidth: previewStale ? 1 : 2,
+      lineStyle: LightweightCharts.LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: (previewStale ? "STALE " : "PREVIEW ") + (side === "buy" ? "BUY" : "SELL") + " L" + level.level,
+    };
+    let line = chartPreviewPriceLines.get(key);
+    if (!line) {
+      line = chart.series.createPriceLine(options);
+      chartPreviewPriceLines.set(key, line);
+    } else {
+      line.applyOptions(options);
+    }
+  }
+
+  for (const [key, line] of chartPreviewPriceLines.entries()) {
+    if (required.has(key)) continue;
+    chart.series.removePriceLine(line);
+    chartPreviewPriceLines.delete(key);
+  }
+}
+
 function resetRunChartState(message = null) {
   chartBootstrapToken += 1;
   chartRunId = null;
   chartOrderLevels = new Map();
   chartFillMarkers = new Map();
   resetRunOverlays();
+  renderPreviewOverlays();
   if (message) setChartStatus(message);
   renderChartReadout();
 }
@@ -538,6 +663,7 @@ function resetTradingChart(message = "Loading live market…") {
   chartFillMarkers = new Map();
   const chart = ensureTradingChart();
   resetRunOverlays();
+  resetPreviewOverlays();
   chart?.reset();
   tradingChartBadge.textContent = "Binance 1m";
   renderChartReadout(null);
@@ -763,6 +889,7 @@ function renderRunOverlays() {
     .sort((left, right) => Number(left.time) - Number(right.time));
 
   chartFillMarkersPlugin?.setMarkers(markers);
+  renderPreviewOverlays();
 }
 
 function renderTradingChart({ fitContent = false } = {}) {
@@ -786,8 +913,11 @@ function renderTradingChart({ fitContent = false } = {}) {
   const selectedKey = selectedMarketStreamKey();
   const chartSymbol = currentMonitor?.market.symbol || selectedKey?.symbol || "market";
   tradingChartBadge.textContent = "Binance 1m · " + chartSymbol;
+  const previewSummary = currentPreview && !currentMonitor?.run.runtimeActive
+    ? (" · " + (currentPreview.levels?.length ?? 0) + (previewStale ? " stale" : "") + " preview levels · Preview not active")
+    : "";
   setChartStatus(
-    chartCandles.length + " live candles · " + chartOrderLevels.size + " active/run order levels · " + chartFillMarkers.size + " run fills · UTC"
+    chartCandles.length + " live candles · " + chartOrderLevels.size + " active/run order levels · " + chartFillMarkers.size + " run fills" + previewSummary + " · UTC"
   );
 }
 
@@ -1258,6 +1388,9 @@ function setConfigLocked(locked) {
     || !instrumentsAvailable
     || !botNameInput.value.trim()
     || (!botDraftMode && !dirty);
+  previewButton.disabled = locked
+    || !instrumentsAvailable
+    || activeMode !== "paper";
   startButton.disabled = locked
     || !instrumentsAvailable
     || !botNameInput.value.trim();
@@ -1281,6 +1414,7 @@ function setConfigLocked(locked) {
   }
 
   syncFixedAnchorState();
+  updatePreviewUi();
 }
 
 function setControlStatus(message) {
@@ -1433,6 +1567,7 @@ function renderIdleBotWorkspace(message = null) {
 async function selectBot(botId) {
   const bot = tradingBots.find((candidate) => Number(candidate.bot_id) === Number(botId));
   if (!bot) return;
+  clearPreview(false);
   const token = ++botSelectionToken;
   const activeRun = activeRunForBot(bot.bot_id);
 
@@ -1485,6 +1620,7 @@ async function selectBot(botId) {
 }
 
 function openNewBotDraft() {
+  clearPreview(false);
   botSelectionToken += 1;
   closeStream();
   selectedBotId = null;
@@ -1542,8 +1678,9 @@ async function saveCurrentBot() {
   }
 }
 
-function handleBotDraftChange() {
+function handleBotDraftChange(previewDefiningChange = false) {
   if (currentMonitor?.run.runtimeActive) return;
+  if (previewDefiningChange) refreshPreviewStaleness();
   renderSelectedBotContext();
   setConfigLocked(false);
   if (botDraftMode) {
@@ -1603,6 +1740,7 @@ function renderNoRun() {
 function renderSnapshot(snapshot) {
   const monitor = TradingContract.normalizeSnapshot(snapshot);
   if (selectedBotId && monitor.run.botId && Number(monitor.run.botId) !== Number(selectedBotId)) return;
+  if (monitor.run.runtimeActive && currentPreview) clearPreview(false);
   updateRunSummaryFromSnapshot(snapshot);
   renderBotStrip();
   if (!monitor.run.runtimeActive) {
@@ -1725,25 +1863,70 @@ function connectStream(runId) {
 
 symbolInput.addEventListener("change", () => {
   populateMarketOptions(symbolInput.value, marketTypeInput.value);
-  handleBotDraftChange();
+  handleBotDraftChange(true);
   if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
 });
 marketTypeInput.addEventListener("change", () => {
-  handleBotDraftChange();
+  handleBotDraftChange(true);
   if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
 });
 anchorInput.addEventListener("change", () => {
   syncFixedAnchorState();
-  handleBotDraftChange();
+  handleBotDraftChange(true);
 });
+const previewDefiningControls = new Set([
+  replayIntervalInput,
+  strategyInput,
+  fixedAnchorInput,
+  spacingInput,
+  levelsInput,
+  quantityInput,
+]);
 for (const control of document.querySelectorAll("[data-trading-config]")) {
   if (control === symbolInput || control === marketTypeInput || control === anchorInput) continue;
-  control.addEventListener("input", handleBotDraftChange);
-  control.addEventListener("change", handleBotDraftChange);
+  const onChange = () => handleBotDraftChange(previewDefiningControls.has(control));
+  control.addEventListener("input", onChange);
+  control.addEventListener("change", onChange);
 }
-botNameInput.addEventListener("input", handleBotDraftChange);
+botNameInput.addEventListener("input", () => handleBotDraftChange(false));
 newBotButton.addEventListener("click", openNewBotDraft);
 saveBotButton.addEventListener("click", () => void saveCurrentBot());
+previewButton.addEventListener("click", async () => {
+  if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
+  showControlError("");
+  const requestToken = ++previewRequestToken;
+  const fingerprint = previewConfigFingerprint();
+  previewButton.disabled = true;
+  setControlStatus(currentPreview ? "Updating visual preview…" : "Calculating visual preview…");
+  try {
+    const configuration = buildStartConfiguration();
+    const preview = await requestJson("/api/trading/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        mode: "paper",
+        configuration,
+      }),
+    });
+    if (requestToken !== previewRequestToken) return;
+    currentPreview = preview;
+    previewFingerprint = fingerprint;
+    previewStale = previewFingerprint !== previewConfigFingerprint();
+    updatePreviewUi();
+    renderTradingChart();
+    const boundary = formatUtcTimestamp(preview.preview_boundary_ms);
+    const anchor = preview.anchor_price == null ? "—" : formatOperationalNumber(preview.anchor_price);
+    setControlStatus(
+      "Preview only · " + preview.levels.length + " levels · anchor " + anchor
+      + " · reference boundary " + boundary + " UTC · no Run or orders created."
+    );
+  } catch (error) {
+    if (requestToken !== previewRequestToken) return;
+    showControlError(error.message);
+    setControlStatus("Preview was not created.");
+  } finally {
+    if (requestToken === previewRequestToken) setConfigLocked(false);
+  }
+});
 paperModeButton.addEventListener("click", () => {
   if (!currentMonitor?.run.runtimeActive) setTradingMode("paper");
 });

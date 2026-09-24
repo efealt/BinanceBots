@@ -1,6 +1,9 @@
 use crate::{
     market::MarketType,
-    paper::{PaperChartSnapshot, PaperError, PaperManager, PaperSnapshot, PaperStartConfig},
+    paper::{
+        PaperChartSnapshot, PaperError, PaperManager, PaperPreviewConfig, PaperPreviewSnapshot,
+        PaperSnapshot, PaperStartConfig,
+    },
     storage::{ExactDecimal, StorageError, StorageReader, TimeInForce, TradingBot, TradingBotSpec},
     trading::{ExecutionAssumptions, GridAnchor, StaticGridConfig, TradingInterval},
 };
@@ -49,6 +52,12 @@ struct StartTradingRunRequest {
     strategy_id: String,
     grid: GridRequest,
     execution: ExecutionAssumptions,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct PreviewTradingRequest {
+    mode: String,
+    configuration: BotConfigurationRequest,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -104,6 +113,7 @@ pub fn router(manager: Arc<PaperManager>, storage: Arc<StorageReader>) -> Router
     Router::new()
         .route("/api/trading/bots", post(create_bot).get(list_bots))
         .route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))
+        .route("/api/trading/preview", post(preview_run))
         .route("/api/trading/runs", post(start_run).get(list_runs))
         .route("/api/trading/runs/{run_id}", get(run_snapshot))
         .route("/api/trading/runs/{run_id}/chart", get(run_chart))
@@ -155,6 +165,28 @@ async fn list_bots(
     Ok(Json(BotsResponse {
         bots: state.storage.trading_bots()?,
     }))
+}
+
+async fn preview_run(
+    State(state): State<TradingApiState>,
+    Json(request): Json<PreviewTradingRequest>,
+) -> Result<Json<PaperPreviewSnapshot>, TradingApiError> {
+    require_phase4_paper_mode(&request.mode)?;
+    let validated = validate_configuration(request.configuration)?;
+
+    Ok(Json(
+        state
+            .manager
+            .preview(PaperPreviewConfig {
+                symbol: validated.stored.symbol,
+                market_type: validated.market_type,
+                replay_interval: validated.replay_interval,
+                initial_capital: validated.initial_capital,
+                strategy_id: validated.stored.strategy_id,
+                grid_config: validated.grid_config,
+            })
+            .await?,
+    ))
 }
 
 async fn start_run(

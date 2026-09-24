@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-11" />
+    <link rel="stylesheet" href="/styles.css?v=trading-12" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -208,6 +208,7 @@
             <div id="trading-control-error" class="backtest-form-error" role="alert" hidden></div>
             <div class="trading-control-actions">
               <button id="trading-save-bot-button" class="button button--secondary" type="button" disabled>Save Bot</button>
+              <button id="trading-preview-button" class="button button--secondary" type="button" disabled>Show on graph</button>
               <button id="trading-start-button" class="button button--primary" type="submit" disabled>Start Live-Paper</button>
               <button id="trading-stop-button" class="button button--secondary" type="button" disabled>Stop Live-Paper</button>
               <span id="trading-control-status" class="panel-note" role="status">Select or save a Bot before starting Live-Paper.</span>
@@ -235,7 +236,10 @@
               <p class="eyebrow">Shared market monitor</p>
               <h2 id="trading-chart-heading">Candles, order lifetimes, and fills</h2>
             </div>
-            <span id="trading-chart-badge" class="badge badge--muted">Binance 1m</span>
+            <div class="trading-chart-badges">
+              <span id="trading-preview-badge" class="badge trading-preview-badge" hidden>Preview · not active</span>
+              <span id="trading-chart-badge" class="badge badge--muted">Binance 1m</span>
+            </div>
           </div>
 
           <div class="trading-market-strip" aria-label="Live market readout">
@@ -254,11 +258,12 @@
             <span><i class="trading-chart-swatch trading-chart-swatch--candles"></i>Candles · quote price</span>
             <span><i class="trading-chart-swatch trading-chart-swatch--buy-order"></i>Buy order lifetime · quote price</span>
             <span><i class="trading-chart-swatch trading-chart-swatch--sell-order"></i>Sell order lifetime · quote price</span>
+            <span><i class="trading-chart-swatch trading-chart-swatch--preview"></i>Preview level · not active</span>
             <span><i class="trading-chart-marker trading-chart-marker--buy"></i>Buy fill · quote price</span>
             <span><i class="trading-chart-marker trading-chart-marker--sell"></i>Sell fill · quote price</span>
           </div>
 
-          <div id="trading-live-chart" class="trading-live-chart" role="img" aria-label="Live Binance candlestick chart with Live-Paper order levels and fill markers"></div>
+          <div id="trading-live-chart" class="trading-live-chart" role="img" aria-label="Live Binance candlestick chart with preview levels, Live-Paper order levels, and fill markers"></div>
           <p id="trading-chart-status" class="panel-note trading-chart-status" role="status">Loading live market…</p>
         </section>
 
@@ -378,6 +383,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=2"></script>
-    <script src="/trading.js?v=13"></script>
+    <script src="/trading.js?v=14"></script>
   </body>
 </html>

@@ -28,6 +28,7 @@ for (const required of [
   'id="trading-feed-label"',
   'id="trading-connection-label"',
   'id="trading-live-chart"',
+  'id="trading-preview-badge"',
   'id="trading-chart-status"',
   'id="trading-portfolio-position"',
   'id="trading-portfolio-cash"',
@@ -62,6 +63,7 @@ for (const required of [
   'id="trading-paper-form"',
   'id="trading-bot-name"',
   'id="trading-save-bot-button"',
+  'id="trading-preview-button"',
   'id="trading-config-symbol"',
   'id="trading-config-market-type"',
   'id="trading-config-interval"',
@@ -95,8 +97,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=13')) {
-  throw new Error("Trading page must load the Phase 4.8B concurrent Bot workspace client");
+if (!trading.includes('/trading.js?v=14')) {
+  throw new Error("Trading page must load the Phase 4.8B preview-capable Bot workspace client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -127,6 +129,11 @@ for (const required of [
   'async function selectBot(botId)',
   'function openNewBotDraft()',
   'async function persistCurrentBotFromForm()',
+  'previewButton.addEventListener("click"',
+  'requestJson("/api/trading/preview"',
+  'function refreshPreviewStaleness()',
+  'Preview · not active',
+  'Update preview',
   'async function saveCurrentBot()',
   'Create & Start Live-Paper',
   'Save & Start Live-Paper',
@@ -189,6 +196,9 @@ if (!tradingApi.includes('.route("/api/trading/bots", post(create_bot).get(list_
 if (!tradingApi.includes('.route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))')) {
   throw new Error("Trading API is missing the Bot read/update route");
 }
+if (!tradingApi.includes('.route("/api/trading/preview", post(preview_run))')) {
+  throw new Error("Trading API is missing the side-effect-free preview route");
+}
 if (!tradingApi.includes("bot_id: i64")) {
   throw new Error("Live-Paper start must require an explicit persisted bot_id");
 }
@@ -203,6 +213,9 @@ if (!paper.includes("BotAlreadyActive") || !paper.includes("active_runtime_admis
   throw new Error("Live-Paper manager must enforce one active Run per Bot");
 }
 for (const required of [
+  "pub async fn preview(&self, config: PaperPreviewConfig)",
+  "build_preview_snapshot(",
+  "preview_grid_matches_live_paper_initial_orders_for_same_boundary",
   "trading_run_order_levels(run_id)",
   "trading_run_fill_audit(run_id)",
   'MarketKey::new(&snapshot.symbol, "1m", market_type)',
