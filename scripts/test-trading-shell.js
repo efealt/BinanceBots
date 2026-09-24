@@ -84,6 +84,9 @@ if (!trading.includes('/trading-contract.js?v=1')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
+if (trading.includes('value="BTCUSDT"')) {
+  throw new Error("Trading symbol must come from the registered database catalog, not a hardcoded default");
+}
 
 const tradingJs = fs.readFileSync("web/trading.js", "utf8");
 for (const required of [
@@ -106,8 +109,20 @@ for (const required of [
   'name: "Buy fills"',
   'name: "Sell fills"',
   'loadCompleteAudit(currentRunId)',
+  'fetch("/api/data/downloads"',
+  'registeredMarketsBySymbol',
+  'populateMarketOptions(symbolInput.value',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
+}
+
+const tradingCss = fs.readFileSync("web/styles.css", "utf8");
+for (const required of [
+  ".trading-page { display: grid; min-width: 0;",
+  "grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.8fr);",
+  ".trading-control-panel { min-width: 0;",
+]) {
+  if (!tradingCss.includes(required)) throw new Error("Trading responsive layout contract is missing: " + required);
 }
 
 const tradingContract = fs.readFileSync("web/trading-contract.js", "utf8");

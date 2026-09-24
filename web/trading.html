@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-7" />
+    <link rel="stylesheet" href="/styles.css?v=trading-8" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -98,12 +98,13 @@
               </div>
               <div class="trading-parameter-grid">
                 <label class="field">Symbol
-                  <input id="trading-config-symbol" class="field-control" data-trading-config value="BTCUSDT" autocomplete="off" required />
+                  <select id="trading-config-symbol" class="field-control" data-trading-config required disabled>
+                    <option value="">Loading registered symbols…</option>
+                  </select>
                 </label>
                 <label class="field">Market
-                  <select id="trading-config-market-type" class="field-control" data-trading-config>
-                    <option value="spot" selected>Spot</option>
-                    <option value="usd_m_perpetual">USD-M perpetual</option>
+                  <select id="trading-config-market-type" class="field-control" data-trading-config required disabled>
+                    <option value="">Loading registered markets…</option>
                   </select>
                 </label>
                 <label class="field">Replay interval
@@ -190,7 +191,7 @@
 
             <div id="trading-control-error" class="backtest-form-error" role="alert" hidden></div>
             <div class="trading-control-actions">
-              <button id="trading-start-button" class="button button--primary" type="submit">Start Paper</button>
+              <button id="trading-start-button" class="button button--primary" type="submit" disabled>Start Paper</button>
               <button id="trading-stop-button" class="button button--secondary" type="button" disabled>Stop Paper</button>
               <span id="trading-control-status" class="panel-note" role="status">Ready to start a backend Paper run.</span>
             </div>
@@ -347,6 +348,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
     <script src="/trading-contract.js?v=1"></script>
-    <script src="/trading.js?v=5"></script>
+    <script src="/trading.js?v=6"></script>
   </body>
 </html>

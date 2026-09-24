@@ -83,6 +83,104 @@ let auditFullMode = false;
 let auditRequestToken = 0;
 let auditRefreshInFlight = false;
 let auditLastRefreshAt = 0;
+let registeredMarketsBySymbol = new Map();
+let instrumentCatalogReady = false;
+let instrumentCatalogError = null;
+
+function marketTypeLabel(marketType) {
+  return marketType === "spot" ? "Spot" : marketType === "usd_m_perpetual" ? "USD-M perpetual" : humanize(marketType);
+}
+
+function hasRegisteredInstrument(symbol, marketType) {
+  return registeredMarketsBySymbol.get(symbol)?.has(marketType) ?? false;
+}
+
+function populateMarketOptions(symbol, preferredMarket = null) {
+  const markets = Array.from(registeredMarketsBySymbol.get(symbol) ?? []);
+  markets.sort((a, b) => {
+    const rank = { spot: 0, usd_m_perpetual: 1 };
+    return (rank[a] ?? 99) - (rank[b] ?? 99) || a.localeCompare(b);
+  });
+  marketTypeInput.replaceChildren();
+  for (const marketType of markets) {
+    const option = document.createElement("option");
+    option.value = marketType;
+    option.textContent = marketTypeLabel(marketType);
+    marketTypeInput.appendChild(option);
+  }
+  if (preferredMarket && markets.includes(preferredMarket)) {
+    marketTypeInput.value = preferredMarket;
+  } else if (markets.length) {
+    marketTypeInput.value = markets[0];
+  }
+}
+
+function selectRegisteredInstrument(symbol, marketType = null) {
+  if (!registeredMarketsBySymbol.has(symbol)) return false;
+  symbolInput.value = symbol;
+  populateMarketOptions(symbol, marketType);
+  return marketType ? hasRegisteredInstrument(symbol, marketType) : true;
+}
+
+async function loadRegisteredInstruments() {
+  instrumentCatalogReady = false;
+  instrumentCatalogError = null;
+  symbolInput.replaceChildren(new Option("Loading registered symbols…", ""));
+  marketTypeInput.replaceChildren(new Option("Loading registered markets…", ""));
+  symbolInput.disabled = true;
+  marketTypeInput.disabled = true;
+  startButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/data/downloads", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(response.status + " " + response.statusText);
+    const payload = await response.json();
+    const next = new Map();
+
+    for (const entry of payload.downloads ?? []) {
+      if (String(entry.provider ?? "").toLowerCase() !== "binance") continue;
+      const symbol = String(entry.symbol ?? "").trim().toUpperCase();
+      const marketType = String(entry.market_type ?? "").trim().toLowerCase();
+      if (!symbol || !["spot", "usd_m_perpetual"].includes(marketType)) continue;
+      if (!next.has(symbol)) next.set(symbol, new Set());
+      next.get(symbol).add(marketType);
+    }
+
+    registeredMarketsBySymbol = new Map(
+      Array.from(next.entries()).sort(([left], [right]) => left.localeCompare(right))
+    );
+    instrumentCatalogReady = true;
+    symbolInput.replaceChildren();
+
+    for (const symbol of registeredMarketsBySymbol.keys()) {
+      const option = document.createElement("option");
+      option.value = symbol;
+      option.textContent = symbol;
+      symbolInput.appendChild(option);
+    }
+
+    if (registeredMarketsBySymbol.size === 0) {
+      symbolInput.appendChild(new Option("No registered Binance symbols", ""));
+      marketTypeInput.replaceChildren(new Option("No registered markets", ""));
+      instrumentCatalogError = "No registered Binance symbols are available. Add one in Data Downloader first.";
+      showControlError(instrumentCatalogError);
+    } else {
+      populateMarketOptions(symbolInput.value);
+    }
+  } catch (error) {
+    instrumentCatalogReady = true;
+    registeredMarketsBySymbol = new Map();
+    instrumentCatalogError = "Could not load registered symbols from the database · " + error.message;
+    symbolInput.replaceChildren(new Option("Registered symbols unavailable", ""));
+    marketTypeInput.replaceChildren(new Option("Registered markets unavailable", ""));
+    showControlError(instrumentCatalogError);
+  }
+
+  setConfigLocked(Boolean(currentMonitor?.run.runtimeActive));
+}
 
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -793,8 +891,11 @@ function setConfigLocked(locked) {
   document.querySelectorAll("[data-trading-config]").forEach((control) => {
     control.disabled = locked;
   });
+  const instrumentsAvailable = instrumentCatalogReady && !instrumentCatalogError && registeredMarketsBySymbol.size > 0;
+  symbolInput.disabled = locked || !instrumentsAvailable;
+  marketTypeInput.disabled = locked || !instrumentsAvailable;
   configLockBadge.textContent = locked ? "Locked · active run" : "Editable";
-  startButton.disabled = locked;
+  startButton.disabled = locked || !instrumentsAvailable;
   stopButton.disabled = !locked;
   paperModeButton.disabled = locked || activeMode !== "paper";
   liveModeButton.disabled = TradingContract.adapterFor("live").locked || locked;
@@ -814,8 +915,9 @@ function numberValue(input, label) {
 }
 
 function applySnapshotToConfig(snapshot) {
-  symbolInput.value = snapshot.symbol || symbolInput.value;
-  marketTypeInput.value = snapshot.market_type || marketTypeInput.value;
+  if (snapshot.symbol && hasRegisteredInstrument(snapshot.symbol, snapshot.market_type)) {
+    selectRegisteredInstrument(snapshot.symbol, snapshot.market_type);
+  }
   replayIntervalInput.value = snapshot.replay_interval || replayIntervalInput.value;
   capitalInput.value = snapshot.initial_capital || capitalInput.value;
   strategyInput.value = snapshot.strategy_id || strategyInput.value;
@@ -840,11 +942,15 @@ function buildStartConfiguration() {
   if (!/^[A-Z0-9]+$/.test(symbol)) {
     throw new Error("Symbol must contain only letters and numbers.");
   }
+  const marketType = marketTypeInput.value;
+  if (!hasRegisteredInstrument(symbol, marketType)) {
+    throw new Error("Choose a registered Binance symbol and market.");
+  }
   const anchor = anchorInput.value;
   const fixedAnchorPrice = anchor === "fixed" ? numberValue(fixedAnchorInput, "Fixed anchor price") : null;
   return {
     symbol,
-    market_type: marketTypeInput.value,
+    market_type: marketType,
     replay_interval: replayIntervalInput.value,
     initial_capital: capitalInput.value.trim(),
     strategy_id: strategyInput.value,
@@ -1062,6 +1168,10 @@ async function initializeTradingStatus() {
   }
 }
 
+symbolInput.addEventListener("change", () => {
+  populateMarketOptions(symbolInput.value, marketTypeInput.value);
+  setConfigLocked(Boolean(currentMonitor?.run.runtimeActive));
+});
 anchorInput.addEventListener("change", syncFixedAnchorState);
 paperModeButton.addEventListener("click", () => {
   if (!currentMonitor?.run.runtimeActive) setTradingMode("paper");
@@ -1127,9 +1237,13 @@ if (tradingChartElement && "ResizeObserver" in window) {
   new ResizeObserver(() => tradingChart?.resize()).observe(tradingChartElement);
 }
 
+async function initializeTradingPage() {
+  await loadRegisteredInstruments();
+  await initializeTradingStatus();
+}
+
 initializeTheme();
 setTradingMode("paper");
 ensureTradingChart();
 syncFixedAnchorState();
-setConfigLocked(false);
-initializeTradingStatus();
+void initializeTradingPage();

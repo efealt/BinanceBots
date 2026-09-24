@@ -495,10 +495,11 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 
 
 /* Trading page · Phase 4.6A shell */
-.trading-page { display: grid; gap: 16px; }
+.trading-page { display: grid; min-width: 0; gap: 16px; overflow-x: clip; }
+.trading-page > * { min-width: 0; }
 .trading-mode-header {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(430px, 500px) minmax(300px, 390px);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.8fr);
   align-items: stretch;
   gap: 14px;
   padding: 4px 0 14px;
@@ -510,7 +511,7 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-health-block { display: grid; align-content: start; }
 .trading-health-row {
   display: grid;
-  grid-template-columns: 88px minmax(88px, 0.8fr) minmax(130px, 1.5fr) auto;
+  grid-template-columns: minmax(62px, 0.6fr) minmax(0, 0.8fr) minmax(0, 1.5fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 29px;
@@ -538,15 +539,15 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-context-grid strong { margin-top: 6px; overflow: hidden; font-size: 0.88rem; text-overflow: ellipsis; white-space: nowrap; }
 .trading-runtime-note { margin-top: 16px; margin-bottom: 0; }
 
-@media (max-width: 1180px) {
-  .trading-mode-header { grid-template-columns: minmax(0, 1fr) minmax(300px, 390px); }
+@media (max-width: 1100px) {
+  .trading-mode-header { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .trading-heading-copy { grid-column: 1 / -1; max-width: 720px; padding-right: 0; }
 }
 
 @media (max-width: 760px) {
   .trading-mode-header { grid-template-columns: 1fr; }
   .trading-heading-copy { grid-column: auto; }
-  .trading-health-row { grid-template-columns: 84px minmax(80px, 0.8fr) minmax(110px, 1.5fr) auto; }
+  .trading-health-row { grid-template-columns: minmax(62px, 0.6fr) minmax(0, 0.8fr) minmax(0, 1.5fr) auto; }
   .trading-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -558,9 +559,10 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 
 
 /* Trading page · Phase 4.6B controls */
-.trading-control-panel { margin-top: 0; }
+.trading-control-panel { min-width: 0; margin-top: 0; }
 .trading-paper-form {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   gap: 14px;
@@ -576,6 +578,7 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-parameter-grid,
 .trading-parameter-grid--wide {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
@@ -587,7 +590,7 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-control-actions .button { width: 100%; margin-top: 0; }
 .trading-control-actions .panel-note { margin: 0; text-align: right; }
 
-@media (max-width: 1180px) {
+@media (max-width: 1050px) {
   .trading-paper-form { grid-template-columns: 1fr; }
   .trading-parameter-grid,
   .trading-parameter-grid--wide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
