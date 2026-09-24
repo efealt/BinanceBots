@@ -467,8 +467,8 @@ function fillKey(fill) {
 function upsertChartCandle(candle) {
   if (!candle) return;
   const normalized = {
-    open_time_ms: numeric(candle.open_time_ms),
-    close_time_ms: numeric(candle.close_time_ms),
+    open_time_ms: numeric(candle.open_time_ms ?? candle.open_time),
+    close_time_ms: numeric(candle.close_time_ms ?? candle.close_time),
     open: numeric(candle.open),
     high: numeric(candle.high),
     low: numeric(candle.low),
