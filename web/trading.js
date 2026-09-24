@@ -73,12 +73,16 @@ const buyCount = document.querySelector("#trading-buy-count");
 const sellCount = document.querySelector("#trading-sell-count");
 const ordersStatus = document.querySelector("#trading-orders-status");
 const detailRunBadge = document.querySelector("#trading-detail-run-badge");
+const inspectionExitWrap = document.querySelector("#trading-inspection-exit-wrap");
 const inspectionExitButton = document.querySelector("#trading-inspection-exit");
 const activityList = document.querySelector("#trading-activity-list");
 const activityStatus = document.querySelector("#trading-activity-status");
+const activityLoadOlderWrap = document.querySelector("#trading-activity-load-older-wrap");
 const activityLoadOlderButton = document.querySelector("#trading-activity-load-older");
 const auditToggleButton = document.querySelector("#trading-audit-toggle");
-const canonicalAudit = document.querySelector("#trading-canonical-audit");
+const technicalAuditDialog = document.querySelector("#trading-technical-audit-dialog");
+const technicalAuditCloseButton = document.querySelector("#trading-technical-audit-close");
+const technicalAuditRun = document.querySelector("#trading-technical-audit-run");
 const auditBody = document.querySelector("#trading-audit-body");
 const auditStatus = document.querySelector("#trading-audit-status");
 const auditLoadAllButton = document.querySelector("#trading-audit-load-all");
@@ -1175,7 +1179,8 @@ function updateDetailRunContext(monitor = detailMonitor()) {
   if (!monitor?.run.id) {
     detailRunBadge.textContent = "No Run";
     detailRunBadge.className = "badge badge--muted";
-    inspectionExitButton.hidden = true;
+    inspectionExitWrap.hidden = true;
+    technicalAuditRun.textContent = "No Run";
     return;
   }
 
@@ -1185,7 +1190,8 @@ function updateDetailRunContext(monitor = detailMonitor()) {
     ? ("History · Run #" + monitor.run.id + " · " + status)
     : ("Current · Run #" + monitor.run.id + " · " + status);
   detailRunBadge.className = "badge " + (historical ? "trading-history-inspection-badge" : "badge--muted");
-  inspectionExitButton.hidden = !historical;
+  inspectionExitWrap.hidden = !historical;
+  technicalAuditRun.textContent = "Run #" + monitor.run.id + " · " + status;
 }
 
 function renderPortfolio(monitor) {
@@ -1370,8 +1376,9 @@ function renderActivity() {
       + (hidden ? (" · " + hidden + " repetitive Equity row" + (hidden === 1 ? "" : "s") + " hidden from this view") : "")
       + ".")
     : "Select a Run to load meaningful activity newest first.";
+  activityLoadOlderWrap.hidden = !activityRunId || !activityHasMore;
   activityLoadOlderButton.disabled = !activityRunId || !activityHasMore || activityRefreshInFlight;
-  activityLoadOlderButton.textContent = activityHasMore ? "Load older" : "No older activity";
+  activityLoadOlderButton.textContent = activityRefreshInFlight ? "Loading…" : "Older";
   auditToggleButton.disabled = !activityRunId;
 }
 
@@ -1392,8 +1399,9 @@ function resetActivity(message = "No Live-Paper Run selected.") {
   empty.textContent = message;
   activityList.appendChild(empty);
   activityStatus.textContent = message;
+  activityLoadOlderWrap.hidden = true;
   activityLoadOlderButton.disabled = true;
-  activityLoadOlderButton.textContent = "Load older";
+  activityLoadOlderButton.textContent = "Older";
   auditToggleButton.disabled = true;
 }
 
@@ -1452,7 +1460,7 @@ function syncRunActivityFromMonitor(monitor) {
 function renderAuditEvents() {
   auditBody.replaceChildren();
   if (!auditEvents.length) {
-    auditBody.appendChild(emptyTableRow(4, "No canonical events are persisted for this Run yet."));
+    auditBody.appendChild(emptyTableRow(4, "No persisted diagnostic events are available for this Run yet."));
   } else {
     for (const item of auditEvents) {
       const row = document.createElement("tr");
@@ -1474,13 +1482,13 @@ function renderAuditEvents() {
   }
 
   const shown = auditEvents.length;
-  const mode = auditFullMode ? "complete canonical audit" : "latest canonical events";
+  const mode = auditFullMode ? "complete technical audit" : "latest persisted events";
   auditStatus.textContent = "Showing " + shown + " of " + auditTotalEvents + " persisted events · " + mode + ".";
   auditLoadAllButton.disabled = !auditRunId || (auditFullMode && !auditHasMore);
   auditLoadAllButton.textContent = auditFullMode && !auditHasMore ? "Complete audit loaded" : "Load complete audit";
 }
 
-function resetAudit(message = "Canonical audit is available on demand.") {
+function resetAudit(message = "Technical audit is available on demand.") {
   auditRequestToken += 1;
   auditRunId = null;
   auditEvents = [];
@@ -1490,8 +1498,8 @@ function resetAudit(message = "Canonical audit is available on demand.") {
   auditFullMode = false;
   auditRefreshInFlight = false;
   auditLastRefreshAt = 0;
-  canonicalAudit.hidden = true;
-  auditToggleButton.textContent = "Canonical audit";
+  if (technicalAuditDialog.open) technicalAuditDialog.close();
+  auditToggleButton.textContent = "Technical audit";
   auditBody.replaceChildren(emptyTableRow(4, message));
   auditStatus.textContent = message;
   auditLoadAllButton.disabled = true;
@@ -1501,7 +1509,7 @@ function resetAudit(message = "Canonical audit is available on demand.") {
 async function loadAuditTail(runId, quiet = false) {
   const token = ++auditRequestToken;
   auditRefreshInFlight = true;
-  if (!quiet) auditStatus.textContent = "Loading latest canonical events for Run #" + runId + "…";
+  if (!quiet) auditStatus.textContent = "Loading latest persisted events for Run #" + runId + "…";
   try {
     const auditUrl = activeAdapter.urls.auditTail(runId, 250);
     if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
@@ -1517,7 +1525,7 @@ async function loadAuditTail(runId, quiet = false) {
     renderAuditEvents();
   } catch (error) {
     if (token === auditRequestToken && detailRunId() === runId) {
-      auditStatus.textContent = "Could not load canonical audit · " + error.message;
+      auditStatus.textContent = "Could not load technical audit · " + error.message;
     }
   } finally {
     if (token === auditRequestToken) auditRefreshInFlight = false;
@@ -1543,7 +1551,7 @@ async function appendNewAuditEvents(runId) {
     auditLastRefreshAt = Date.now();
     renderAuditEvents();
   } catch (error) {
-    auditStatus.textContent = "Canonical audit refresh failed · " + error.message;
+    auditStatus.textContent = "Technical audit refresh failed · " + error.message;
   } finally {
     auditRefreshInFlight = false;
   }
@@ -1595,7 +1603,7 @@ async function loadCompleteAudit(runId) {
 }
 
 function syncCanonicalAuditFromMonitor(monitor) {
-  if (canonicalAudit.hidden) return;
+  if (!technicalAuditDialog.open) return;
   const runId = monitor?.run.id;
   if (!runId || inspectedRunId != null || detailRunId() !== runId) return;
   if (auditRunId !== runId) {
@@ -2178,7 +2186,7 @@ function renderNoRun() {
   sellOrders.replaceChildren(emptyOrderState("No active SELL orders."));
   ordersStatus.textContent = "No active Live-Paper run.";
   resetActivity("No active Live-Paper Run for the selected Bot.");
-  resetAudit("Canonical audit is available after selecting a Run.");
+  resetAudit("Technical audit is available after selecting a Run.");
   updateDetailRunContext(null);
 }
 
@@ -2438,9 +2446,17 @@ activityLoadOlderButton.addEventListener("click", () => {
 auditToggleButton.addEventListener("click", () => {
   const runId = detailRunId();
   if (!runId) return;
-  canonicalAudit.hidden = !canonicalAudit.hidden;
-  auditToggleButton.textContent = canonicalAudit.hidden ? "Canonical audit" : "Hide canonical audit";
-  if (!canonicalAudit.hidden && auditRunId !== runId) void loadAuditTail(runId);
+  technicalAuditRun.textContent = "Run #" + runId + " · diagnostics";
+  if (!technicalAuditDialog.open) technicalAuditDialog.showModal();
+  if (auditRunId !== runId) void loadAuditTail(runId);
+});
+
+technicalAuditCloseButton.addEventListener("click", () => {
+  technicalAuditDialog.close();
+});
+
+technicalAuditDialog.addEventListener("click", (event) => {
+  if (event.target === technicalAuditDialog) technicalAuditDialog.close();
 });
 
 auditLoadAllButton.addEventListener("click", () => {

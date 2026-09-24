@@ -44,6 +44,10 @@ for (const required of [
   'id="trading-activity-list"',
   'id="trading-activity-load-older"',
   'id="trading-audit-toggle"',
+  'id="trading-technical-audit-dialog"',
+  'id="trading-technical-audit-close"',
+  'id="trading-inspection-exit-wrap"',
+  'id="trading-activity-load-older-wrap"',
   'id="trading-history-list"',
   'id="trading-history-badge"',
   'id="trading-detail-run-badge"',
@@ -106,8 +110,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=15')) {
-  throw new Error("Trading page must load the Phase 5B lower-workspace client");
+if (!trading.includes('/trading.js?v=16')) {
+  throw new Error("Trading page must load the Phase 5B diagnostic-modal polish client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -160,6 +164,10 @@ for (const required of [
   'async function inspectHistoricalRun(runId)',
   'async function returnToCurrentBotDetails()',
   'detailRunId()',
+  'technicalAuditDialog.showModal()',
+  'technicalAuditDialog.close()',
+  'Exit history',
+  'Technical audit',
   'trading-order-card',
   'newest first',
   'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
@@ -184,6 +192,13 @@ for (const required of [
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }
 
+if (trading.includes('id="trading-canonical-audit"')) {
+  throw new Error("Technical audit must not remain as a persistent inline Trading section");
+}
+if (trading.includes(">Back to current Bot</button>") || trading.includes(">Canonical audit</button>")) {
+  throw new Error("Phase 5B utility wording must use Exit history / Technical audit");
+}
+
 const tradingCss = fs.readFileSync("web/styles.css", "utf8");
 for (const required of [
   ".trading-page { display: grid; min-width: 0;",
@@ -192,6 +207,9 @@ for (const required of [
   ".trading-order-columns {",
   ".trading-portfolio-layout {",
   ".trading-activity-list {",
+  ".trading-technical-audit-dialog {",
+  ".trading-utility-button {",
+  ".trading-help-tip {",
   ".trading-history-list {",
 ]) {
   if (!tradingCss.includes(required)) throw new Error("Trading responsive layout contract is missing: " + required);

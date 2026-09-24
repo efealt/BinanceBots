@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-13" />
+    <link rel="stylesheet" href="/styles.css?v=trading-14" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -346,9 +346,18 @@
             </div>
             <div class="trading-activity-actions">
               <span id="trading-detail-run-badge" class="badge badge--muted">No Run</span>
-              <button id="trading-inspection-exit" class="button button--secondary" type="button" hidden>Back to current Bot</button>
-              <button id="trading-activity-load-older" class="button button--secondary" type="button" disabled>Load older</button>
-              <button id="trading-audit-toggle" class="button button--secondary" type="button" disabled>Canonical audit</button>
+              <span id="trading-inspection-exit-wrap" class="trading-utility-control" hidden>
+                <button id="trading-inspection-exit" class="button button--secondary trading-utility-button" type="button">Exit history</button>
+                <span class="trading-help-tip" tabindex="0" role="img" aria-label="Exit history help" data-tip="You are inspecting a past Run. Exit history returns the chart and lower panels to the selected Bot's current state. It never starts, stops, or changes the Bot.">i</span>
+              </span>
+              <span id="trading-activity-load-older-wrap" class="trading-utility-control" hidden>
+                <button id="trading-activity-load-older" class="button button--secondary trading-utility-button" type="button">Older</button>
+                <span class="trading-help-tip" tabindex="0" role="img" aria-label="Older activity help" data-tip="Loads earlier meaningful actions below the current list. The newest action always stays at the top.">i</span>
+              </span>
+              <span class="trading-utility-control">
+                <button id="trading-audit-toggle" class="button button--secondary trading-utility-button" type="button" disabled>Technical audit</button>
+                <span class="trading-help-tip" tabindex="0" role="img" aria-label="Technical audit help" data-tip="Opens the raw persisted Run event record for debugging. This is diagnostic data and does not affect trading.">i</span>
+              </span>
             </div>
           </div>
 
@@ -357,31 +366,6 @@
           </div>
           <p id="trading-activity-status" class="panel-note trading-table-status">Select a Run to load meaningful activity newest first.</p>
 
-          <div id="trading-canonical-audit" class="trading-canonical-audit" hidden>
-            <div class="trading-canonical-heading">
-              <div>
-                <span class="trading-order-side-kicker">Complete source of truth</span>
-                <h3>Canonical event and fill audit</h3>
-              </div>
-              <button id="trading-audit-load-all" class="button button--secondary" type="button" disabled>Load complete audit</button>
-            </div>
-            <div class="table-wrap trading-table-wrap trading-audit-table-wrap">
-              <table class="run-table trading-audit-table">
-                <thead>
-                  <tr>
-                    <th>Seq</th>
-                    <th>Event time · UTC</th>
-                    <th>Event</th>
-                    <th>Details</th>
-                  </tr>
-                </thead>
-                <tbody id="trading-audit-body">
-                  <tr><td class="empty-row" colspan="4">Canonical audit is available on demand.</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p id="trading-audit-status" class="panel-note trading-table-status">Canonical events are preserved unchanged and load only when requested.</p>
-          </div>
         </section>
 
         <section class="panel trading-history-panel" aria-labelledby="trading-history-heading">
@@ -431,9 +415,44 @@
       </main>
     </div>
 
+    <dialog id="trading-technical-audit-dialog" class="trading-technical-audit-dialog" aria-labelledby="trading-technical-audit-heading">
+      <div class="trading-technical-audit-shell">
+        <div class="trading-technical-audit-header">
+          <div>
+            <p class="eyebrow">Diagnostics</p>
+            <h2 id="trading-technical-audit-heading">Technical Run audit</h2>
+            <p class="trading-technical-audit-copy">Raw persisted Run events for debugging only. Viewing this record never changes Bot or Run state.</p>
+          </div>
+          <button id="trading-technical-audit-close" class="trading-dialog-close" type="button" aria-label="Close technical audit">×</button>
+        </div>
+
+        <div class="trading-technical-audit-toolbar">
+          <span id="trading-technical-audit-run" class="badge badge--muted">No Run</span>
+          <button id="trading-audit-load-all" class="button button--secondary trading-utility-button" type="button" disabled>Load complete audit</button>
+        </div>
+
+        <div class="table-wrap trading-table-wrap trading-audit-table-wrap">
+          <table class="run-table trading-audit-table">
+            <thead>
+              <tr>
+                <th>Seq</th>
+                <th>Event time · UTC</th>
+                <th>Event</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="trading-audit-body">
+              <tr><td class="empty-row" colspan="4">Technical audit is available on demand.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="trading-audit-status" class="panel-note trading-table-status">Select a Run, then open Technical audit.</p>
+      </div>
+    </dialog>
+
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=2"></script>
-    <script src="/trading.js?v=15"></script>
+    <script src="/trading.js?v=16"></script>
   </body>
 </html>
