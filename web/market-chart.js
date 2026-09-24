@@ -1,13 +1,14 @@
 class MarketChart {
-  constructor(container, { showWeekends = false } = {}) {
+  constructor(container, { showWeekends = false, indicators = true } = {}) {
     this.container = container;
     this.chart = null;
     this.series = null;
     this.indicatorLayer = null;
+    this.indicatorsEnabled = indicators;
     this.candles = [];
     this.candleCount = 0;
     this.firstCandleTime = null;
-    this.weekendOverlay = showWeekends ? new WeekendOverlay(container) : null;
+    this.weekendOverlay = showWeekends && typeof WeekendOverlay !== "undefined" ? new WeekendOverlay(container) : null;
   }
 
   initialize() {
@@ -19,7 +20,9 @@ class MarketChart {
       wickUpColor: "#36c984",
       wickDownColor: "#eb6f92",
     });
-    this.indicatorLayer = new ChartIndicatorLayer(this.chart);
+    this.indicatorLayer = this.indicatorsEnabled && typeof ChartIndicatorLayer !== "undefined"
+      ? new ChartIndicatorLayer(this.chart)
+      : null;
     this.weekendOverlay?.attach(this.chart);
 
     new ResizeObserver(([entry]) => {
@@ -125,10 +128,26 @@ class MarketChart {
         borderColor: grid,
         timeVisible: true,
         secondsVisible: false,
+        fixLeftEdge: false,
+        fixRightEdge: false,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
       },
     };
   }
 }
 
-const marketChart = new MarketChart(document.querySelector("#market-chart"), { showWeekends: true });
-marketChart.initialize();
+const marketChartContainer = document.querySelector("#market-chart");
+const marketChart = marketChartContainer
+  ? new MarketChart(marketChartContainer, { showWeekends: true, indicators: true })
+  : null;
+marketChart?.initialize();

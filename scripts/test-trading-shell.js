@@ -75,8 +75,11 @@ for (const required of [
   if (!trading.includes(required)) throw new Error("Trading controls are missing " + required);
 }
 
-if (!trading.includes("https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js")) {
-  throw new Error("Trading chart must load the pinned ECharts runtime");
+if (!trading.includes("https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js")) {
+  throw new Error("Trading chart must load the same pinned Lightweight Charts runtime as Market");
+}
+if (!trading.includes('/market-chart.js?v=5')) {
+  throw new Error("Trading page must reuse the MarketChart wrapper");
 }
 if (!trading.includes('/trading-contract.js?v=1')) {
   throw new Error("Trading page must load the shared mode contract before page behavior");
@@ -84,8 +87,8 @@ if (!trading.includes('/trading-contract.js?v=1')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=9')) {
-  throw new Error("Trading page must load the Phase 4.8B trading-chart client");
+if (!trading.includes('/trading.js?v=10')) {
+  throw new Error("Trading page must load the Lightweight Charts Trading client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -117,10 +120,13 @@ for (const required of [
   'renderPortfolio(monitor)',
   'renderOpenOrders(monitor)',
   'syncAuditFromMonitor(monitor)',
-  'type: "candlestick"',
-  'type: "custom"',
-  'name: "Buy fills"',
-  'name: "Sell fills"',
+  'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
+  'LightweightCharts.createSeriesMarkers',
+  'LightweightCharts.LineSeries',
+  'LightweightCharts.LineStyle.Dashed',
+  'chart.series.createPriceLine',
+  'subscribeCrosshairMove',
+  'chart.updateCandle(toMarketChartCandle(normalized))',
   'loadCompleteAudit(currentRunId)',
   'renderNoRun();',
   'stopped and remains persisted',
@@ -132,12 +138,6 @@ for (const required of [
   'resetRunChartState("Live market remains available with no active Paper run.")',
   'candle.open_time_ms ?? candle.open_time',
   'candle.close_time_ms ?? candle.close_time',
-  'trigger: "axis"',
-  'type: "cross"',
-  'position: "right"',
-  'markLine: latestPrice === null ? undefined',
-  'zoomOnMouseWheel: true',
-  'moveOnMouseMove: true',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }
@@ -193,3 +193,17 @@ for (const required of [
 }
 
 console.log("Trading shared Paper/Live UI contract OK");
+
+const marketChartJs = fs.readFileSync("web/market-chart.js", "utf8");
+for (const required of [
+  'class MarketChart',
+  'LightweightCharts.createChart',
+  'LightweightCharts.CandlestickSeries',
+  'CrosshairMode.Normal',
+  'pressedMouseMove: true',
+  'mouseWheel: true',
+  'marketChartContainer',
+  'indicators = true',
+]) {
+  if (!marketChartJs.includes(required)) throw new Error("Reusable MarketChart contract is missing: " + required);
+}

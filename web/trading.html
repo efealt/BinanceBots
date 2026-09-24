@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-9" />
+    <link rel="stylesheet" href="/styles.css?v=trading-10" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -225,7 +225,6 @@
             <div class="trading-market-primary">
               <span class="trading-market-label">Last price</span>
               <strong id="trading-chart-last-price">—</strong>
-              <span id="trading-chart-price-change" class="trading-market-change">—</span>
             </div>
             <div class="trading-market-stat"><span>O</span><strong id="trading-chart-open">—</strong></div>
             <div class="trading-market-stat"><span>H</span><strong id="trading-chart-high">—</strong></div>
@@ -359,8 +358,9 @@
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=1"></script>
-    <script src="/trading.js?v=9"></script>
+    <script src="/trading.js?v=10"></script>
   </body>
 </html>

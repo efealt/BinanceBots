@@ -45,7 +45,6 @@ const tradingChartElement = document.querySelector("#trading-live-chart");
 const tradingChartStatus = document.querySelector("#trading-chart-status");
 const tradingChartBadge = document.querySelector("#trading-chart-badge");
 const chartLastPrice = document.querySelector("#trading-chart-last-price");
-const chartPriceChange = document.querySelector("#trading-chart-price-change");
 const chartOpen = document.querySelector("#trading-chart-open");
 const chartHigh = document.querySelector("#trading-chart-high");
 const chartLow = document.querySelector("#trading-chart-low");
@@ -73,8 +72,10 @@ let marketStream = null;
 let marketReconnectTimer = null;
 let marketConnectionToken = 0;
 let marketStreamKey = null;
-let chartRenderScheduled = false;
-let tradingChartInteractionsBound = false;
+let chartFillMarkersPlugin = null;
+let chartOrderSeries = new Map();
+let chartOrderPriceLines = new Map();
+let tradingChartCrosshairBound = false;
 let currentRunId = null;
 let currentSnapshot = null;
 let currentMonitor = null;
@@ -250,13 +251,8 @@ function setConnection(state, detail) {
 function chartPalette() {
   const styles = getComputedStyle(document.documentElement);
   return {
-    text: styles.getPropertyValue("--text").trim(),
-    muted: styles.getPropertyValue("--muted").trim(),
-    border: styles.getPropertyValue("--border").trim(),
-    grid: styles.getPropertyValue("--grid").trim(),
     bid: styles.getPropertyValue("--bid").trim(),
     ask: styles.getPropertyValue("--ask").trim(),
-    surface: styles.getPropertyValue("--surface").trim(),
   };
 }
 
@@ -292,8 +288,6 @@ function renderChartReadout(candle = null) {
   if (!target) {
     for (const element of [chartLastPrice, chartOpen, chartHigh, chartLow, chartClose]) element.textContent = "—";
     chartTime.textContent = "—";
-    chartPriceChange.textContent = "—";
-    chartPriceChange.classList.remove("is-up", "is-down");
     return;
   }
 
@@ -303,40 +297,70 @@ function renderChartReadout(candle = null) {
   chartLow.textContent = formatChartPrice(target.low);
   chartClose.textContent = formatChartPrice(target.close);
   chartTime.textContent = formatChartTime(target.open_time_ms);
-
-  const open = numeric(target.open);
-  const close = numeric(target.close);
-  const changePercent = open !== null && close !== null && open !== 0 ? ((close - open) / open) * 100 : null;
-  chartPriceChange.textContent = changePercent === null ? "—" : (changePercent >= 0 ? "+" : "") + changePercent.toFixed(3) + "%";
-  chartPriceChange.classList.toggle("is-up", changePercent !== null && changePercent >= 0);
-  chartPriceChange.classList.toggle("is-down", changePercent !== null && changePercent < 0);
-}
-
-function bindTradingChartInteractions() {
-  if (!tradingChart || tradingChartInteractionsBound) return;
-  tradingChartInteractionsBound = true;
-
-  tradingChart.on("mouseover", (params) => {
-    if (params.seriesName !== "Candles" || !Number.isInteger(params.dataIndex)) return;
-    renderChartReadout(chartCandles[params.dataIndex] ?? null);
-  });
-  tradingChart.on("globalout", () => renderChartReadout());
 }
 
 function setChartStatus(message) {
   tradingChartStatus.textContent = message;
 }
 
+function toMarketChartCandle(candle) {
+  return {
+    open_time: candle.open_time_ms,
+    close_time: candle.close_time_ms,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volume,
+    is_closed: candle.is_closed,
+  };
+}
+
+function bindTradingChartCrosshair() {
+  if (!tradingChart?.chart || tradingChartCrosshairBound) return;
+  tradingChartCrosshairBound = true;
+  tradingChart.chart.subscribeCrosshairMove((param) => {
+    const value = param?.seriesData?.get(tradingChart.series);
+    if (!param?.time || !value || value.open === undefined) {
+      renderChartReadout();
+      return;
+    }
+    renderChartReadout({
+      open_time_ms: Number(param.time) * 1000,
+      open: value.open,
+      high: value.high,
+      low: value.low,
+      close: value.close,
+    });
+  });
+}
+
 function ensureTradingChart() {
-  if (!tradingChartElement || !window.echarts) {
-    setChartStatus("Chart library is unavailable.");
+  if (!tradingChartElement || !window.LightweightCharts || typeof MarketChart !== "function") {
+    setChartStatus("Lightweight Charts is unavailable.");
     return null;
   }
   if (!tradingChart) {
-    tradingChart = window.echarts.init(tradingChartElement, null, { renderer: "canvas" });
+    tradingChart = new MarketChart(tradingChartElement, { showWeekends: false, indicators: false });
+    tradingChart.initialize();
+    chartFillMarkersPlugin = LightweightCharts.createSeriesMarkers(tradingChart.series, [], { autoScale: false });
+    bindTradingChartCrosshair();
   }
-  bindTradingChartInteractions();
   return tradingChart;
+}
+
+function resetRunOverlays() {
+  const chart = ensureTradingChart();
+  if (!chart) return;
+  for (const series of chartOrderSeries.values()) {
+    chart.chart.removeSeries(series);
+  }
+  for (const line of chartOrderPriceLines.values()) {
+    chart.series.removePriceLine(line);
+  }
+  chartOrderSeries = new Map();
+  chartOrderPriceLines = new Map();
+  chartFillMarkersPlugin?.setMarkers([]);
 }
 
 function resetRunChartState(message = null) {
@@ -344,8 +368,9 @@ function resetRunChartState(message = null) {
   chartRunId = null;
   chartOrderLevels = new Map();
   chartFillMarkers = new Map();
+  resetRunOverlays();
   if (message) setChartStatus(message);
-  scheduleTradingChartRender();
+  renderChartReadout();
 }
 
 function resetTradingChart(message = "Loading live market…") {
@@ -354,19 +379,12 @@ function resetTradingChart(message = "Loading live market…") {
   chartCandles = [];
   chartOrderLevels = new Map();
   chartFillMarkers = new Map();
-  if (tradingChart) tradingChart.clear();
+  const chart = ensureTradingChart();
+  resetRunOverlays();
+  chart?.reset();
   tradingChartBadge.textContent = "Binance 1m";
   renderChartReadout(null);
   setChartStatus(message);
-}
-
-function scheduleTradingChartRender() {
-  if (chartRenderScheduled) return;
-  chartRenderScheduled = true;
-  window.requestAnimationFrame(() => {
-    chartRenderScheduled = false;
-    renderTradingChart();
-  });
 }
 
 function selectedMarketStreamKey() {
@@ -426,21 +444,213 @@ function scheduleMarketReconnect(key, token) {
   }, 1000);
 }
 
+function normalizeOrderLevel(order) {
+  const price = numeric(order.price);
+  const quantity = numeric(order.quantity ?? order.original_quantity ?? order.originalQuantity);
+  const activeFrom = numeric(order.active_from_ms ?? order.submitted_at_ms ?? order.submittedAtMs);
+  if (price === null || activeFrom === null) return null;
+  return {
+    order_id: Number(order.order_id ?? order.id),
+    side: String(order.side || "").toLowerCase(),
+    price,
+    quantity: quantity ?? 0,
+    active_from_ms: activeFrom,
+    active_to_ms: numeric(order.active_to_ms),
+    final_status: order.final_status ?? null,
+  };
+}
+
+function normalizeFill(fill) {
+  const price = numeric(fill.price);
+  const quantity = numeric(fill.quantity);
+  const eventTime = numeric(fill.event_time_ms ?? fill.eventTimeMs);
+  if (price === null || eventTime === null) return null;
+  return {
+    order_id: Number(fill.order_id ?? fill.orderId),
+    side: String(fill.side || "").toLowerCase(),
+    price,
+    quantity: quantity ?? 0,
+    event_time_ms: eventTime,
+  };
+}
+
+function fillKey(fill) {
+  return [fill.order_id, fill.event_time_ms, fill.price, fill.quantity].join(":");
+}
+
+function upsertChartCandle(candle) {
+  if (!candle) return null;
+  const normalized = {
+    open_time_ms: numeric(candle.open_time_ms ?? candle.open_time),
+    close_time_ms: numeric(candle.close_time_ms ?? candle.close_time),
+    open: numeric(candle.open),
+    high: numeric(candle.high),
+    low: numeric(candle.low),
+    close: numeric(candle.close),
+    volume: numeric(candle.volume) ?? 0,
+    is_closed: Boolean(candle.is_closed),
+  };
+  if ([normalized.open_time_ms, normalized.close_time_ms, normalized.open, normalized.high, normalized.low, normalized.close].some((value) => value === null)) return null;
+  const existing = chartCandles.findIndex((item) => item.open_time_ms === normalized.open_time_ms);
+  if (existing >= 0) {
+    chartCandles[existing] = normalized;
+  } else {
+    chartCandles.push(normalized);
+    chartCandles.sort((a, b) => a.open_time_ms - b.open_time_ms);
+    while (chartCandles.length > 1000) chartCandles.shift();
+  }
+  return normalized;
+}
+
+function candleTimeForEvent(eventTimeMs) {
+  if (!chartCandles.length) return null;
+  let candidate = chartCandles[0];
+  for (const candle of chartCandles) {
+    if (candle.open_time_ms <= eventTimeMs) candidate = candle;
+    else break;
+  }
+  return Math.floor(candidate.open_time_ms / 1000);
+}
+
+function renderRunOverlays() {
+  const chart = ensureTradingChart();
+  if (!chart || !chartCandles.length) return;
+  const palette = chartPalette();
+  const firstTimeMs = chartCandles[0].open_time_ms;
+  const lastTimeMs = chartCandles[chartCandles.length - 1].open_time_ms;
+  const requiredClosedOrderIds = new Set();
+  const requiredActiveOrderIds = new Set();
+
+  for (const order of chartOrderLevels.values()) {
+    if (!Number.isFinite(order.price)) continue;
+    const color = order.side === "buy" ? palette.bid : palette.ask;
+
+    if (order.active_to_ms === null) {
+      requiredActiveOrderIds.add(order.order_id);
+      let priceLine = chartOrderPriceLines.get(order.order_id);
+      const options = {
+        price: order.price,
+        color,
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: (order.side === "buy" ? "B" : "S") + " #" + order.order_id,
+      };
+      if (!priceLine) {
+        priceLine = chart.series.createPriceLine(options);
+        chartOrderPriceLines.set(order.order_id, priceLine);
+      } else {
+        priceLine.applyOptions(options);
+      }
+      continue;
+    }
+
+    const startMs = Math.max(order.active_from_ms, firstTimeMs);
+    const endMs = Math.min(order.active_to_ms, lastTimeMs);
+    if (endMs < firstTimeMs || startMs > lastTimeMs) continue;
+    requiredClosedOrderIds.add(order.order_id);
+
+    let series = chartOrderSeries.get(order.order_id);
+    if (!series) {
+      series = chart.chart.addSeries(LightweightCharts.LineSeries, {
+        color,
+        lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      chartOrderSeries.set(order.order_id, series);
+    } else {
+      series.applyOptions({ color });
+    }
+
+    const start = candleTimeForEvent(startMs);
+    const end = candleTimeForEvent(endMs);
+    if (start === null || end === null) continue;
+    const points = start === end
+      ? [{ time: start, value: order.price }]
+      : [{ time: start, value: order.price }, { time: end, value: order.price }];
+    series.setData(points);
+  }
+
+  for (const [orderId, series] of chartOrderSeries.entries()) {
+    if (requiredClosedOrderIds.has(orderId)) continue;
+    chart.chart.removeSeries(series);
+    chartOrderSeries.delete(orderId);
+  }
+  for (const [orderId, line] of chartOrderPriceLines.entries()) {
+    if (requiredActiveOrderIds.has(orderId)) continue;
+    chart.series.removePriceLine(line);
+    chartOrderPriceLines.delete(orderId);
+  }
+
+  const markers = Array.from(chartFillMarkers.values())
+    .map((fill) => {
+      const time = candleTimeForEvent(fill.event_time_ms);
+      if (time === null) return null;
+      const buy = fill.side === "buy";
+      return {
+        id: fillKey(fill),
+        time,
+        price: fill.price,
+        position: "atPriceMiddle",
+        shape: buy ? "arrowUp" : "arrowDown",
+        color: buy ? palette.bid : palette.ask,
+        text: "#" + fill.order_id,
+        size: 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.time) - Number(right.time));
+
+  chartFillMarkersPlugin?.setMarkers(markers);
+}
+
+function renderTradingChart({ fitContent = false } = {}) {
+  const chart = ensureTradingChart();
+  if (!chart) return;
+  if (!chartCandles.length) {
+    chart.reset();
+    renderChartReadout(null);
+    setChartStatus(
+      marketStreamKey
+        ? "Waiting for live Binance 1-minute candles."
+        : "Choose a registered Symbol and Market to open the live chart."
+    );
+    return;
+  }
+
+  chart.setCandles(chartCandles.map(toMarketChartCandle), fitContent);
+  renderRunOverlays();
+  renderChartReadout();
+
+  const selectedKey = selectedMarketStreamKey();
+  const chartSymbol = currentMonitor?.market.symbol || selectedKey?.symbol || "market";
+  tradingChartBadge.textContent = "Binance 1m · " + chartSymbol;
+  setChartStatus(
+    chartCandles.length + " live candles · " + chartOrderLevels.size + " active/run order levels · " + chartFillMarkers.size + " run fills · UTC"
+  );
+}
+
 function applyMarketStreamSnapshot(snapshot, key) {
+  const chart = ensureTradingChart();
+  const fitContent = !chart?.candleCount;
   chartCandles = [];
   for (const candle of snapshot?.candles ?? []) upsertChartCandle(candle);
-  renderChartReadout();
+  renderTradingChart({ fitContent });
   setMarketFeedState(snapshot?.status ?? "live", key.symbol + " · " + marketTypeLabel(key.marketType) + " · Binance public 1m");
-  scheduleTradingChartRender();
 }
 
 function applyMarketStreamUpdate(update, key) {
-  if (update?.candle) {
-    upsertChartCandle(update.candle);
+  const normalized = update?.candle ? upsertChartCandle(update.candle) : null;
+  const chart = ensureTradingChart();
+  if (normalized && chart) {
+    chart.updateCandle(toMarketChartCandle(normalized));
+    renderRunOverlays();
     renderChartReadout();
   }
   setMarketFeedState(update?.status ?? "live", key.symbol + " · " + marketTypeLabel(key.marketType) + " · Binance public 1m");
-  scheduleTradingChartRender();
 }
 
 function openMarketStream(key = selectedMarketStreamKey(), clearCandles = true) {
@@ -464,7 +674,10 @@ function openMarketStream(key = selectedMarketStreamKey(), clearCandles = true) 
       chartFillMarkers = new Map();
       chartRunId = null;
     }
-    scheduleTradingChartRender();
+    const chart = ensureTradingChart();
+    resetRunOverlays();
+    chart?.reset();
+    renderChartReadout(null);
   }
 
   setMarketFeedState("loading", key.symbol + " · " + marketTypeLabel(key.marketType) + " · loading Binance 1m");
@@ -502,313 +715,9 @@ function syncMarketStreamToSelection(clearCandles = true) {
   openMarketStream(key, clearCandles);
 }
 
-function normalizeOrderLevel(order) {
-  const price = numeric(order.price);
-  const quantity = numeric(order.quantity ?? order.original_quantity ?? order.originalQuantity);
-  const activeFrom = numeric(order.active_from_ms ?? order.submitted_at_ms ?? order.submittedAtMs);
-  if (price === null || activeFrom === null) return null;
-  return {
-    order_id: Number(order.order_id ?? order.id),
-    side: String(order.side || "").toLowerCase(),
-    price,
-    quantity: quantity ?? 0,
-    active_from_ms: activeFrom,
-    active_to_ms: numeric(order.active_to_ms),
-    final_status: order.final_status ?? null,
-  };
-}
-
-function normalizeFill(fill) {
-  const price = numeric(fill.price);
-  const quantity = numeric(fill.quantity);
-  const eventTime = numeric(fill.event_time_ms ?? fill.eventTimeMs);
-  if (price === null || eventTime === null) return null;
-  return {
-    order_id: Number(fill.order_id ?? fill.orderId),
-    side: String(fill.side || "").toLowerCase(),
-    price,
-    quantity: quantity ?? 0,
-    event_time_ms: eventTime,
-  };
-}
-
-function fillKey(fill) {
-  return [fill.order_id, fill.event_time_ms, fill.price, fill.quantity].join(":");
-}
-
-function upsertChartCandle(candle) {
-  if (!candle) return;
-  const normalized = {
-    open_time_ms: numeric(candle.open_time_ms ?? candle.open_time),
-    close_time_ms: numeric(candle.close_time_ms ?? candle.close_time),
-    open: numeric(candle.open),
-    high: numeric(candle.high),
-    low: numeric(candle.low),
-    close: numeric(candle.close),
-    volume: numeric(candle.volume) ?? 0,
-    is_closed: Boolean(candle.is_closed),
-  };
-  if ([normalized.open_time_ms, normalized.close_time_ms, normalized.open, normalized.high, normalized.low, normalized.close].some((value) => value === null)) return;
-  const existing = chartCandles.findIndex((item) => item.open_time_ms === normalized.open_time_ms);
-  if (existing >= 0) {
-    chartCandles[existing] = normalized;
-  } else {
-    chartCandles.push(normalized);
-    chartCandles.sort((a, b) => a.open_time_ms - b.open_time_ms);
-    while (chartCandles.length > 1000) chartCandles.shift();
-  }
-}
-
-function candleIndexForTime(eventTimeMs) {
-  if (!chartCandles.length) return 0;
-  let candidate = 0;
-  for (let index = 0; index < chartCandles.length; index += 1) {
-    if (chartCandles[index].open_time_ms <= eventTimeMs) candidate = index;
-    else break;
-  }
-  return candidate;
-}
-
-function utcLabel(timestamp) {
-  return new Intl.DateTimeFormat("en", {
-    timeZone: "UTC",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
-}
-
-function renderTradingChart() {
-  const chart = ensureTradingChart();
-  if (!chart) return;
-  if (!chartCandles.length) {
-    chart.clear();
-    const overlayCount = chartOrderLevels.size;
-    const fillCount = chartFillMarkers.size;
-    setChartStatus(
-      marketStreamKey
-        ? "Waiting for live Binance 1-minute candles."
-        : "Choose a registered Symbol and Market to open the live chart."
-    );
-    return;
-  }
-
-  const palette = chartPalette();
-  const categories = chartCandles.map((candle) => utcLabel(candle.open_time_ms));
-  const candleData = chartCandles.map((candle) => [candle.open, candle.close, candle.low, candle.high]);
-  const lastIndex = chartCandles.length - 1;
-  const latestCandle = chartCandles[lastIndex];
-  const latestPrice = numeric(latestCandle?.close);
-  const latestUp = numeric(latestCandle?.close) !== null && numeric(latestCandle?.open) !== null
-    ? latestCandle.close >= latestCandle.open
-    : true;
-  const latestPriceColor = latestUp ? palette.bid : palette.ask;
-  renderChartReadout();
-
-  const orderSegments = Array.from(chartOrderLevels.values())
-    .filter((order) => Number.isFinite(order.price))
-    .map((order) => ({
-      name: (order.side === "buy" ? "Buy" : "Sell") + " order #" + order.order_id,
-      value: [
-        candleIndexForTime(order.active_from_ms),
-        candleIndexForTime(order.active_to_ms ?? chartCandles[lastIndex].close_time_ms),
-        order.price,
-        order.side === "buy" ? 0 : 1,
-        order.order_id,
-        order.active_from_ms,
-        order.active_to_ms ?? 0,
-      ],
-    }));
-
-  const buyFills = [];
-  const sellFills = [];
-  for (const fill of chartFillMarkers.values()) {
-    const point = {
-      name: (fill.side === "buy" ? "Buy" : "Sell") + " fill #" + fill.order_id,
-      value: [candleIndexForTime(fill.event_time_ms), fill.price, fill.order_id, fill.event_time_ms, fill.quantity],
-    };
-    (fill.side === "buy" ? buyFills : sellFills).push(point);
-  }
-
-  const visibleStart = chartCandles.length > 240 ? Math.max(0, 100 - (240 / chartCandles.length) * 100) : 0;
-  chart.setOption({
-    animation: false,
-    backgroundColor: "transparent",
-    textStyle: { color: palette.text },
-    grid: { left: 18, right: 86, top: 22, bottom: 72 },
-    axisPointer: {
-      link: [{ xAxisIndex: "all" }],
-      label: { backgroundColor: palette.surface, color: palette.text, borderColor: palette.border, borderWidth: 1 },
-    },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: {
-        type: "cross",
-        snap: true,
-        crossStyle: { color: palette.muted, width: 1, type: "dashed" },
-        label: { show: true, backgroundColor: palette.surface, color: palette.text },
-      },
-      confine: true,
-      backgroundColor: palette.surface,
-      borderColor: palette.border,
-      textStyle: { color: palette.text },
-      formatter(params) {
-        const items = Array.isArray(params) ? params : [params];
-        const candleParam = items.find((item) => item.seriesName === "Candles");
-        if (candleParam && Number.isInteger(candleParam.dataIndex)) {
-          const candle = chartCandles[candleParam.dataIndex];
-          if (candle) {
-            return [
-              "<strong>" + formatChartTime(candle.open_time_ms) + " UTC</strong>",
-              "O " + formatChartPrice(candle.open),
-              "H " + formatChartPrice(candle.high),
-              "L " + formatChartPrice(candle.low),
-              "C " + formatChartPrice(candle.close),
-            ].join("<br>");
-          }
-        }
-        const item = items[0];
-        if (item?.seriesName === "Order lifetime") {
-          const value = item.value;
-          const side = value[3] === 0 ? "Buy" : "Sell";
-          return [
-            "<strong>" + side + " order #" + value[4] + "</strong>",
-            "Price: " + formatChartPrice(value[2]),
-            "Active from: " + formatChartTime(value[5]) + " UTC",
-            value[6] ? "Active to: " + formatChartTime(value[6]) + " UTC" : "Active now",
-          ].join("<br>");
-        }
-        return "";
-      },
-    },
-    xAxis: {
-      type: "category",
-      data: categories,
-      boundaryGap: true,
-      axisPointer: { show: true, label: { show: true } },
-      axisLine: { lineStyle: { color: palette.border } },
-      axisTick: { show: false },
-      axisLabel: { color: palette.muted, hideOverlap: true },
-      splitLine: { show: false },
-    },
-    yAxis: {
-      type: "value",
-      position: "right",
-      scale: true,
-      axisPointer: {
-        show: true,
-        snap: false,
-        label: { show: true, formatter: (params) => formatChartPrice(params.value) },
-      },
-      axisLine: { show: true, lineStyle: { color: palette.border } },
-      axisTick: { show: false },
-      axisLabel: { color: palette.muted, formatter: (value) => formatChartPrice(value) },
-      splitLine: { lineStyle: { color: palette.grid } },
-    },
-    dataZoom: [
-      {
-        type: "inside",
-        start: visibleStart,
-        end: 100,
-        filterMode: "none",
-        zoomOnMouseWheel: true,
-        moveOnMouseMove: true,
-        moveOnMouseWheel: true,
-      },
-      {
-        type: "slider",
-        start: visibleStart,
-        end: 100,
-        height: 18,
-        bottom: 20,
-        filterMode: "none",
-        showDetail: false,
-        borderColor: palette.border,
-      },
-    ],
-    series: [
-      {
-        name: "Candles",
-        type: "candlestick",
-        data: candleData,
-        z: 3,
-        itemStyle: {
-          color: palette.bid,
-          color0: palette.ask,
-          borderColor: palette.bid,
-          borderColor0: palette.ask,
-        },
-        markLine: latestPrice === null ? undefined : {
-          silent: true,
-          symbol: ["none", "none"],
-          animation: false,
-          lineStyle: { color: latestPriceColor, width: 1, type: "dashed", opacity: 0.9 },
-          label: {
-            show: true,
-            position: "end",
-            color: "#ffffff",
-            backgroundColor: latestPriceColor,
-            borderRadius: 3,
-            padding: [3, 6],
-            formatter: () => formatChartPrice(latestPrice),
-          },
-          data: [{ yAxis: latestPrice }],
-        },
-      },
-      {
-        name: "Order lifetime",
-        type: "custom",
-        data: orderSegments,
-        encode: { x: [0, 1], y: 2 },
-        renderItem(params, api) {
-          const start = api.coord([api.value(0), api.value(2)]);
-          const end = api.coord([api.value(1), api.value(2)]);
-          const buy = api.value(3) === 0;
-          return {
-            type: "line",
-            shape: { x1: start[0], y1: start[1], x2: end[0], y2: end[1] },
-            style: {
-              stroke: buy ? palette.bid : palette.ask,
-              lineWidth: 2,
-              lineDash: [7, 4],
-              opacity: 0.9,
-            },
-          };
-        },
-      },
-      {
-        name: "Buy fills",
-        type: "scatter",
-        data: buyFills,
-        symbol: "triangle",
-        symbolSize: 13,
-        itemStyle: { color: palette.bid },
-      },
-      {
-        name: "Sell fills",
-        type: "scatter",
-        data: sellFills,
-        symbol: "triangle",
-        symbolRotate: 180,
-        symbolSize: 13,
-        itemStyle: { color: palette.ask },
-      },
-    ],
-  }, true);
-
-  const selectedKey = selectedMarketStreamKey();
-  const chartSymbol = currentMonitor?.market.symbol || selectedKey?.symbol || "market";
-  tradingChartBadge.textContent = "Binance 1m · " + chartSymbol;
-  setChartStatus(
-    chartCandles.length + " live candles · " + chartOrderLevels.size + " active/run order levels · " + chartFillMarkers.size + " run fills · UTC"
-  );
-}
-
 async function loadChartBootstrap(runId, quiet = false) {
   const token = ++chartBootstrapToken;
-  if (!quiet) setChartStatus("Loading chart state for Run #" + runId + "…");
+  if (!quiet) setChartStatus("Loading run overlays for Run #" + runId + "…");
   chartRefreshInFlight = true;
   try {
     const chartUrl = activeAdapter.urls.chart(runId);
@@ -832,7 +741,7 @@ async function loadChartBootstrap(runId, quiet = false) {
     renderTradingChart();
   } catch (error) {
     if (token === chartBootstrapToken && currentRunId === runId) {
-      setChartStatus("Could not load chart state · " + error.message);
+      setChartStatus("Could not load run overlays · " + error.message);
     }
   } finally {
     if (token === chartBootstrapToken) chartRefreshInFlight = false;
@@ -846,7 +755,10 @@ function syncChartFromMonitor(monitor) {
     return;
   }
 
-  if (monitor.market.latestBaseCandle) upsertChartCandle(monitor.market.latestBaseCandle);
+  const normalizedCandle = monitor.market.latestBaseCandle
+    ? upsertChartCandle(monitor.market.latestBaseCandle)
+    : null;
+  if (normalizedCandle) ensureTradingChart()?.updateCandle(toMarketChartCandle(normalizedCandle));
 
   let overlaysChanged = false;
   const activeOrderIds = new Set();
@@ -883,7 +795,8 @@ function syncChartFromMonitor(monitor) {
     }
   }
 
-  renderTradingChart();
+  renderRunOverlays();
+  renderChartReadout();
   if (overlaysChanged && !chartRefreshInFlight) {
     void loadChartBootstrap(monitor.run.id, true);
   }
@@ -1516,12 +1429,9 @@ stopButton.addEventListener("click", async () => {
 themeToggle.addEventListener("click", () => {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   setTheme(nextTheme);
-  renderTradingChart();
+  tradingChart?.applyTheme();
+  renderRunOverlays();
 });
-
-if (tradingChartElement && "ResizeObserver" in window) {
-  new ResizeObserver(() => tradingChart?.resize()).observe(tradingChartElement);
-}
 
 async function initializeTradingPage() {
   await loadRegisteredInstruments();
