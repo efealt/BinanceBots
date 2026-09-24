@@ -24,6 +24,10 @@ const CLEAN_PREBOT_TRADING_MIGRATION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/migrations/006_clean_prebot_trading.sql"
 ));
+const RESET_DEVELOPMENT_TRADING_MIGRATION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/migrations/007_reset_development_trading_state.sql"
+));
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
@@ -63,6 +67,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error
         apply_migration(connection, 6, CLEAN_PREBOT_TRADING_MIGRATION)?;
     }
 
+    if current_version < 7 {
+        apply_migration(connection, 7, RESET_DEVELOPMENT_TRADING_MIGRATION)?;
+    }
+
     Ok(())
 }
 
@@ -94,8 +102,8 @@ fn current_time_ms() -> i64 {
 mod tests {
     use super::{
         apply_migration, migrate, AUTH_AUDIT_MIGRATION, CLEAN_PREBOT_TRADING_MIGRATION,
-        DOWNLOAD_START_DATE_MIGRATION, INITIAL_MIGRATION, TRADING_BOTS_MIGRATION,
-        TRADING_RUNS_MIGRATION,
+        DOWNLOAD_START_DATE_MIGRATION, INITIAL_MIGRATION, RESET_DEVELOPMENT_TRADING_MIGRATION,
+        TRADING_BOTS_MIGRATION, TRADING_RUNS_MIGRATION,
     };
     use rusqlite::Connection;
 
@@ -136,7 +144,7 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
     }
 
     #[test]
@@ -187,6 +195,25 @@ mod tests {
 
         apply_migration(&mut connection, 6, CLEAN_PREBOT_TRADING_MIGRATION).unwrap();
 
+        connection.execute(
+            "INSERT INTO trading_bots
+             (bot_id, bot_name, config_json, created_at_ms, updated_at_ms)
+             VALUES (2, 'Disposable phase2 bot', '{}', 2, 2)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO trading_runs
+             (run_id, bot_id, mode, status, strategy_id, strategy_version,
+              strategy_params_json, instrument_id, initial_capital_decimal,
+              run_config_json, data_source_json, execution_assumptions_json,
+              created_at_ms, updated_at_ms)
+             VALUES (2, 2, 'paper', 'created', 'static-grid-fixture', '1',
+                     '{}', 1, '1000', '{}', '{}', '{}', 2, 2)",
+            [],
+        ).unwrap();
+
+        apply_migration(&mut connection, 7, RESET_DEVELOPMENT_TRADING_MIGRATION).unwrap();
+
         let downloads: i64 = connection.query_row(
             "SELECT COUNT(*) FROM data_downloads WHERE download_id = 1",
             [],
@@ -215,7 +242,7 @@ mod tests {
 
         let result = apply_migration(
             &mut connection,
-            7,
+            8,
             "CREATE TABLE migration_probe (id INTEGER PRIMARY KEY);
              THIS IS NOT VALID SQL;",
         );

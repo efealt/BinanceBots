@@ -1,5 +1,8 @@
 use crate::{
-    market::{Candle, FeedStatus, MarketError, MarketKey, MarketService, MarketSnapshot, MarketType},
+    market::{
+        Candle, FeedStatus, MarketError, MarketKey, MarketRealtimeEventKind, MarketService,
+        MarketSnapshot, MarketType, RunMarketSubscription,
+    },
     storage::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderSide, OrderStateInput, OrderStatus, OrderType,
@@ -384,6 +387,27 @@ impl PaperManager {
             execution_assumptions: execution_json.clone(),
         })?;
 
+        // Subscribe the backend Run directly to the market feed before its strategy
+        // creates resting orders. Events queued before order submission are harmless now
+        // and become important in Phase 3, where eligibility timestamps reject pre-order trades.
+        let execution_feed = match self
+            .market
+            .subscribe_for_run(base_key.clone(), run.run_id)
+            .await
+        {
+            Ok(subscription) => subscription,
+            Err(error) => {
+                let reason = format!("execution_feed_subscription_failed: {error}");
+                let _ = self.storage.set_trading_run_status(
+                    run.run_id,
+                    RunStatus::Failed,
+                    paper_times(now),
+                    Some(&reason),
+                );
+                return Err(PaperError::Market(error));
+            }
+        };
+
         let initial_cash = config
             .initial_capital
             .as_str()
@@ -478,6 +502,7 @@ impl PaperManager {
                     config,
                     base_key,
                     first_execution_base_open_ms,
+                    execution_feed,
                     stop_rx,
                 )
                 .await;
@@ -787,6 +812,7 @@ impl PaperManager {
         config: PaperStartConfig,
         base_key: MarketKey,
         first_execution_base_open_ms: i64,
+        mut execution_feed: RunMarketSubscription,
         mut stop_rx: watch::Receiver<bool>,
     ) {
         let mut ticker = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
@@ -942,6 +968,46 @@ impl PaperManager {
                                     return;
                                 }
                             }
+                        }
+                    }
+                }
+                execution_event = execution_feed.recv() => {
+                    match execution_event {
+                        Ok(event) => {
+                            match event.kind {
+                                MarketRealtimeEventKind::Status(FeedStatus::Reconnecting) => {
+                                    self.finish_failed(
+                                        &handle,
+                                        &mut core,
+                                        "execution_feed_interrupted: Binance realtime execution feed disconnected; missed trades cannot be ruled out".into(),
+                                    ).await;
+                                    return;
+                                }
+                                MarketRealtimeEventKind::Status(status) => {
+                                    self.update_snapshot(
+                                        &handle,
+                                        core.portfolio.view(),
+                                        core.open_orders(),
+                                        |snapshot| {
+                                            snapshot.feed_status = status;
+                                            snapshot.updated_at_ms = event.received_at_ms;
+                                        },
+                                    ).await;
+                                }
+                                // Phase 2 proves direct per-Run delivery and continuity.
+                                // Phase 3 consumes Trade for fills; Phase 4 separates Candle
+                                // strategy timing from Trade execution inside one actor.
+                                MarketRealtimeEventKind::Trade(_)
+                                | MarketRealtimeEventKind::Candle(_) => {}
+                            }
+                        }
+                        Err(error) => {
+                            self.finish_failed(
+                                &handle,
+                                &mut core,
+                                error.stable_reason(),
+                            ).await;
+                            return;
                         }
                     }
                 }

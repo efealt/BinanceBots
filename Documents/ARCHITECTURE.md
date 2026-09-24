@@ -476,6 +476,21 @@ Execution interpretation is now explicit:
 - Pending-order validation, latency-based eligibility timestamps, partial-fill quantity calculation, fee calculation, and cumulative fill accounting remain centralized in the execution module instead of being duplicated.
 - No strategy wrapper or Live-Paper copy of `StaticGridStrategy` exists. A focused test submits one static-grid `on_start` output unchanged into both adapters and proves the resting intents are identical.
 - Phase 1 is structural only for the running service: the current Paper runtime remains on the historical adapter until Phases 2–4 deliver lossless backend trade events and serialize them into the Run actor. The new live adapter is not yet used as evidence of production live-event execution.
+## Phase 4.8C Phase 2 — Backend realtime execution feed
+
+The Market service now exposes a backend-only bounded event path for execution chronology. It is separate from the browser's market-stream UI polling.
+
+- Each realtime event carries a monotonic backend sequence, a connection epoch, backend receive time, and either feed status, Binance trade, or candle data.
+- Trade events preserve Binance trade ID, exchange trade time, price, and quantity. Candle events remain separate so later phases can route trades to execution immediately while completed candles drive strategy timing.
+- Each running Live-Paper Run owns a `RunMarketSubscription`. Its per-Run cursor tracks the last backend sequence and last Binance trade ID. Exact duplicate trade IDs are suppressed; backwards trade IDs are treated as continuity failures.
+- Broadcast lag, sequence gaps, channel closure, and connection-epoch changes are explicit errors. A feed reconnect currently fails the development Run and persists a stable reason because missed trade chronology cannot yet be reconstructed safely.
+- The subscription is already attached to backend Live-Paper runtimes and is independent of browser presence. Phase 2 intentionally does not create fills from trade events yet; Phase 3 replaces the candle-based resting-order fill path.
+- The bounded channel capacity is 16,384 execution events. A slow consumer fails explicitly rather than silently dropping execution information.
+
+### Development trading-state reset
+
+Migration 007 intentionally clears disposable Bot/Run operational state before the realtime execution path proceeds. It deletes `trading_runs` and `trading_bots` and relies on foreign-key cascades for their canonical child records. Download definitions, historical datasets/OHLC/trades, market instruments, and live-capture tables are preserved. No compatibility bridge is kept for the discarded development trading records.
+
 
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
 
