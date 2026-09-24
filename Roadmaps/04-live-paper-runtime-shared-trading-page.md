@@ -199,27 +199,34 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 **Checkpoint:** Automated tests prove the Phase 4 chronology and safety contract without using production UI behavior as evidence.
 
-### 4.8B — Trading workspace production revision
+### 4.8B — Trading workspace + persistent bots
 
 Detailed roadmap: `Roadmaps/04.8B-trading-workspace-production-revision.md`
 
-- [ ] Make the selected registered market live on the Trading chart before a Paper run exists.
-- [ ] Add backend-derived **Show on graph** strategy preview before execution.
-- [ ] Keep the operational workspace scoped to the current active run rather than automatically showing the newest terminal run.
-- [ ] Compact Runtime context and portfolio layout while preserving fluid responsive behavior.
-- [ ] Complete the detailed 4.8B roadmap sequentially.
+Foundation already complete:
+- [x] Active workspace no longer auto-loads terminal historical runs.
+- [x] Registered Symbol/Market drives an always-live Trading chart before execution.
+- [x] Trading uses the same native Lightweight Charts engine as Market.
 
-**Checkpoint:** Trading behaves as a live operational workspace before the final production smoke.
+Remaining:
+- [ ] Add persistent Bot identity + saved configuration above the existing Run model.
+- [ ] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
+- [ ] Make Paper execution bot-aware and support multiple different Paper bots concurrently.
+- [ ] Add backend-derived **Show on graph** preview for the selected/new bot.
+- [ ] Add Bot history, clear Run activity terminology, and compact the remaining workspace layout.
+- [ ] Complete integrated multi-bot production acceptance.
+
+**Checkpoint:** Trading is the persistent operational home for saved bots and their forward Paper runs. Live execution remains locked until its later phase.
 
 ### 4.8C — Production smoke + visual acceptance
 
-- [ ] Deploy the final Phase 4 implementation to Render.
-- [ ] Start a real Paper run from the hosted Trading page.
-- [ ] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, logs, and feed/runtime status.
-- [ ] Close/reopen the page and verify the backend run continues and restores correctly.
-- [ ] Stop the run cleanly and verify the active workspace clears while the complete canonical Paper history remains persisted.
-- [ ] Update `Documents/ARCHITECTURE.md` with the final implemented Phase 4 architecture.
-- [ ] Mark Phase 4 complete only after the hosted page is visually meaningful and the persisted run is coherent.
+- [ ] Create and save an idle bot without starting a run.
+- [ ] Start at least two different Paper bots and verify concurrent backend ownership and state isolation.
+- [ ] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, run activity, and Bot history.
+- [ ] Close/reopen the page and verify all running bots continue and restore correctly.
+- [ ] Stop/restart a bot and verify separate immutable run IDs remain under the same Bot history.
+- [ ] Update `Documents/ARCHITECTURE.md` with the final implemented Bot → Run architecture.
+- [ ] Mark Phase 4 complete only after the hosted workspace is visually meaningful and persisted bot/run state is coherent.
 
 **Checkpoint:** Phase 4 is proven end-to-end in production.
 
