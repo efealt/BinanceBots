@@ -413,11 +413,11 @@ Trading now has a persistent Bot parent layer above execution Runs.
 - A **Bot** is durable identity plus saved configuration: stable `bot_id`, editable `bot_name`, validated configuration JSON, and created/updated timestamps.
 - Saved configuration contains the complete current Trading setup required to restore the form: Symbol/Market parameters, replay interval, initial capital, strategy ID/grid parameters, and execution assumptions.
 - Protected persistence endpoints are `POST /api/trading/bots`, `GET /api/trading/bots`, `GET /api/trading/bots/{bot_id}`, and `PUT /api/trading/bots/{bot_id}`.
-- Migration 005 adds `trading_bots` and `trading_runs.bot_id`. Migration 006 clears the pre-Bot development Trading state instead of preserving or backfilling it. Data Downloader definitions and downloaded historical market datasets are not touched.
+- Migration 005 adds `trading_bots` and `trading_runs.bot_id`. Migration 006 resets Trading operational tables while leaving Data Downloader definitions and downloaded historical market datasets untouched.
 - Newly created **Live-Paper** runs must reference a real persisted Bot. The storage layer enforces this invariant even when called outside the HTTP API. The same invariant is reserved for future **Live-Real-Account** runs; Backtest is the only run mode that may exist without a Bot.
 - A Run remains an immutable execution snapshot. Editing the parent Bot does not rewrite prior run strategy parameters, run configuration, data source, initial capital, or execution assumptions.
 - Paper runtime snapshots and run summaries expose the linked `bot_id` when present so the next workspace phase can group operational state by Bot.
-- New Live-Paper starts require an explicit persisted `bot_id`. The temporary auto-create/anonymous compatibility bridge was removed. Phase 2 adds the Bot strip and explicit New Bot / Save Bot UI that supplies this ID.
+- New Live-Paper starts require an explicit persisted `bot_id`. Phase 2 adds the Bot strip and explicit New Bot / Save Bot UI that supplies this ID.
 - **Live-Paper** means real-time Binance market data with simulated orders/fills. **Live-Real-Account** means real Binance account order submission and remains locked.
 
 ## UI
