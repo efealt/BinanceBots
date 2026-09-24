@@ -531,14 +531,6 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-mode-option--locked { cursor: not-allowed; opacity: 0.62; }
 .trading-mode-option--locked span { display: block; margin-top: 2px; font-size: 0.58rem; font-weight: 650; letter-spacing: 0.02em; text-transform: none; }
 .trading-mode-note { margin: 9px 2px 0; color: var(--muted); font-size: 0.7rem; line-height: 1.4; }
-.trading-context-panel { margin-top: 0; }
-.trading-context-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-.trading-context-grid > div { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); }
-.trading-context-grid span, .trading-context-grid strong { display: block; }
-.trading-context-grid span { color: var(--muted); font-size: 0.68rem; }
-.trading-context-grid strong { margin-top: 6px; overflow: hidden; font-size: 0.88rem; text-overflow: ellipsis; white-space: nowrap; }
-.trading-runtime-note { margin-top: 16px; margin-bottom: 0; }
-
 @media (max-width: 1100px) {
   .trading-mode-header { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .trading-heading-copy { grid-column: 1 / -1; max-width: 720px; padding-right: 0; }
@@ -548,18 +540,15 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
   .trading-mode-header { grid-template-columns: 1fr; }
   .trading-heading-copy { grid-column: auto; }
   .trading-health-row { grid-template-columns: minmax(62px, 0.6fr) minmax(0, 0.8fr) minmax(0, 1.5fr) auto; }
-  .trading-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 560px) {
   .trading-health-row { grid-template-columns: 76px minmax(0, 1fr) auto; }
   .trading-health-detail { grid-column: 2 / -1; padding-bottom: 6px; }
-  .trading-context-grid { grid-template-columns: 1fr; }
 }
 
-
 /* Trading page · Phase 4.8B Bot workspace */
-.trading-bots-panel { min-width: 0; margin-top: 0; }
+.trading-bots-panel { min-width: 0; min-height: 0; margin-top: 0; }
 .trading-bots-heading { align-items: center; }
 .trading-bots-heading .button { width: auto; margin: 0; white-space: nowrap; }
 .trading-bot-strip {
@@ -802,8 +791,7 @@ body[data-trading-mode="live"] .trading-status-card,
 body[data-trading-mode="live"] .trading-chart-panel,
 body[data-trading-mode="live"] .trading-portfolio-panel,
 body[data-trading-mode="live"] .trading-orders-panel,
-body[data-trading-mode="live"] .trading-audit-panel,
-body[data-trading-mode="live"] .trading-context-panel {
+body[data-trading-mode="live"] .trading-audit-panel {
   border-color: color-mix(in srgb, var(--ask) 58%, var(--border));
 }
 .trading-mode-option--live {
@@ -844,6 +832,7 @@ body[data-trading-mode="live"] .trading-context-panel {
 .trading-orders-panel,
 .trading-activity-panel,
 .trading-history-panel { min-width: 0; margin-top: 0; }
+.trading-portfolio-panel { min-height: 0; }
 
 .trading-portfolio-layout {
   display: grid;
@@ -969,19 +958,24 @@ body[data-trading-mode="live"] .trading-context-panel {
 }
 .trading-order-card--buy .trading-order-price { color: var(--bid); }
 .trading-order-card--sell .trading-order-price { color: var(--ask); }
-.trading-order-card-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-.trading-order-card-meta span { display: grid; gap: 2px; min-width: 0; }
-.trading-order-card-meta small { color: var(--muted); font-size: 0.58rem; text-transform: uppercase; }
-.trading-order-card-meta strong {
-  overflow: hidden;
-  font-size: 0.7rem;
+.trading-order-quantity-line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-variant-numeric: tabular-nums;
+}
+.trading-order-quantity-line strong {
+  overflow: hidden;
+  font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.trading-order-quantity-line span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.66rem;
 }
 .trading-order-empty {
   grid-column: 1 / -1;
@@ -1198,7 +1192,6 @@ body[data-trading-mode="live"] .trading-context-panel {
 @media (max-width: 620px) {
   .trading-portfolio-layout { grid-template-columns: 1fr; }
   .trading-portfolio-metrics { grid-column: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .trading-order-card-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .trading-activity-actions { justify-content: flex-start; }
   .trading-utility-button { flex: 0 0 auto; }
   .trading-activity-item { grid-template-columns: 1fr; gap: 5px; }

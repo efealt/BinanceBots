@@ -110,8 +110,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=16')) {
-  throw new Error("Trading page must load the Phase 5B diagnostic-modal polish client");
+if (!trading.includes('/trading.js?v=17')) {
+  throw new Error("Trading page must load the Phase 5B compact-workspace polish client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -157,6 +157,11 @@ for (const required of [
   'syncChartFromMonitor(monitor)',
   'renderPortfolio(monitor)',
   'renderOpenOrders(monitor)',
+  'trading-order-quantity-line',
+  'quantityPrimary.textContent = "Qty "',
+  'quantitySecondary.textContent = "Open"',
+  'quantityPrimary.textContent = "Filled "',
+  'quantitySecondary.textContent = "Remaining "',
   'syncRunActivityFromMonitor(monitor)',
   'syncCanonicalAuditFromMonitor(monitor)',
   'loadActivity(runId',
@@ -193,6 +198,9 @@ for (const required of [
 if (trading.includes('id="trading-canonical-audit"')) {
   throw new Error("Technical audit must not remain as a persistent inline Trading section");
 }
+if (trading.includes('class="panel trading-context-panel"') || trading.includes('id="trading-symbol"')) {
+  throw new Error("Redundant Runtime context must not remain in the Trading workspace");
+}
 if (!trading.includes(">Exit history</button>") || !trading.includes(">Technical audit</button>")) {
   throw new Error("Phase 5B utility wording must use Exit history / Technical audit");
 }
@@ -209,6 +217,9 @@ for (const required of [
   "grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.8fr);",
   ".trading-control-panel { min-width: 0;",
   ".trading-order-columns {",
+  ".trading-bots-panel { min-width: 0; min-height: 0;",
+  ".trading-portfolio-panel { min-height: 0;",
+  ".trading-order-quantity-line {",
   ".trading-portfolio-layout {",
   ".trading-activity-list {",
   ".trading-technical-audit-dialog {",

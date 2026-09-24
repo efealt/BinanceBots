@@ -482,12 +482,13 @@ The accepted upper Trading workflow remains unchanged: Bot strip, Live-Paper con
 The lower workspace is now presentation-oriented while staying faithful to canonical backend state:
 
 - **Portfolio monitor** is compact: signed inventory and equity are primary, with realized/unrealized PnL, fees, exposure, cash, and mark price grouped in smaller metrics.
-- **Open orders** are split into BUY-left / SELL-right execution columns on desktop and stack vertically on narrow screens. Every backend order remains a distinct card with Order ID, price, remaining/original/filled quantity, state, and age.
+- **Open orders** are split into BUY-left / SELL-right execution columns on desktop and stack vertically on narrow screens. Every backend order remains distinct. Untouched orders use the operationally simpler **Qty · Open** display; partially filled orders expose **Filled / original · Remaining** only when the distinction becomes useful, alongside Order ID, price, state, type, and age.
 - **Run activity** is the default execution record view. It consumes the Phase 5A newest-first meaningful-activity endpoint, so fills/orders/positions/lifecycle events are immediately visible while repetitive Equity heartbeat events are counted but suppressed from the default list.
 - The complete canonical record remains available through a separate on-demand **Technical audit** modal, including a complete-audit loader. The raw diagnostic record is not part of the daily Trading layout; opening or closing the modal has no execution side effects.
 - **Bot history** shows Runs newest first with active/current vs terminal status and compact persisted result summaries. Historical selection is read-only. While inspecting history, the compact **Exit history** utility returns to the selected Bot's current state; visible info affordances explain this and the other Run Activity utilities.
 - Historical inspection uses separate browser detail state from the active runtime state. If the Bot is currently running, its WebSocket and backend ownership continue unaffected while the lower panels and chart overlays inspect an older Run. Returning to the current Bot restores the active Run details.
 - The market chart remains live during historical inspection and follows the inspected Run's symbol/market when that differs from the Bot's current saved configuration; the saved configuration itself is never mutated by inspection.
+- Bots and Portfolio panels override the generic panel minimum height so they fit their actual content instead of leaving large empty desktop gaps. The redundant Runtime context panel was removed because its symbol/market/interval/strategy values duplicate the accepted Bot/config/chart surfaces.
 - Lower panels use responsive `minmax(0,...)` grids and stack on narrow screens; the redesign introduces no page-level horizontal scrolling.
 - Console remains untouched in Phase 5B; its lightweight real-Bot monitoring conversion is Phase 6.
 

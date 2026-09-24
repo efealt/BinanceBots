@@ -12,10 +12,6 @@ const connectionLabel = document.querySelector("#trading-connection-label");
 const connectionDetail = document.querySelector("#trading-connection-detail");
 const topDot = document.querySelector("#trading-top-dot");
 const topLabel = document.querySelector("#trading-top-label");
-const symbolElement = document.querySelector("#trading-symbol");
-const marketTypeElement = document.querySelector("#trading-market-type");
-const intervalElement = document.querySelector("#trading-interval");
-const strategyElement = document.querySelector("#trading-strategy");
 const paperModeButton = document.querySelector("#trading-mode-paper");
 const liveModeButton = document.querySelector("#trading-mode-live");
 const modePanels = Array.from(document.querySelectorAll("[data-mode-panel]"));
@@ -362,10 +358,7 @@ function setBotStatus(message) {
 }
 
 function renderSelectedBotContext() {
-  symbolElement.textContent = symbolInput.value || "—";
-  marketTypeElement.textContent = marketTypeInput.value ? marketTypeLabel(marketTypeInput.value) : "—";
-  intervalElement.textContent = replayIntervalInput.value || "—";
-  strategyElement.textContent = strategyInput.value || "—";
+  // Saved/current Bot context is already visible in the Bot strip, controls, and chart.
 }
 
 function resetBotFormToDefaults() {
@@ -1255,26 +1248,31 @@ function renderOrderCard(order) {
 
   const original = numeric(order.originalQuantity) ?? 0;
   const filled = numeric(order.filledQuantity) ?? 0;
-  const remaining = numeric(order.remainingQuantity) ?? 0;
-  const fillPercent = original > 0 ? Math.min(100, Math.max(0, (filled / original) * 100)) : 0;
-  const state = filled > 0 ? ("Partial · " + fillPercent.toFixed(1) + "%") : "Resting";
+  const remaining = numeric(order.remainingQuantity) ?? Math.max(0, original - filled);
+  const partial = filled > 0 && remaining > 0;
 
-  const meta = document.createElement("div");
-  meta.className = "trading-order-card-meta";
-  meta.innerHTML =
-    "<span><small>Remaining</small><strong>" + formatOperationalNumber(remaining) + "</strong></span>"
-    + "<span><small>Original</small><strong>" + formatOperationalNumber(original) + "</strong></span>"
-    + "<span><small>Filled</small><strong>" + formatOperationalNumber(filled) + "</strong></span>";
+  const quantityLine = document.createElement("div");
+  quantityLine.className = "trading-order-quantity-line";
+  const quantityPrimary = document.createElement("strong");
+  const quantitySecondary = document.createElement("span");
+  if (partial) {
+    quantityPrimary.textContent = "Filled " + formatOperationalNumber(filled) + " / " + formatOperationalNumber(original);
+    quantitySecondary.textContent = "Remaining " + formatOperationalNumber(remaining);
+  } else {
+    quantityPrimary.textContent = "Qty " + formatOperationalNumber(original);
+    quantitySecondary.textContent = "Open";
+  }
+  quantityLine.append(quantityPrimary, quantitySecondary);
 
   const foot = document.createElement("div");
   foot.className = "trading-order-card-foot";
   const stateElement = document.createElement("span");
-  stateElement.textContent = state;
+  stateElement.textContent = partial ? "Partially filled" : "Resting";
   const typeElement = document.createElement("span");
   typeElement.textContent = humanize(order.orderType || "limit");
   foot.append(stateElement, typeElement);
 
-  card.append(top, price, meta, foot);
+  card.append(top, price, quantityLine, foot);
   return card;
 }
 
@@ -2215,10 +2213,6 @@ function renderSnapshot(snapshot) {
     : "Persisted run · " + humanize(monitor.run.canonicalStatus);
   runBadgeElement.textContent = humanize(monitor.run.runtimeStatus || monitor.run.canonicalStatus);
 
-  symbolElement.textContent = monitor.market.symbol || "—";
-  marketTypeElement.textContent = humanize(monitor.market.marketType) || "—";
-  intervalElement.textContent = monitor.market.replayInterval || "—";
-  strategyElement.textContent = monitor.strategy.id || "—";
   if (monitor.run.mode === "paper") {
     applySnapshotToConfig(snapshot);
     syncMarketStreamToSelection(false);
