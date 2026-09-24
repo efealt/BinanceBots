@@ -8,7 +8,7 @@ use crate::{
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
-        PortfolioView, SimulatedExecution, StaticGridConfig, StaticGridStrategy, Strategy,
+        PortfolioView, HistoricalExecution, StaticGridConfig, StaticGridStrategy, Strategy,
         StrategyContext, StrategyOutput, StrategyStartContext, TradingInterval,
     },
 };
@@ -390,7 +390,7 @@ impl PaperManager {
             .parse::<f64>()
             .map_err(|_| PaperError::Invalid("initial capital cannot be represented by simulator".into()))?;
         let portfolio = PortfolioState::new(initial_cash).map_err(PaperError::Simulation)?;
-        let execution = SimulatedExecution::new(config.execution.clone()).map_err(PaperError::Simulation)?;
+        let execution = HistoricalExecution::new(config.execution.clone()).map_err(PaperError::Simulation)?;
         let mut core = PaperRunCore {
             run_id: run.run_id,
             storage: Arc::clone(&self.storage),
@@ -1013,7 +1013,7 @@ struct PaperRunCore {
     storage: Arc<StorageReader>,
     strategy: Box<dyn Strategy + Send>,
     portfolio: PortfolioState,
-    execution: SimulatedExecution,
+    execution: HistoricalExecution,
     status: RunStatus,
 }
 
@@ -1041,7 +1041,7 @@ impl PaperRunCore {
     fn process_candle(
         &mut self,
         candle: &MarketCandle,
-    ) -> Result<Vec<crate::trading::SimulatedFill>, PaperError> {
+    ) -> Result<Vec<crate::trading::ExecutionFill>, PaperError> {
         if self.status != RunStatus::Running {
             return Err(PaperError::RunNotActive(self.run_id));
         }
@@ -2202,7 +2202,7 @@ mod tests {
             storage,
             strategy,
             portfolio: PortfolioState::new(1000.0).unwrap(),
-            execution: SimulatedExecution::new(assumptions).unwrap(),
+            execution: HistoricalExecution::new(assumptions).unwrap(),
             status: RunStatus::Created,
         }
     }
@@ -2238,7 +2238,7 @@ mod tests {
             storage,
             strategy: Box::new(NoOpStrategy),
             portfolio: PortfolioState::new(1000.0).unwrap(),
-            execution: SimulatedExecution::new(ExecutionAssumptions::default()).unwrap(),
+            execution: HistoricalExecution::new(ExecutionAssumptions::default()).unwrap(),
             status: RunStatus::Created,
         }
     }

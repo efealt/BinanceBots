@@ -199,7 +199,7 @@ fn new_paper_core(
         storage: Arc::clone(&storage),
         strategy,
         portfolio: PortfolioState::new(1000.0).unwrap(),
-        execution: SimulatedExecution::new(execution).unwrap(),
+        execution: HistoricalExecution::new(execution).unwrap(),
         status: RunStatus::Created,
     };
     (storage, core)

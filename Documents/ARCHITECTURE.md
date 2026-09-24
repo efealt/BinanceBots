@@ -164,7 +164,7 @@ Phase 4.1 establishes the backend-owned Paper run contract without changing any 
 
 - `PaperManager` is created by the server and owns in-memory Paper runtime handles keyed by the canonical `run_id`.
 - Each run has isolated runtime state. There is no single global strategy/portfolio object shared across runs.
-- `PaperRunCore` reuses the existing mode-neutral `Strategy` trait, `PortfolioState`, `SimulatedExecution`, and canonical trading-run persistence rather than creating Paper-specific strategy or accounting implementations.
+- `PaperRunCore` reuses the existing mode-neutral `Strategy` trait, `PortfolioState`, and canonical trading-run persistence rather than creating Paper-specific strategy or accounting implementations. The original Phase 4.1 implementation also reused the candle-oriented simulator; Phase 4.8C supersedes that execution coupling with explicit historical and real-time adapters.
 - Canonical Paper runs use the existing lifecycle/status model: `created`, `running`, and terminal `completed` / `stopped` / `failed`.
 - Strategy implementations remain under `src/trading/strategies/`; Paper runtime orchestration is outside those strategy modules.
 - Phase 4.1 does not by itself certify the real-time candle clock, recovery policy, control API/live stream, or Trading page. Those remain separate Phase 4 checkpoints.
@@ -199,7 +199,7 @@ Each completed Paper replay candle now runs through the same execution chronolog
 
 Because simulated execution for a candle is processed before the strategy callback, an order created from that candle's completed information cannot retroactively fill from the same candle's earlier range. It becomes eligible only on a later candle according to the shared simulator and configured latency.
 
-Paper uses the same `SimulatedExecution` component as Backtest. The Paper run records the exact execution assumptions used to construct that simulator: fees, spread, slippage, latency, limit fill policy, and partial-fill ratio.
+The original Phase 4.3 implementation used the same candle-oriented simulator in Paper and Backtest. Phase 4.8C supersedes that architecture: Backtest keeps historical candle execution while Live-Paper moves to a real-time event adapter. The Run still records the exact execution assumptions: fees, spread, slippage, latency, limit fill policy, and partial-fill ratio.
 
 Focused Phase 4.3 tests verify:
 - a resting order fills before the strategy sees the completed candle and the strategy observes the post-fill position;
@@ -463,6 +463,19 @@ Trading now supports a backend-derived **Show on graph** preview before Live-Pap
 - A Rust parity test proves that preview levels and persisted Live-Paper initial orders match exactly for the same strategy configuration, previous candle, and market boundary.
 - **Live-Real-Account** remains server-side locked.
 
+
+## Phase 4.8C Phase 1 — Explicit execution adapters
+
+The shared strategy contract remains mode-neutral. Strategies still emit the same `StrategyOrderIntent` objects regardless of whether they are used in Backtest or Live-Paper.
+
+Execution interpretation is now explicit:
+
+- `HistoricalExecution` owns the existing deterministic historical-candle semantics. Its resting-order OHLC Touch / Trade Through behavior is unchanged, preserving Backtest outputs and the frozen XAGUSDT regression.
+- `LivePaperExecution` is a distinct real-time execution adapter. It owns resting simulated orders and accepts `LiveExecutionEvent` inputs; the first supported event is a Binance-style trade carrying trade ID, exchange event time, price, and quantity.
+- Both adapters emit the same shared `ExecutionFill` contract, so portfolio accounting and canonical persistence do not need mode-specific fill representations.
+- Pending-order validation, latency-based eligibility timestamps, partial-fill quantity calculation, fee calculation, and cumulative fill accounting remain centralized in the execution module instead of being duplicated.
+- No strategy wrapper or Live-Paper copy of `StaticGridStrategy` exists. A focused test submits one static-grid `on_start` output unchanged into both adapters and proves the resting intents are identical.
+- Phase 1 is structural only for the running service: the current Paper runtime remains on the historical adapter until Phases 2–4 deliver lossless backend trade events and serialize them into the Run actor. The new live adapter is not yet used as evidence of production live-event execution.
 
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
 

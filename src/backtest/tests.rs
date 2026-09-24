@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     storage::{OrderSide, OrderType, RunStatus, StorageReader, TimeInForce},
     trading::{
-        ExecutionAssumptions, GridAnchor, LimitFillPolicy, MarketCandle, SimulatedExecution,
+        ExecutionAssumptions, GridAnchor, LimitFillPolicy, MarketCandle, HistoricalExecution,
         StaticGridConfig, StaticGridStrategy, StrategyDecision, StrategyOrderIntent,
         StrategyOutput, StrategyStartContext,
     },
@@ -287,7 +287,7 @@ fn simulator_handles_limit_policy_latency_and_partial_fills() {
         volume: 10.0,
     };
 
-    let mut touch = SimulatedExecution::new(ExecutionAssumptions {
+    let mut touch = HistoricalExecution::new(ExecutionAssumptions {
         fee_bps: 0.0,
         spread_bps: 0.0,
         slippage_bps: 0.0,
@@ -308,14 +308,14 @@ fn simulator_handles_limit_policy_latency_and_partial_fills() {
     assert_eq!(second[0].status, OrderStatus::Filled);
     assert_eq!(second[0].cumulative_filled_quantity, 2.0);
 
-    let mut trade_through = SimulatedExecution::new(ExecutionAssumptions {
+    let mut trade_through = HistoricalExecution::new(ExecutionAssumptions {
         limit_fill_policy: LimitFillPolicy::TradeThrough,
         ..ExecutionAssumptions::default()
     }).unwrap();
     trade_through.submit(2, 59_999, intent.clone()).unwrap();
     assert!(trade_through.process_candle(&candle_touch).unwrap().is_empty());
 
-    let mut latency = SimulatedExecution::new(ExecutionAssumptions {
+    let mut latency = HistoricalExecution::new(ExecutionAssumptions {
         latency_ms: 60_002,
         ..ExecutionAssumptions::default()
     }).unwrap();

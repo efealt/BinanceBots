@@ -6,7 +6,7 @@ use crate::{
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState, PortfolioView,
-        SimulatedExecution, Strategy, StrategyContext, StrategyOutput, StrategyStartContext,
+        HistoricalExecution, Strategy, StrategyContext, StrategyOutput, StrategyStartContext,
         TradingInterval,
     },
 };
@@ -142,7 +142,7 @@ impl BacktestEngine {
             .map_err(|_| BacktestError::InvalidConfig("initial capital cannot be represented by simulator".into()))?;
         let mut portfolio = PortfolioState::new(initial_cash).map_err(BacktestError::Simulation)?;
         let mut execution =
-            SimulatedExecution::new(config.execution.clone()).map_err(BacktestError::Simulation)?;
+            HistoricalExecution::new(config.execution.clone()).map_err(BacktestError::Simulation)?;
         let mut failure_time = first.open_time_ms;
 
         let result = self.execute(
@@ -288,7 +288,7 @@ impl BacktestEngine {
         previous_candle: Option<&MarketCandle>,
         strategy: &mut S,
         portfolio: &mut PortfolioState,
-        execution: &mut SimulatedExecution,
+        execution: &mut HistoricalExecution,
         failure_time: &mut i64,
         progress: &mut impl FnMut(u8),
     ) -> Result<(), BacktestError> {
@@ -441,7 +441,7 @@ impl BacktestEngine {
         run_id: i64,
         event_time_ms: i64,
         output: StrategyOutput,
-        execution: &mut SimulatedExecution,
+        execution: &mut HistoricalExecution,
     ) -> Result<(), BacktestError> {
         for decision in output.decisions {
             self.storage.record_decision(&DecisionInput {

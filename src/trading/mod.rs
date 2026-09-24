@@ -5,7 +5,10 @@ mod types;
 
 pub use strategies::{GridAnchor, StaticGridConfig, StaticGridStrategy};
 pub use portfolio::PortfolioState;
-pub use simulation::{PendingOrder, SimulatedExecution, SimulatedFill};
+pub use simulation::{
+    ExecutionFill, HistoricalExecution, LiveExecutionEvent, LivePaperExecution, LiveTradeEvent,
+    PendingOrder,
+};
 pub use types::{
     ExecutionAssumptions, LimitFillPolicy, MarketCandle, PortfolioView, Strategy, TradingInterval,
     StrategyContext, StrategyDecision, StrategyOrderIntent, StrategyOutput, StrategyStartContext,
