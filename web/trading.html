@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-10" />
+    <link rel="stylesheet" href="/styles.css?v=trading-11" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -28,7 +28,7 @@
         </nav>
 
         <div class="topbar-actions">
-          <span class="environment-pill"><span class="status-dot pending" id="trading-top-dot"></span><span id="trading-top-label">Paper mode</span></span>
+          <span class="environment-pill"><span class="status-dot pending" id="trading-top-dot"></span><span id="trading-top-label">Live-Paper</span></span>
           <form method="post" action="/logout">
             <button class="button button--secondary" type="submit">Sign out</button>
           </form>
@@ -43,7 +43,7 @@
           <div class="trading-heading-copy">
             <p class="eyebrow">Shared execution workspace</p>
             <h1 id="trading-heading">Trading</h1>
-            <p class="lede">Backend-owned Paper runtime now. This same workspace remains the operational surface when Live execution is unlocked later.</p>
+            <p class="lede">Backend-owned Live-Paper execution on real-time Binance market data. Live-Real-Account uses this same workspace later.</p>
           </div>
 
           <section class="trading-health-block" aria-label="Runtime health">
@@ -57,13 +57,13 @@
             <div class="trading-health-row">
               <span class="trading-health-name">Binance feed</span>
               <strong id="trading-feed-label">Unknown</strong>
-              <span id="trading-feed-detail" class="trading-health-detail">No trading runtime selected</span>
+              <span id="trading-feed-detail" class="trading-health-detail">No Live-Paper runtime selected</span>
               <span class="status-dot pending" id="trading-feed-dot"></span>
             </div>
             <div class="trading-health-row">
               <span class="trading-health-name">Backend</span>
               <strong id="trading-connection-label">Connecting</strong>
-              <span id="trading-connection-detail" class="trading-health-detail">Reading protected Paper state</span>
+              <span id="trading-connection-detail" class="trading-health-detail">Reading protected Live-Paper state</span>
               <span class="status-dot pending" id="trading-connection-dot"></span>
             </div>
           </section>
@@ -71,18 +71,31 @@
           <div class="trading-mode-block">
             <span class="trading-mode-label">Execution mode</span>
             <div class="trading-mode-selector" role="group" aria-label="Execution mode">
-              <button id="trading-mode-paper" class="trading-mode-option is-active" type="button" aria-pressed="true">PAPER</button>
-              <button id="trading-mode-live" class="trading-mode-option trading-mode-option--live trading-mode-option--locked" type="button" aria-pressed="false" disabled>LIVE <span>Locked</span></button>
+              <button id="trading-mode-paper" class="trading-mode-option is-active" type="button" aria-pressed="true">LIVE-PAPER</button>
+              <button id="trading-mode-live" class="trading-mode-option trading-mode-option--live trading-mode-option--locked" type="button" aria-pressed="false" disabled>LIVE-REAL-ACCOUNT <span>Locked</span></button>
             </div>
-            <p class="trading-mode-note">Live execution is locked server-side until Phase 8.</p>
+            <p class="trading-mode-note">Live-Real-Account execution is locked server-side.</p>
           </div>
         </section>
 
+        <section class="panel trading-bots-panel" aria-labelledby="trading-bots-heading">
+          <div class="panel-heading trading-bots-heading">
+            <div>
+              <p class="eyebrow">Bots</p>
+              <h2 id="trading-bots-heading">Saved and running bots</h2>
+            </div>
+            <button id="trading-new-bot-button" class="button button--secondary" type="button">New Bot</button>
+          </div>
+          <div id="trading-bot-strip" class="trading-bot-strip" aria-live="polite">
+            <div id="trading-bot-empty" class="trading-bot-empty">Loading bots…</div>
+          </div>
+          <p id="trading-bot-status" class="panel-note trading-bot-status" role="status">Reading saved Bot state…</p>
+        </section>
 
         <section class="panel trading-control-panel" data-mode-panel="paper" aria-labelledby="trading-control-heading">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Paper controls</p>
+              <p class="eyebrow">Live-Paper controls</p>
               <h2 id="trading-control-heading">Strategy configuration</h2>
             </div>
             <span id="trading-config-lock-badge" class="badge badge--muted">Editable</span>
@@ -93,10 +106,13 @@
               <div class="backtest-section-heading">
                 <div>
                   <strong>Run</strong>
-                  <span>Paper uses backend Binance public market data and never submits real exchange orders.</span>
+                  <span>Live-Paper uses real-time Binance market data with simulated orders/fills and never submits real account orders.</span>
                 </div>
               </div>
               <div class="trading-parameter-grid">
+                <label class="field">Bot name
+                  <input id="trading-bot-name" class="field-control" data-trading-bot-name type="text" maxlength="120" placeholder="e.g. XAG Grid" autocomplete="off" />
+                </label>
                 <label class="field">Symbol
                   <select id="trading-config-symbol" class="field-control" data-trading-config required disabled>
                     <option value="">Loading registered symbols…</option>
@@ -161,7 +177,7 @@
               <div class="backtest-section-heading">
                 <div>
                   <strong>Execution assumptions</strong>
-                  <span>The same simulator assumptions used by Backtest are recorded canonically on the Paper run.</span>
+                  <span>The simulator assumptions are recorded canonically on each Live-Paper run.</span>
                 </div>
               </div>
               <div class="trading-parameter-grid trading-parameter-grid--wide">
@@ -191,9 +207,10 @@
 
             <div id="trading-control-error" class="backtest-form-error" role="alert" hidden></div>
             <div class="trading-control-actions">
-              <button id="trading-start-button" class="button button--primary" type="submit" disabled>Start Paper</button>
-              <button id="trading-stop-button" class="button button--secondary" type="button" disabled>Stop Paper</button>
-              <span id="trading-control-status" class="panel-note" role="status">Ready to start a backend Paper run.</span>
+              <button id="trading-save-bot-button" class="button button--secondary" type="button" disabled>Save Bot</button>
+              <button id="trading-start-button" class="button button--primary" type="submit" disabled>Start Live-Paper</button>
+              <button id="trading-stop-button" class="button button--secondary" type="button" disabled>Stop Live-Paper</button>
+              <span id="trading-control-status" class="panel-note" role="status">Select or save a Bot before starting Live-Paper.</span>
             </div>
           </form>
         </section>
@@ -201,13 +218,13 @@
         <section class="panel trading-live-safety-panel" data-mode-panel="live" aria-labelledby="trading-live-safety-heading" hidden>
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Live safety boundary</p>
-              <h2 id="trading-live-safety-heading">Real Binance execution</h2>
+              <p class="eyebrow">Live-Real-Account safety boundary</p>
+              <h2 id="trading-live-safety-heading">Live-Real-Account</h2>
             </div>
             <span class="badge trading-live-badge">LOCKED</span>
           </div>
           <div class="trading-live-safety-copy">
-            <strong>Live execution is not available in Phase 4.</strong>
+            <strong>Live-Real-Account execution is locked.</strong>
             <span>This mode will use the same market, orders, fills, portfolio, PnL, status, and audit surface while exchange-specific setup and safety controls remain isolated in this panel.</span>
           </div>
         </section>
@@ -241,7 +258,7 @@
             <span><i class="trading-chart-marker trading-chart-marker--sell"></i>Sell fill · quote price</span>
           </div>
 
-          <div id="trading-live-chart" class="trading-live-chart" role="img" aria-label="Live Binance candlestick chart with Paper order levels and fill markers"></div>
+          <div id="trading-live-chart" class="trading-live-chart" role="img" aria-label="Live Binance candlestick chart with Live-Paper order levels and fill markers"></div>
           <p id="trading-chart-status" class="panel-note trading-chart-status" role="status">Loading live market…</p>
         </section>
 
@@ -291,11 +308,11 @@
                 </tr>
               </thead>
               <tbody id="trading-orders-body">
-                <tr><td class="empty-row" colspan="8">No active Paper orders.</td></tr>
+                <tr><td class="empty-row" colspan="8">No active Live-Paper orders.</td></tr>
               </tbody>
             </table>
           </div>
-          <p id="trading-orders-status" class="panel-note trading-table-status">Waiting for Paper snapshot.</p>
+          <p id="trading-orders-status" class="panel-note trading-table-status">Waiting for Live-Paper snapshot.</p>
         </section>
 
         <section class="panel trading-audit-panel" aria-labelledby="trading-audit-heading">
@@ -360,7 +377,7 @@
 
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
-    <script src="/trading-contract.js?v=1"></script>
-    <script src="/trading.js?v=10"></script>
+    <script src="/trading-contract.js?v=2"></script>
+    <script src="/trading.js?v=11"></script>
   </body>
 </html>

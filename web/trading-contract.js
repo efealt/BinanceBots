@@ -25,8 +25,8 @@
 
   const paperAdapter = Object.freeze({
     mode: "paper",
-    label: "Paper",
-    selectorLabel: "PAPER",
+    label: "Live-Paper",
+    selectorLabel: "LIVE-PAPER",
     executionKind: "simulated",
     locked: false,
     lockReason: null,
@@ -68,11 +68,11 @@
 
   const liveAdapter = Object.freeze({
     mode: "live",
-    label: "Live",
-    selectorLabel: "LIVE",
+    label: "Live-Real-Account",
+    selectorLabel: "LIVE-REAL-ACCOUNT",
     executionKind: "binance_private",
     locked: true,
-    lockReason: "Live execution is locked server-side until Phase 8.",
+    lockReason: "Live-Real-Account execution is locked server-side.",
     theme: "live",
     urls: Object.freeze({
       runs() { return null; },
@@ -85,7 +85,7 @@
       stop() { return null; },
     }),
     buildStartPayload() {
-      throw new Error("Live execution is locked server-side until Phase 8.");
+      throw new Error("Live-Real-Account execution is locked server-side.");
     },
   });
 
@@ -156,6 +156,7 @@
     return {
       run: {
         id: Number(snapshot.run_id ?? snapshot.runId),
+        botId: finiteNumber(snapshot.bot_id ?? snapshot.botId),
         mode,
         runtimeStatus: String(snapshot.runtime_status ?? snapshot.runtimeStatus ?? ""),
         canonicalStatus: String(snapshot.canonical_status ?? snapshot.canonicalStatus ?? ""),
@@ -210,16 +211,9 @@
     };
   }
 
-  function selectRun(runs) {
-    const items = Array.isArray(runs) ? runs : [];
-    return items.find((run) => ["arming", "running"].includes(String(run.runtime_status ?? run.runtimeStatus ?? "")))
-      ?? null;
-  }
-
   return Object.freeze({
     adapters,
     adapterFor,
     normalizeSnapshot,
-    selectRun,
   });
 });

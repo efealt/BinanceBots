@@ -420,6 +420,21 @@ Trading now has a persistent Bot parent layer above execution Runs.
 - New Live-Paper starts require an explicit persisted `bot_id`. Phase 2 adds the Bot strip and explicit New Bot / Save Bot UI that supplies this ID.
 - **Live-Paper** means real-time Binance market data with simulated orders/fills. **Live-Real-Account** means real Binance account order submission and remains locked.
 
+## Phase 4.8B Phase 2 — Bot strip and selected workspace
+
+Trading is now Bot-first rather than run-first.
+
+- On page load the client reads saved Bots from `GET /api/trading/bots` and Live-Paper run summaries from `GET /api/trading/runs`.
+- The top Bot strip sorts Bots with an active Live-Paper run first. Each card shows Bot name, Bot ID, `Idle` or `Running · Live-Paper`, and active Run ID when present.
+- Selecting a saved Bot restores the Bot's persisted Symbol/Market, replay interval, capital, strategy/grid parameters, and execution assumptions.
+- If that Bot owns an active Live-Paper Run, the client loads its current canonical snapshot and attaches to that Run's backend WebSocket stream. If the Bot is idle, execution panels clear while the selected market's real-time Binance chart remains active.
+- **New Bot** creates only an unsaved browser draft; it does not stop or mutate any backend-owned run.
+- **Save Bot** uses the protected Bot create/update endpoints and does not create a Run.
+- A saved Bot's form fingerprint is tracked in the browser. Any edit is shown as **Unsaved changes**; Live-Paper Start remains disabled until the Bot is saved and the submitted configuration therefore matches the persisted Bot record.
+- Starting Live-Paper always sends the selected persisted `bot_id`.
+- Reloading Trading reconstructs the Bot strip from backend state and selects a running Bot first when one exists, so browser lifetime is not runtime ownership.
+- Phase 2 does not change runtime concurrency. The existing single-active-Live-Paper limit remains until Phase 3.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

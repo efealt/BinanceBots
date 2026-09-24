@@ -20,6 +20,9 @@ const trading = fs.readFileSync("web/trading.html", "utf8");
 for (const required of [
   'id="trading-mode-paper"',
   'id="trading-mode-live"',
+  'id="trading-bot-strip"',
+  'id="trading-new-bot-button"',
+  'id="trading-bot-status"',
   'id="trading-run-id"',
   'id="trading-run-status"',
   'id="trading-feed-label"',
@@ -46,14 +49,19 @@ for (const required of [
 if (!/id="trading-mode-live"[^>]*disabled/.test(trading)) {
   throw new Error("Live mode must remain visibly disabled in Phase 4");
 }
-if (!trading.includes("Live execution is locked server-side until Phase 8.")) {
-  throw new Error("Trading shell must explain the Phase 4 Live lock");
+if (!trading.includes("Live-Real-Account execution is locked server-side.")) {
+  throw new Error("Trading shell must use explicit Live-Real-Account lock terminology");
+}
+if (!trading.includes(">LIVE-PAPER</button>") || !trading.includes(">LIVE-REAL-ACCOUNT <span>Locked</span></button>")) {
+  throw new Error("Trading mode labels must use explicit Live-Paper / Live-Real-Account terminology");
 }
 
 console.log("Trading shell contract OK");
 
 for (const required of [
   'id="trading-paper-form"',
+  'id="trading-bot-name"',
+  'id="trading-save-bot-button"',
   'id="trading-config-symbol"',
   'id="trading-config-market-type"',
   'id="trading-config-interval"',
@@ -81,14 +89,14 @@ if (!trading.includes("https://unpkg.com/lightweight-charts@5.2.0/dist/lightweig
 if (!trading.includes('/market-chart.js?v=5')) {
   throw new Error("Trading page must reuse the MarketChart wrapper");
 }
-if (!trading.includes('/trading-contract.js?v=1')) {
-  throw new Error("Trading page must load the shared mode contract before page behavior");
+if (!trading.includes('/trading-contract.js?v=2')) {
+  throw new Error("Trading page must load the Phase 4.8B Bot-aware shared mode contract before page behavior");
 }
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=10')) {
-  throw new Error("Trading page must load the Lightweight Charts Trading client");
+if (!trading.includes('/trading.js?v=11')) {
+  throw new Error("Trading page must load the Phase 4.8B Bot workspace client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -113,7 +121,14 @@ for (const required of [
   'activeAdapter.urls.auditTail(runId, 250)',
   'activeAdapter.urls.auditAfter(runId, afterSequence, 500)',
   'activeAdapter.urls.stream(runId)',
-  'activeAdapter.buildStartPayload(buildStartConfiguration())',
+  'activeAdapter.buildStartPayload({',
+  'bot_id: selectedBotId',
+  'fetchJson("/api/trading/bots")',
+  'async function selectBot(botId)',
+  'function openNewBotDraft()',
+  'async function saveCurrentBot()',
+  'Unsaved changes',
+  'Running · Live-Paper',
   'setConfigLocked(Boolean(monitor.run.runtimeActive))',
   'applySnapshotToConfig(snapshot)',
   'syncChartFromMonitor(monitor)',
@@ -129,13 +144,12 @@ for (const required of [
   'chart.updateCandle(toMarketChartCandle(normalized))',
   'loadCompleteAudit(currentRunId)',
   'renderNoRun();',
-  'stopped and remains persisted',
   'fetch("/api/data/downloads"',
   'registeredMarketsBySymbol',
   'populateMarketOptions(symbolInput.value',
   '"/api/market/stream?"',
   'syncMarketStreamToSelection(true)',
-  'resetRunChartState("Live market remains available with no active Paper run.")',
+  'resetRunChartState("Live market remains available with no active Live-Paper run.")',
   'candle.open_time_ms ?? candle.open_time',
   'candle.close_time_ms ?? candle.close_time',
 ]) {
@@ -165,6 +179,15 @@ for (const required of [
 }
 
 const tradingApi = fs.readFileSync("src/api/trading.rs", "utf8");
+if (!tradingApi.includes('.route("/api/trading/bots", post(create_bot).get(list_bots))')) {
+  throw new Error("Trading API is missing the Bot create/list route");
+}
+if (!tradingApi.includes('.route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))')) {
+  throw new Error("Trading API is missing the Bot read/update route");
+}
+if (!tradingApi.includes("bot_id: i64")) {
+  throw new Error("Live-Paper start must require an explicit persisted bot_id");
+}
 if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/chart", get(run_chart))')) {
   throw new Error("Trading API is missing the authenticated chart bootstrap route");
 }
@@ -192,7 +215,7 @@ for (const required of [
   if (!storageRead.includes(required)) throw new Error("Canonical audit pagination contract is missing: " + required);
 }
 
-console.log("Trading shared Paper/Live UI contract OK");
+console.log("Trading shared Live-Paper / Live-Real-Account UI contract OK");
 
 const marketChartJs = fs.readFileSync("web/market-chart.js", "utf8");
 for (const required of [

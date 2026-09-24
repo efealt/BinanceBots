@@ -3,6 +3,7 @@ const contract = require("../web/trading-contract.js");
 
 const paper = contract.adapterFor("paper");
 assert.equal(paper.locked, false);
+assert.equal(paper.label, "Live-Paper");
 assert.equal(paper.executionKind, "simulated");
 assert.equal(paper.urls.runs(25), "/api/trading/runs?limit=25");
 assert.equal(paper.urls.snapshot(7), "/api/trading/runs/7");
@@ -16,12 +17,14 @@ assert.deepEqual(paper.buildStartPayload({ symbol: "BTCUSDT" }), { mode: "paper"
 
 const live = contract.adapterFor("live");
 assert.equal(live.locked, true);
+assert.equal(live.label, "Live-Real-Account");
 assert.equal(live.executionKind, "binance_private");
 assert.equal(live.urls.start(), null);
-assert.throws(() => live.buildStartPayload({}), /locked server-side until Phase 8/);
+assert.throws(() => live.buildStartPayload({}), /Live-Real-Account execution is locked server-side/);
 
 const rawPaper = {
   run_id: 10,
+  bot_id: 7,
   mode: "paper",
   runtime_status: "running",
   canonical_status: "running",
@@ -69,6 +72,7 @@ const rawPaper = {
 
 const paperModel = contract.normalizeSnapshot(rawPaper);
 assert.equal(paperModel.run.id, 10);
+assert.equal(paperModel.run.botId, 7);
 assert.equal(paperModel.run.mode, "paper");
 assert.equal(paperModel.market.symbol, "BTCUSDT");
 assert.equal(paperModel.strategy.id, "static-grid-fixture");
@@ -92,28 +96,5 @@ assert.deepEqual(Object.keys(liveModel).sort(), Object.keys(paperModel).sort());
 assert.deepEqual(Object.keys(liveModel.run).sort(), Object.keys(paperModel.run).sort());
 assert.deepEqual(Object.keys(liveModel.market).sort(), Object.keys(paperModel.market).sort());
 assert.deepEqual(Object.keys(liveModel.portfolio).sort(), Object.keys(paperModel.portfolio).sort());
-
-assert.equal(
-  contract.selectRun([
-    { run_id: 1, runtime_status: "stopped" },
-    { run_id: 2, runtime_status: "running" },
-  ]).run_id,
-  2
-);
-assert.equal(
-  contract.selectRun([
-    { run_id: 3, runtime_status: "stopped" },
-    { run_id: 2, runtime_status: "failed" },
-    { run_id: 1, runtime_status: "completed" },
-  ]),
-  null
-);
-assert.equal(
-  contract.selectRun([
-    { run_id: 5, runtime_status: "stopped" },
-    { run_id: 4, runtime_status: "arming" },
-  ]).run_id,
-  4
-);
 
 console.log("Trading shared mode contract OK");

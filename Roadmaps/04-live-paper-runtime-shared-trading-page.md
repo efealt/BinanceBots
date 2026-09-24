@@ -210,7 +210,7 @@ Foundation already complete:
 
 Remaining:
 - [ ] Add persistent Bot identity + saved configuration above the existing Run model.
-- [ ] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
+- [x] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
 - [ ] Make Live-Paper execution bot-aware and support multiple different Live-Paper bots concurrently.
 - [ ] Add backend-derived **Show on graph** preview for the selected/new bot.
 - [ ] Add Bot history, clear Run activity terminology, and compact the remaining workspace layout.

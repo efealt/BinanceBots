@@ -25,6 +25,11 @@ const startButton = document.querySelector("#trading-start-button");
 const stopButton = document.querySelector("#trading-stop-button");
 const controlError = document.querySelector("#trading-control-error");
 const controlStatus = document.querySelector("#trading-control-status");
+const botStrip = document.querySelector("#trading-bot-strip");
+const botStatus = document.querySelector("#trading-bot-status");
+const newBotButton = document.querySelector("#trading-new-bot-button");
+const botNameInput = document.querySelector("#trading-bot-name");
+const saveBotButton = document.querySelector("#trading-save-bot-button");
 const symbolInput = document.querySelector("#trading-config-symbol");
 const marketTypeInput = document.querySelector("#trading-config-market-type");
 const replayIntervalInput = document.querySelector("#trading-config-interval");
@@ -100,6 +105,13 @@ let auditLastRefreshAt = 0;
 let registeredMarketsBySymbol = new Map();
 let instrumentCatalogReady = false;
 let instrumentCatalogError = null;
+let tradingBots = [];
+let tradingRunSummaries = [];
+let selectedBotId = null;
+let selectedBot = null;
+let selectedBotBaseline = null;
+let botDraftMode = true;
+let botSelectionToken = 0;
 
 function marketTypeLabel(marketType) {
   return marketType === "spot" ? "Spot" : marketType === "usd_m_perpetual" ? "USD-M perpetual" : humanize(marketType);
@@ -216,6 +228,155 @@ function humanize(value) {
   return String(value ?? "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function runSummaryIsActive(run) {
+  return ["arming", "running"].includes(String(run?.runtime_status ?? "").toLowerCase());
+}
+
+function activeRunForBot(botId) {
+  return tradingRunSummaries.find((run) => Number(run.bot_id) === Number(botId) && runSummaryIsActive(run)) ?? null;
+}
+
+function anyActiveLivePaperRun() {
+  return tradingRunSummaries.some(runSummaryIsActive);
+}
+
+function botFormFingerprint() {
+  return JSON.stringify({
+    bot_name: botNameInput.value.trim(),
+    symbol: symbolInput.value,
+    market_type: marketTypeInput.value,
+    replay_interval: replayIntervalInput.value,
+    initial_capital: capitalInput.value.trim(),
+    strategy_id: strategyInput.value,
+    anchor: anchorInput.value,
+    fixed_anchor_price: fixedAnchorInput.value,
+    spacing_bps: spacingInput.value,
+    levels_per_side: levelsInput.value,
+    quantity_per_order: quantityInput.value,
+    fee_bps: feeInput.value,
+    spread_bps: spreadInput.value,
+    slippage_bps: slippageInput.value,
+    latency_ms: latencyInput.value,
+    limit_fill_policy: limitPolicyInput.value,
+    partial_fill_ratio: partialFillInput.value,
+  });
+}
+
+function hasUnsavedBotChanges() {
+  if (botDraftMode || !selectedBot) return true;
+  return selectedBotBaseline !== botFormFingerprint();
+}
+
+function sortedBotsForStrip() {
+  return [...tradingBots].sort((left, right) => {
+    const leftActive = activeRunForBot(left.bot_id) ? 1 : 0;
+    const rightActive = activeRunForBot(right.bot_id) ? 1 : 0;
+    if (leftActive !== rightActive) return rightActive - leftActive;
+    return Number(right.updated_at_ms ?? 0) - Number(left.updated_at_ms ?? 0)
+      || Number(right.bot_id) - Number(left.bot_id);
+  });
+}
+
+function renderBotStrip() {
+  botStrip.replaceChildren();
+  const bots = sortedBotsForStrip();
+  if (!bots.length) {
+    const empty = document.createElement("div");
+    empty.id = "trading-bot-empty";
+    empty.className = "trading-bot-empty";
+    empty.textContent = "No bots created";
+    botStrip.appendChild(empty);
+    return;
+  }
+
+  for (const bot of bots) {
+    const activeRun = activeRunForBot(bot.bot_id);
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "trading-bot-card";
+    card.dataset.botId = String(bot.bot_id);
+    card.classList.toggle("is-selected", Number(bot.bot_id) === Number(selectedBotId));
+    card.classList.toggle("is-running", Boolean(activeRun));
+    card.setAttribute("aria-pressed", String(Number(bot.bot_id) === Number(selectedBotId)));
+
+    const top = document.createElement("span");
+    top.className = "trading-bot-card-top";
+    const name = document.createElement("strong");
+    name.textContent = bot.bot_name;
+    const state = document.createElement("span");
+    state.className = "trading-bot-card-state";
+    state.textContent = activeRun ? "Running · Live-Paper" : "Idle";
+    top.append(name, state);
+
+    const meta = document.createElement("span");
+    meta.className = "trading-bot-card-meta";
+    meta.textContent = "Bot #" + bot.bot_id + (activeRun ? " · Run #" + activeRun.run_id : "");
+
+    card.append(top, meta);
+    card.addEventListener("click", () => void selectBot(bot.bot_id));
+    botStrip.appendChild(card);
+  }
+}
+
+function setBotStatus(message) {
+  botStatus.textContent = message;
+}
+
+function renderSelectedBotContext() {
+  symbolElement.textContent = symbolInput.value || "—";
+  marketTypeElement.textContent = marketTypeInput.value ? marketTypeLabel(marketTypeInput.value) : "—";
+  intervalElement.textContent = replayIntervalInput.value || "—";
+  strategyElement.textContent = strategyInput.value || "—";
+}
+
+function resetBotFormToDefaults() {
+  botNameInput.value = "";
+  const firstSymbol = registeredMarketsBySymbol.keys().next().value ?? "";
+  if (firstSymbol) {
+    selectRegisteredInstrument(firstSymbol);
+  }
+  replayIntervalInput.value = "1m";
+  capitalInput.value = "100000";
+  strategyInput.value = "static-grid-fixture";
+  anchorInput.value = "previous_close";
+  fixedAnchorInput.value = "";
+  spacingInput.value = "100";
+  levelsInput.value = "3";
+  quantityInput.value = "1";
+  feeInput.value = "4";
+  spreadInput.value = "0";
+  slippageInput.value = "0";
+  latencyInput.value = "0";
+  limitPolicyInput.value = "touch";
+  partialFillInput.value = "1";
+  syncFixedAnchorState();
+}
+
+function applyBotConfiguration(bot) {
+  const config = bot?.config ?? {};
+  botNameInput.value = bot?.bot_name ?? "";
+  if (config.symbol && hasRegisteredInstrument(config.symbol, config.market_type)) {
+    selectRegisteredInstrument(config.symbol, config.market_type);
+  }
+  replayIntervalInput.value = config.replay_interval || replayIntervalInput.value;
+  capitalInput.value = config.initial_capital ?? capitalInput.value;
+  strategyInput.value = config.strategy_id || strategyInput.value;
+  const grid = config.grid ?? {};
+  anchorInput.value = grid.anchor || anchorInput.value;
+  fixedAnchorInput.value = grid.fixed_anchor_price ?? "";
+  spacingInput.value = grid.spacing_bps ?? spacingInput.value;
+  levelsInput.value = grid.levels_per_side ?? levelsInput.value;
+  quantityInput.value = grid.quantity_per_order ?? quantityInput.value;
+  const execution = config.execution ?? {};
+  feeInput.value = execution.fee_bps ?? feeInput.value;
+  spreadInput.value = execution.spread_bps ?? spreadInput.value;
+  slippageInput.value = execution.slippage_bps ?? slippageInput.value;
+  latencyInput.value = execution.latency_ms ?? latencyInput.value;
+  limitPolicyInput.value = execution.limit_fill_policy || limitPolicyInput.value;
+  partialFillInput.value = execution.partial_fill_ratio ?? partialFillInput.value;
+  syncFixedAnchorState();
 }
 
 function setTradingMode(mode) {
@@ -949,7 +1110,7 @@ function renderAuditEvents() {
   auditLoadAllButton.textContent = auditFullMode && !auditHasMore ? "Complete audit loaded" : "Load complete audit";
 }
 
-function resetAudit(message = "No Paper run selected.") {
+function resetAudit(message = "No Live-Paper run selected.") {
   auditRequestToken += 1;
   auditRunId = null;
   auditEvents = [];
@@ -1090,13 +1251,39 @@ function setConfigLocked(locked) {
     control.disabled = locked;
   });
   const instrumentsAvailable = instrumentCatalogReady && !instrumentCatalogError && registeredMarketsBySymbol.size > 0;
+  const persistedBotSelected = Number.isInteger(Number(selectedBotId)) && Number(selectedBotId) > 0 && !botDraftMode;
+  const dirty = hasUnsavedBotChanges();
+  const selectedRun = persistedBotSelected ? activeRunForBot(selectedBotId) : null;
+  const anotherRunActive = anyActiveLivePaperRun() && !selectedRun;
+
   symbolInput.disabled = locked || !instrumentsAvailable;
   marketTypeInput.disabled = locked || !instrumentsAvailable;
-  configLockBadge.textContent = locked ? "Locked · active run" : "Editable";
-  startButton.disabled = locked || !instrumentsAvailable;
+  botNameInput.disabled = locked;
+  saveBotButton.disabled = locked
+    || !instrumentsAvailable
+    || !botNameInput.value.trim()
+    || (!botDraftMode && !dirty);
+  startButton.disabled = locked
+    || !instrumentsAvailable
+    || !persistedBotSelected
+    || dirty
+    || anotherRunActive;
   stopButton.disabled = !locked;
   paperModeButton.disabled = locked || activeMode !== "paper";
   liveModeButton.disabled = TradingContract.adapterFor("live").locked || locked;
+
+  if (locked) {
+    configLockBadge.textContent = "Locked · Live-Paper running";
+  } else if (botDraftMode) {
+    configLockBadge.textContent = "New Bot · unsaved";
+  } else if (dirty) {
+    configLockBadge.textContent = "Unsaved changes";
+  } else if (persistedBotSelected) {
+    configLockBadge.textContent = "Saved · Bot #" + selectedBotId;
+  } else {
+    configLockBadge.textContent = "Editable";
+  }
+
   syncFixedAnchorState();
 }
 
@@ -1186,6 +1373,208 @@ async function requestJson(url, options = {}) {
   return responseText ? JSON.parse(responseText) : null;
 }
 
+function updateRunSummaryFromSnapshot(snapshot) {
+  const runId = Number(snapshot?.run_id);
+  if (!Number.isInteger(runId) || runId <= 0) return;
+  const botId = Number(snapshot?.bot_id);
+  const summary = {
+    run_id: runId,
+    bot_id: Number.isInteger(botId) && botId > 0 ? botId : null,
+    canonical_status: String(snapshot?.canonical_status ?? ""),
+    runtime_status: String(snapshot?.runtime_status ?? ""),
+    symbol: String(snapshot?.symbol ?? ""),
+    market_type: String(snapshot?.market_type ?? ""),
+    replay_interval: String(snapshot?.replay_interval ?? ""),
+    strategy_id: String(snapshot?.strategy_id ?? ""),
+    created_at_ms: Number(snapshot?.created_at_ms ?? Date.now()),
+    started_at_ms: snapshot?.started_at_ms ?? null,
+    ended_at_ms: snapshot?.ended_at_ms ?? null,
+  };
+  const index = tradingRunSummaries.findIndex((run) => Number(run.run_id) === runId);
+  if (index >= 0) tradingRunSummaries[index] = summary;
+  else tradingRunSummaries.unshift(summary);
+}
+
+async function loadBotCatalog() {
+  const runsUrl = activeAdapter.urls.runs(500);
+  if (!runsUrl) throw new Error(activeAdapter.label + " runtime adapter is unavailable.");
+  const [botsPayload, runsPayload] = await Promise.all([
+    fetchJson("/api/trading/bots"),
+    fetchJson(runsUrl),
+  ]);
+  tradingBots = Array.isArray(botsPayload?.bots) ? botsPayload.bots : [];
+  tradingRunSummaries = Array.isArray(runsPayload?.runs) ? runsPayload.runs : [];
+  if (selectedBotId != null) {
+    selectedBot = tradingBots.find((bot) => Number(bot.bot_id) === Number(selectedBotId)) ?? null;
+  }
+  renderBotStrip();
+}
+
+function renderIdleBotWorkspace(message = null) {
+  renderNoRun();
+  renderSelectedBotContext();
+  const label = selectedBot ? ("Bot #" + selectedBot.bot_id) : "New Bot";
+  runStatusElement.textContent = selectedBot
+    ? "Saved Bot · no active Live-Paper run."
+    : "No persisted Bot selected.";
+  topLabel.textContent = selectedBot ? "Live-Paper · idle" : "Live-Paper · new Bot";
+  setControlStatus(
+    message
+      ?? (selectedBot
+        ? "Bot #" + selectedBot.bot_id + " is idle. Edit and Save Bot, or start Live-Paper when configuration is saved."
+        : "Configure the new Bot and Save Bot before starting Live-Paper.")
+  );
+  setBotStatus(
+    selectedBot
+      ? (hasUnsavedBotChanges()
+        ? "Bot #" + selectedBot.bot_id + " · Unsaved changes"
+        : "Bot #" + selectedBot.bot_id + " · Idle")
+      : "New Bot · not saved"
+  );
+  setConfigLocked(false);
+}
+
+async function selectBot(botId) {
+  const bot = tradingBots.find((candidate) => Number(candidate.bot_id) === Number(botId));
+  if (!bot) return;
+  const token = ++botSelectionToken;
+  const activeRun = activeRunForBot(bot.bot_id);
+
+  closeStream();
+  selectedBotId = Number(bot.bot_id);
+  selectedBot = bot;
+  botDraftMode = false;
+  applyBotConfiguration(bot);
+  selectedBotBaseline = botFormFingerprint();
+  showControlError("");
+  renderBotStrip();
+
+  if (!activeRun) {
+    renderIdleBotWorkspace();
+    syncMarketStreamToSelection(true);
+    setConnection("connected", "Bot #" + bot.bot_id + " selected · no active Live-Paper run");
+    return;
+  }
+
+  renderNoRun();
+  syncMarketStreamToSelection(true);
+  setConfigLocked(true);
+  stopButton.disabled = true;
+  runIdElement.textContent = "Run #" + activeRun.run_id;
+  runStatusElement.textContent = "Loading active Live-Paper runtime…";
+  runBadgeElement.textContent = "Loading";
+  setBotStatus("Bot #" + bot.bot_id + " · Running · Live-Paper · Run #" + activeRun.run_id);
+  setControlStatus("Loading Run #" + activeRun.run_id + " for Bot #" + bot.bot_id + "…");
+
+  try {
+    const snapshotUrl = activeAdapter.urls.snapshot(activeRun.run_id);
+    if (!snapshotUrl) throw new Error(activeAdapter.label + " snapshot adapter is unavailable.");
+    const snapshot = await fetchJson(snapshotUrl);
+    if (token !== botSelectionToken || Number(selectedBotId) !== Number(bot.bot_id)) return;
+    renderSnapshot(snapshot);
+    setBotStatus("Bot #" + bot.bot_id + " · Running · Live-Paper · Run #" + activeRun.run_id);
+    setConnection("connected", "Loaded Bot #" + bot.bot_id + " · Run #" + activeRun.run_id);
+    if (snapshot.runtime_active) connectStream(snapshot.run_id);
+  } catch (error) {
+    if (token !== botSelectionToken) return;
+    setConfigLocked(true);
+    stopButton.disabled = true;
+    runIdElement.textContent = "Run #" + activeRun.run_id;
+    runStatusElement.textContent = "Active Live-Paper runtime state unavailable.";
+    runBadgeElement.textContent = "Running";
+    setBotStatus("Bot #" + bot.bot_id + " · Running · Live-Paper · Run #" + activeRun.run_id);
+    setControlStatus("Run #" + activeRun.run_id + " is still treated as active. Reload or reselect the Bot to retry state loading.");
+    setConnection("error", "Could not load Bot #" + bot.bot_id + " runtime · " + error.message);
+  }
+}
+
+function openNewBotDraft() {
+  botSelectionToken += 1;
+  closeStream();
+  selectedBotId = null;
+  selectedBot = null;
+  selectedBotBaseline = null;
+  botDraftMode = true;
+  showControlError("");
+  resetBotFormToDefaults();
+  renderBotStrip();
+  renderIdleBotWorkspace();
+  syncMarketStreamToSelection(true);
+  setConnection("connected", "New Bot draft · no execution started");
+}
+
+async function saveCurrentBot() {
+  if (currentMonitor?.run.runtimeActive) return;
+  showControlError("");
+  saveBotButton.disabled = true;
+  try {
+    const botName = botNameInput.value.trim();
+    if (!botName) throw new Error("Bot name is required.");
+    const configuration = buildStartConfiguration();
+    const creating = botDraftMode || !selectedBotId;
+    const url = creating ? "/api/trading/bots" : ("/api/trading/bots/" + selectedBotId);
+    const bot = await requestJson(url, {
+      method: creating ? "POST" : "PUT",
+      body: JSON.stringify({
+        bot_name: botName,
+        configuration,
+      }),
+    });
+
+    const index = tradingBots.findIndex((candidate) => Number(candidate.bot_id) === Number(bot.bot_id));
+    if (index >= 0) tradingBots[index] = bot;
+    else tradingBots.unshift(bot);
+    selectedBotId = Number(bot.bot_id);
+    selectedBot = bot;
+    botDraftMode = false;
+    applyBotConfiguration(bot);
+    selectedBotBaseline = botFormFingerprint();
+    renderBotStrip();
+    renderSelectedBotContext();
+    setConfigLocked(false);
+    setBotStatus("Bot #" + bot.bot_id + " · Saved · Idle");
+    setControlStatus("Bot #" + bot.bot_id + " saved. Live-Paper has not started.");
+  } catch (error) {
+    showControlError(error.message);
+    setConfigLocked(false);
+    setControlStatus("Bot was not saved.");
+  }
+}
+
+function handleBotDraftChange() {
+  if (currentMonitor?.run.runtimeActive) return;
+  renderSelectedBotContext();
+  setConfigLocked(false);
+  if (botDraftMode) {
+    setBotStatus("New Bot · not saved");
+    setControlStatus("New Bot configuration is not saved.");
+  } else if (hasUnsavedBotChanges()) {
+    setBotStatus("Bot #" + selectedBotId + " · Unsaved changes");
+    setControlStatus("Unsaved changes · Save Bot before starting Live-Paper.");
+  } else {
+    setBotStatus("Bot #" + selectedBotId + " · Idle");
+    setControlStatus("Bot #" + selectedBotId + " is saved and ready for Live-Paper.");
+  }
+}
+
+async function initializeBotWorkspace() {
+  setConnection("connecting", "Reading saved Bots and Live-Paper state");
+  try {
+    await loadBotCatalog();
+    const firstRunning = sortedBotsForStrip().find((bot) => activeRunForBot(bot.bot_id));
+    const target = firstRunning ?? sortedBotsForStrip()[0] ?? null;
+    if (target) {
+      await selectBot(target.bot_id);
+    } else {
+      openNewBotDraft();
+      setConnection("connected", "Protected Trading API available · no bots created");
+    }
+  } catch (error) {
+    openNewBotDraft();
+    setConnection("error", "Could not read Bot workspace · " + error.message);
+  }
+}
+
 function renderNoRun() {
   closeStream();
   currentSnapshot = null;
@@ -1196,31 +1585,31 @@ function renderNoRun() {
   runBadgeElement.textContent = "Idle";
   setDot(topDot, "pending");
   topLabel.textContent = activeAdapter.label + " · inactive";
-  symbolElement.textContent = "—";
-  marketTypeElement.textContent = "—";
-  intervalElement.textContent = "—";
-  strategyElement.textContent = "—";
+  renderSelectedBotContext();
   setConfigLocked(false);
-  setControlStatus(activeAdapter.locked ? activeAdapter.lockReason : "Ready to start a backend " + activeAdapter.label + " run.");
-  resetRunChartState("Live market remains available with no active Paper run.");
+  setControlStatus(activeAdapter.locked ? activeAdapter.lockReason : "No active Live-Paper run.");
+  resetRunChartState("Live market remains available with no active Live-Paper run.");
   portfolioBadge.textContent = "No active run";
   for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
     element.textContent = "—";
   }
   ordersBadge.textContent = "0 open";
-  ordersBody.replaceChildren(emptyTableRow(8, "No active Paper run."));
-  ordersStatus.textContent = "No active Paper run.";
-  resetAudit("No active Paper run. Prior run history remains persisted.");
+  ordersBody.replaceChildren(emptyTableRow(8, "No active Live-Paper run."));
+  ordersStatus.textContent = "No active Live-Paper run.";
+  resetAudit("No active Live-Paper run for the selected Bot.");
 }
 
 function renderSnapshot(snapshot) {
   const monitor = TradingContract.normalizeSnapshot(snapshot);
+  if (selectedBotId && monitor.run.botId && Number(monitor.run.botId) !== Number(selectedBotId)) return;
+  updateRunSummaryFromSnapshot(snapshot);
+  renderBotStrip();
   if (!monitor.run.runtimeActive) {
     const terminalStatus = humanize(monitor.run.runtimeStatus || monitor.run.canonicalStatus || "ended");
     const terminalRunId = monitor.run.id;
-    renderNoRun();
-    setControlStatus("Run #" + terminalRunId + " is " + terminalStatus + " and remains persisted. Ready to start the next " + activeAdapter.label + " run.");
-    setConnection("connected", "No active " + activeAdapter.label + " runtime · Run #" + terminalRunId + " " + terminalStatus);
+    renderIdleBotWorkspace("Run #" + terminalRunId + " is " + terminalStatus + ". The Bot remains saved and idle.");
+    setConnection("connected", "Bot #" + (selectedBotId ?? "—") + " idle · Run #" + terminalRunId + " " + terminalStatus);
+    renderBotStrip();
     return;
   }
   setTradingMode(monitor.run.mode);
@@ -1242,8 +1631,11 @@ function renderSnapshot(snapshot) {
     syncMarketStreamToSelection(false);
   }
   setConfigLocked(Boolean(monitor.run.runtimeActive));
+  if (monitor.run.runtimeActive && selectedBotId) {
+    setBotStatus("Bot #" + selectedBotId + " · Running · Live-Paper · Run #" + monitor.run.id);
+  }
   setControlStatus(monitor.run.runtimeActive
-    ? ("Run #" + monitor.run.id + " is active. Stop it before changing " + activeAdapter.label + " setup.")
+    ? ("Run #" + monitor.run.id + " is active. Stop it before changing the saved Bot configuration.")
     : (activeAdapter.locked
       ? activeAdapter.lockReason
       : "Loaded persisted Run #" + monitor.run.id + ". " + activeAdapter.label + " setup is editable for the next run."));
@@ -1266,10 +1658,6 @@ async function fetchJson(url) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
-}
-
-function selectRun(runs) {
-  return TradingContract.selectRun(runs);
 }
 
 function closeStream() {
@@ -1334,42 +1722,27 @@ function connectStream(runId) {
   });
 }
 
-async function initializeTradingStatus() {
-  setConnection("connecting", "Reading protected " + activeAdapter.label + " state");
-  try {
-    const runsUrl = activeAdapter.urls.runs(100);
-    if (!runsUrl) throw new Error(activeAdapter.label + " runtime adapter is unavailable.");
-    const listing = await fetchJson(runsUrl);
-    const selected = selectRun(listing.runs ?? []);
-    if (!selected) {
-      renderNoRun();
-      setConnection("connected", "Protected Trading API available · no active " + activeAdapter.label + " run");
-      return;
-    }
-
-    const snapshotUrl = activeAdapter.urls.snapshot(selected.run_id);
-    if (!snapshotUrl) throw new Error(activeAdapter.label + " snapshot adapter is unavailable.");
-    const snapshot = await fetchJson(snapshotUrl);
-    renderSnapshot(snapshot);
-    setConnection("connected", `Loaded Run #${selected.run_id}`);
-    if (snapshot.runtime_active) {
-      connectStream(snapshot.run_id);
-    }
-  } catch (error) {
-    renderNoRun();
-    setConnection("error", `Could not read Trading API · ${error.message}`);
-  }
-}
-
 symbolInput.addEventListener("change", () => {
   populateMarketOptions(symbolInput.value, marketTypeInput.value);
-  setConfigLocked(Boolean(currentMonitor?.run.runtimeActive));
+  handleBotDraftChange();
   if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
 });
 marketTypeInput.addEventListener("change", () => {
+  handleBotDraftChange();
   if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
 });
-anchorInput.addEventListener("change", syncFixedAnchorState);
+anchorInput.addEventListener("change", () => {
+  syncFixedAnchorState();
+  handleBotDraftChange();
+});
+for (const control of document.querySelectorAll("[data-trading-config]")) {
+  if (control === symbolInput || control === marketTypeInput || control === anchorInput) continue;
+  control.addEventListener("input", handleBotDraftChange);
+  control.addEventListener("change", handleBotDraftChange);
+}
+botNameInput.addEventListener("input", handleBotDraftChange);
+newBotButton.addEventListener("click", openNewBotDraft);
+saveBotButton.addEventListener("click", () => void saveCurrentBot());
 paperModeButton.addEventListener("click", () => {
   if (!currentMonitor?.run.runtimeActive) setTradingMode("paper");
 });
@@ -1382,22 +1755,32 @@ tradingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
   showControlError("");
-  startButton.disabled = true;
-  setControlStatus("Starting " + activeAdapter.label + " runtime on Render…");
   try {
+    if (!selectedBotId || botDraftMode) throw new Error("Save the Bot before starting Live-Paper.");
+    if (hasUnsavedBotChanges()) throw new Error("Save Bot changes before starting Live-Paper.");
+    if (anyActiveLivePaperRun() && !activeRunForBot(selectedBotId)) {
+      throw new Error("Another Bot is already running Live-Paper. Concurrent Bot runtimes are added in Phase 3.");
+    }
+    startButton.disabled = true;
+    setControlStatus("Starting Bot #" + selectedBotId + " · Live-Paper on Render…");
     const startUrl = activeAdapter.urls.start();
     if (!startUrl) throw new Error(activeAdapter.label + " start adapter is unavailable.");
     const snapshot = await requestJson(startUrl, {
       method: "POST",
-      body: JSON.stringify(activeAdapter.buildStartPayload(buildStartConfiguration())),
+      body: JSON.stringify(activeAdapter.buildStartPayload({
+        bot_id: selectedBotId,
+        ...buildStartConfiguration(),
+      })),
     });
+    updateRunSummaryFromSnapshot(snapshot);
     renderSnapshot(snapshot);
-    setConnection("connected", "Created Run #" + snapshot.run_id);
+    renderBotStrip();
+    setConnection("connected", "Bot #" + selectedBotId + " · Run #" + snapshot.run_id + " created");
     connectStream(snapshot.run_id);
   } catch (error) {
     showControlError(error.message);
     setConfigLocked(false);
-    setControlStatus(activeAdapter.label + " run was not started.");
+    setControlStatus("Live-Paper run was not started.");
   }
 });
 
@@ -1416,9 +1799,10 @@ stopButton.addEventListener("click", async () => {
     const snapshot = await requestJson(stopUrl, { method: "POST" });
     const stoppedRunId = snapshot.run_id;
     closeStream();
-    renderNoRun();
-    setControlStatus("Run #" + stoppedRunId + " stopped and remains persisted. Ready to start the next " + activeAdapter.label + " run.");
-    setConnection("connected", "Run #" + stoppedRunId + " stopped · no active " + activeAdapter.label + " runtime");
+    updateRunSummaryFromSnapshot(snapshot);
+    renderBotStrip();
+    renderIdleBotWorkspace("Run #" + stoppedRunId + " stopped. Bot #" + selectedBotId + " remains saved and idle.");
+    setConnection("connected", "Bot #" + selectedBotId + " idle · Run #" + stoppedRunId + " stopped");
   } catch (error) {
     showControlError(error.message);
     setConfigLocked(true);
@@ -1435,8 +1819,7 @@ themeToggle.addEventListener("click", () => {
 
 async function initializeTradingPage() {
   await loadRegisteredInstruments();
-  syncMarketStreamToSelection(true);
-  await initializeTradingStatus();
+  await initializeBotWorkspace();
   syncMarketStreamToSelection(false);
 }
 
