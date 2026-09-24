@@ -238,10 +238,6 @@ function activeRunForBot(botId) {
   return tradingRunSummaries.find((run) => Number(run.bot_id) === Number(botId) && runSummaryIsActive(run)) ?? null;
 }
 
-function anyActiveLivePaperRun() {
-  return tradingRunSummaries.some(runSummaryIsActive);
-}
-
 function botFormFingerprint() {
   return JSON.stringify({
     bot_name: botNameInput.value.trim(),
@@ -1254,8 +1250,6 @@ function setConfigLocked(locked) {
   const instrumentsAvailable = instrumentCatalogReady && !instrumentCatalogError && registeredMarketsBySymbol.size > 0;
   const persistedBotSelected = Number.isInteger(Number(selectedBotId)) && Number(selectedBotId) > 0 && !botDraftMode;
   const dirty = hasUnsavedBotChanges();
-  const selectedRun = persistedBotSelected ? activeRunForBot(selectedBotId) : null;
-  const anotherRunActive = anyActiveLivePaperRun() && !selectedRun;
 
   symbolInput.disabled = locked || !instrumentsAvailable;
   marketTypeInput.disabled = locked || !instrumentsAvailable;
@@ -1266,9 +1260,10 @@ function setConfigLocked(locked) {
     || (!botDraftMode && !dirty);
   startButton.disabled = locked
     || !instrumentsAvailable
-    || !persistedBotSelected
-    || dirty
-    || anotherRunActive;
+    || !botNameInput.value.trim();
+  startButton.textContent = botDraftMode
+    ? "Create & Start Live-Paper"
+    : (dirty ? "Save & Start Live-Paper" : "Start Live-Paper");
   stopButton.disabled = !locked;
   paperModeButton.disabled = locked || activeMode !== "paper";
   liveModeButton.disabled = TradingContract.adapterFor("live").locked || locked;
@@ -1504,35 +1499,40 @@ function openNewBotDraft() {
   setConnection("connected", "New Bot draft · no execution started");
 }
 
+async function persistCurrentBotFromForm() {
+  const botName = botNameInput.value.trim();
+  if (!botName) throw new Error("Bot name is required.");
+  const configuration = buildStartConfiguration();
+  const creating = botDraftMode || !selectedBotId;
+  const url = creating ? "/api/trading/bots" : ("/api/trading/bots/" + selectedBotId);
+  const bot = await requestJson(url, {
+    method: creating ? "POST" : "PUT",
+    body: JSON.stringify({
+      bot_name: botName,
+      configuration,
+    }),
+  });
+
+  const index = tradingBots.findIndex((candidate) => Number(candidate.bot_id) === Number(bot.bot_id));
+  if (index >= 0) tradingBots[index] = bot;
+  else tradingBots.unshift(bot);
+  selectedBotId = Number(bot.bot_id);
+  selectedBot = bot;
+  botDraftMode = false;
+  applyBotConfiguration(bot);
+  selectedBotBaseline = botFormFingerprint();
+  renderBotStrip();
+  renderSelectedBotContext();
+  setConfigLocked(false);
+  return bot;
+}
+
 async function saveCurrentBot() {
   if (currentMonitor?.run.runtimeActive) return;
   showControlError("");
   saveBotButton.disabled = true;
   try {
-    const botName = botNameInput.value.trim();
-    if (!botName) throw new Error("Bot name is required.");
-    const configuration = buildStartConfiguration();
-    const creating = botDraftMode || !selectedBotId;
-    const url = creating ? "/api/trading/bots" : ("/api/trading/bots/" + selectedBotId);
-    const bot = await requestJson(url, {
-      method: creating ? "POST" : "PUT",
-      body: JSON.stringify({
-        bot_name: botName,
-        configuration,
-      }),
-    });
-
-    const index = tradingBots.findIndex((candidate) => Number(candidate.bot_id) === Number(bot.bot_id));
-    if (index >= 0) tradingBots[index] = bot;
-    else tradingBots.unshift(bot);
-    selectedBotId = Number(bot.bot_id);
-    selectedBot = bot;
-    botDraftMode = false;
-    applyBotConfiguration(bot);
-    selectedBotBaseline = botFormFingerprint();
-    renderBotStrip();
-    renderSelectedBotContext();
-    setConfigLocked(false);
+    const bot = await persistCurrentBotFromForm();
     setBotStatus("Bot #" + bot.bot_id + " · Saved · Idle");
     setControlStatus("Bot #" + bot.bot_id + " saved. Live-Paper has not started.");
   } catch (error) {
@@ -1548,10 +1548,10 @@ function handleBotDraftChange() {
   setConfigLocked(false);
   if (botDraftMode) {
     setBotStatus("New Bot · not saved");
-    setControlStatus("New Bot configuration is not saved.");
+    setControlStatus("New Bot · Create & Start Live-Paper will save the Bot first, or use Save Bot without starting.");
   } else if (hasUnsavedBotChanges()) {
     setBotStatus("Bot #" + selectedBotId + " · Unsaved changes");
-    setControlStatus("Unsaved changes · Save Bot before starting Live-Paper.");
+    setControlStatus("Unsaved changes · Save & Start Live-Paper will persist these changes before creating the Run.");
   } else {
     setBotStatus("Bot #" + selectedBotId + " · Idle");
     setControlStatus("Bot #" + selectedBotId + " is saved and ready for Live-Paper.");
@@ -1757,11 +1757,19 @@ tradingForm.addEventListener("submit", async (event) => {
   if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
   showControlError("");
   try {
-    if (!selectedBotId || botDraftMode) throw new Error("Save the Bot before starting Live-Paper.");
-    if (hasUnsavedBotChanges()) throw new Error("Save Bot changes before starting Live-Paper.");
-    if (anyActiveLivePaperRun() && !activeRunForBot(selectedBotId)) {
-      throw new Error("Another Bot is already running Live-Paper. Concurrent Bot runtimes are added in Phase 3.");
+    const wasDraft = botDraftMode || !selectedBotId;
+    const wasDirty = !wasDraft && hasUnsavedBotChanges();
+    if (wasDraft || wasDirty) {
+      setControlStatus(wasDraft
+        ? "Creating Bot and starting Live-Paper…"
+        : "Saving Bot changes and starting Live-Paper…");
+      await persistCurrentBotFromForm();
     }
+    if (!selectedBotId) throw new Error("A persisted Bot is required before Live-Paper can start.");
+    if (activeRunForBot(selectedBotId)) {
+      throw new Error("This Bot already has an active Live-Paper Run.");
+    }
+
     startButton.disabled = true;
     setControlStatus("Starting Bot #" + selectedBotId + " · Live-Paper on Render…");
     const startUrl = activeAdapter.urls.start();

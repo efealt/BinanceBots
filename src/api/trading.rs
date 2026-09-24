@@ -467,7 +467,8 @@ impl IntoResponse for TradingApiError {
             Self::Paper(PaperError::RunNotFound(_))
             | Self::Paper(PaperError::RunNotActive(_))
             | Self::Storage(StorageError::TradingBotNotFound(_)) => StatusCode::NOT_FOUND,
-            Self::Paper(PaperError::Busy(_)) => StatusCode::CONFLICT,
+            Self::Paper(PaperError::Busy(_))
+            | Self::Paper(PaperError::BotAlreadyActive { .. }) => StatusCode::CONFLICT,
             Self::Paper(PaperError::Invalid(_)) => StatusCode::BAD_REQUEST,
             Self::Paper(PaperError::Market(_)) | Self::Market(_) => StatusCode::BAD_GATEWAY,
             Self::Paper(_) | Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,

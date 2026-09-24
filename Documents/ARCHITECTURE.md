@@ -435,6 +435,20 @@ Trading is now Bot-first rather than run-first.
 - Reloading Trading reconstructs the Bot strip from backend state and selects a running Bot first when one exists, so browser lifetime is not runtime ownership.
 - Phase 2 does not change runtime concurrency. The existing single-active-Live-Paper limit remains until Phase 3.
 
+## Phase 4.8B Phase 3 — Bot-aware concurrent Live-Paper lifecycle
+
+Forward execution is now keyed by **Bot → Run**, not by one global current runtime.
+
+- A Bot may have at most one active Live-Paper Run in `arming` or `running` state. Backend admission enforces this under the runtime registry lock so simultaneous Start requests cannot create duplicate active Runs for one Bot.
+- Different Bots may run Live-Paper concurrently, up to the production runtime capacity. Each runtime remains keyed by its immutable `run_id`.
+- Runtime snapshots, WebSocket updates, portfolio state, open orders, fill/audit data, and chart overlays are always loaded by the selected Bot's active `run_id`. Switching Bot cards closes only the browser subscription to the prior Run; it never signals that backend runtime to stop.
+- Stop targets only the selected Run. The Bot remains persisted and returns to `Idle`; a later Start creates a new Run ID under the same Bot.
+- New unsaved configurations use an explicit **Create & Start Live-Paper** flow: Bot persistence succeeds first, then execution starts with that `bot_id`.
+- Edited saved Bots use **Save & Start Live-Paper**: the update is persisted before the new Run is created, preventing the UI from executing an unsaved variant under a saved Bot label.
+- Browser close/reload is not runtime ownership. Reload reconstructs all running Bot cards from backend run summaries and reconnects only the currently selected Run stream.
+- Concurrency tests exercise two simultaneously running Bot cores and prove orders, fills, portfolios, run events, and canonical audit pages remain separated by `run_id`.
+- **Live-Real-Account** execution remains server-side locked.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

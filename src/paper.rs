@@ -170,6 +170,27 @@ pub struct PaperManager {
     runtimes: Mutex<HashMap<i64, Arc<PaperRuntimeHandle>>>,
 }
 
+async fn active_runtime_admission(
+    runtimes: &HashMap<i64, Arc<PaperRuntimeHandle>>,
+    bot_id: i64,
+) -> (usize, Option<i64>) {
+    let mut active_count = 0;
+    let mut active_run_for_bot = None;
+
+    for (run_id, handle) in runtimes {
+        let snapshot = handle.snapshot.read().await;
+        if !matches!(snapshot.runtime_status.as_str(), "arming" | "running") {
+            continue;
+        }
+        active_count += 1;
+        if snapshot.bot_id == Some(bot_id) {
+            active_run_for_bot = Some(*run_id);
+        }
+    }
+
+    (active_count, active_run_for_bot)
+}
+
 impl PaperManager {
     pub fn new(
         storage: Arc<StorageReader>,
@@ -188,18 +209,6 @@ impl PaperManager {
         validate_start_config(&config)?;
         self.storage.trading_bot(config.bot_id)?;
 
-        let active_handles: Vec<_> = self.runtimes.lock().await.values().cloned().collect();
-        let mut active_count = 0;
-        for handle in active_handles {
-            let status = handle.snapshot.read().await.runtime_status.clone();
-            if matches!(status.as_str(), "arming" | "running") {
-                active_count += 1;
-            }
-        }
-        if active_count >= MAX_ACTIVE_PAPER_RUNS {
-            return Err(PaperError::Busy(MAX_ACTIVE_PAPER_RUNS));
-        }
-
         let symbol = config.symbol.trim().to_ascii_uppercase();
         let base_key = MarketKey::new(&symbol, "1m", config.market_type)?;
         let market_snapshot = self.market.snapshot_for(base_key.clone()).await?;
@@ -215,6 +224,22 @@ impl PaperManager {
             .map_err(|error| PaperError::Invalid(error.to_string()))?;
         let now = system_now_ms();
         let boundary = config.replay_interval.next_bucket_open_ms(now);
+
+        // Serialize only runtime admission + registration. This prevents two simultaneous
+        // Start requests for the same Bot from racing past the one-active-run invariant,
+        // while different Bots remain independently runnable up to the production cap.
+        let mut runtimes = self.runtimes.lock().await;
+        let (active_count, active_run_for_bot) =
+            active_runtime_admission(&runtimes, config.bot_id).await;
+        if let Some(run_id) = active_run_for_bot {
+            return Err(PaperError::BotAlreadyActive {
+                bot_id: config.bot_id,
+                run_id,
+            });
+        }
+        if active_count >= MAX_ACTIVE_PAPER_RUNS {
+            return Err(PaperError::Busy(MAX_ACTIVE_PAPER_RUNS));
+        }
 
         let run = self.storage.create_trading_run(&TradingRunSpec {
             bot_id: Some(config.bot_id),
@@ -314,7 +339,8 @@ impl PaperManager {
             stop_tx,
             updates_tx,
         });
-        self.runtimes.lock().await.insert(run.run_id, Arc::clone(&handle));
+        runtimes.insert(run.run_id, Arc::clone(&handle));
+        drop(runtimes);
 
         let manager = Arc::clone(self);
         tokio::spawn(async move {
@@ -603,7 +629,7 @@ impl PaperManager {
                                     snapshot.runtime_active = false;
                                     snapshot.ended_at_ms = Some(now);
                                     snapshot.updated_at_ms = now;
-                                    push_runtime_event(snapshot, now, "stopped", "Paper run stopped by user.");
+                                    push_runtime_event(snapshot, now, "stopped", "Live-Paper run stopped by user.");
                                 }).await;
                             }
                             Err(error) => {
@@ -641,7 +667,7 @@ impl PaperManager {
                                     snapshot,
                                     now,
                                     "feed_paused",
-                                    "Paper strategy clock paused while Binance market feed is not live.",
+                                    "Live-Paper strategy clock paused while Binance market feed is not live.",
                                 );
                             }).await;
                         }
@@ -666,7 +692,7 @@ impl PaperManager {
                                                 snapshot,
                                                 now,
                                                 "running",
-                                                &format!("Paper strategy started at clean {} boundary.", config.replay_interval.as_str()),
+                                                &format!("Live-Paper strategy started at clean {} boundary.", config.replay_interval.as_str()),
                                             );
                                         }).await;
                                     }
@@ -1440,7 +1466,9 @@ pub enum PaperError {
     RunNotFound(i64),
     #[error("Paper run {0} is not active")]
     RunNotActive(i64),
-    #[error("Paper runtime capacity reached ({0} active runs)")]
+    #[error("Bot {bot_id} already has active Live-Paper run {run_id}")]
+    BotAlreadyActive { bot_id: i64, run_id: i64 },
+    #[error("Live-Paper runtime capacity reached ({0} active runs)")]
     Busy(usize),
 }
 
@@ -2265,6 +2293,145 @@ mod tests {
         assert_eq!(after_rejected_candle.events.len(), event_count);
 
         drop(core);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[test]
+    fn two_live_paper_bot_cores_run_concurrently_without_state_cross_contamination() {
+        let path = temp_database("multi-bot-isolation");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+
+        let mut first = test_core_with_strategy(
+            Arc::clone(&storage),
+            "multibotfirst",
+            Box::new(MarketOrderOnStart),
+            ExecutionAssumptions::default(),
+        );
+        let mut second = test_core_with_strategy(
+            Arc::clone(&storage),
+            "multibotsecond",
+            Box::new(NoOpStrategy),
+            ExecutionAssumptions::default(),
+        );
+        let first_run_id = first.run_id;
+        let second_run_id = second.run_id;
+        assert_ne!(first_run_id, second_run_id);
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        first.start(60_000, &previous).unwrap();
+        second.start(60_000, &previous).unwrap();
+        assert_eq!(first.status, RunStatus::Running);
+        assert_eq!(second.status, RunStatus::Running);
+
+        let candle = MarketCandle {
+            open_time_ms: 60_000,
+            close_time_ms: 119_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.5,
+            volume: 1.0,
+        };
+        let first_fills = first.process_candle(&candle).unwrap();
+        let second_fills = second.process_candle(&candle).unwrap();
+        assert_eq!(first_fills.len(), 1);
+        assert!(second_fills.is_empty());
+        assert_eq!(first.portfolio.view().position_quantity, 2.0);
+        assert_eq!(second.portfolio.view().position_quantity, 0.0);
+
+        let first_history = storage.trading_run_history(first_run_id).unwrap();
+        let second_history = storage.trading_run_history(second_run_id).unwrap();
+        assert_eq!(first_history.fills.len(), 1);
+        assert_eq!(first_history.orders.len(), 1);
+        assert!(second_history.fills.is_empty());
+        assert!(second_history.orders.is_empty());
+        assert!(first_history.events.iter().all(|event| event.run_id == first_run_id));
+        assert!(second_history.events.iter().all(|event| event.run_id == second_run_id));
+
+        let first_audit = storage.trading_run_audit_page(first_run_id, None, 500).unwrap();
+        let second_audit = storage.trading_run_audit_page(second_run_id, None, 500).unwrap();
+        assert!(first_audit.events.iter().all(|item| item.event.run_id == first_run_id));
+        assert!(second_audit.events.iter().all(|item| item.event.run_id == second_run_id));
+        assert!(first_audit.events.iter().any(|item| item.event.event_kind == crate::storage::RunEventKind::Fill));
+        assert!(!second_audit.events.iter().any(|item| item.event.event_kind == crate::storage::RunEventKind::Fill));
+
+        drop(first);
+        drop(second);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[tokio::test]
+    async fn runtime_admission_allows_different_bots_and_identifies_same_bot_active_run() {
+        let path = temp_database("runtime-admission");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+
+        let mut first = test_core(Arc::clone(&storage), "admissionfirst");
+        let mut second = test_core(Arc::clone(&storage), "admissionsecond");
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        first.start(60_000, &previous).unwrap();
+        second.start(60_000, &previous).unwrap();
+
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::new()),
+        };
+        let first_snapshot = manager.persisted_snapshot(first.run_id).unwrap();
+        let second_snapshot = manager.persisted_snapshot(second.run_id).unwrap();
+        let first_bot_id = first_snapshot.bot_id.expect("first Bot ID");
+        let second_bot_id = second_snapshot.bot_id.expect("second Bot ID");
+        assert_ne!(first_bot_id, second_bot_id);
+
+        let (first_stop_tx, _) = watch::channel(false);
+        let (first_updates_tx, _) = broadcast::channel(8);
+        let first_handle = Arc::new(PaperRuntimeHandle {
+            snapshot: Arc::new(RwLock::new(first_snapshot)),
+            stop_tx: first_stop_tx,
+            updates_tx: first_updates_tx,
+        });
+        let (second_stop_tx, _) = watch::channel(false);
+        let (second_updates_tx, _) = broadcast::channel(8);
+        let second_handle = Arc::new(PaperRuntimeHandle {
+            snapshot: Arc::new(RwLock::new(second_snapshot)),
+            stop_tx: second_stop_tx,
+            updates_tx: second_updates_tx,
+        });
+        let runtimes = HashMap::from([
+            (first.run_id, first_handle),
+            (second.run_id, second_handle),
+        ]);
+
+        let (active_count, same_first) = active_runtime_admission(&runtimes, first_bot_id).await;
+        assert_eq!(active_count, 2);
+        assert_eq!(same_first, Some(first.run_id));
+
+        let unknown_bot = second_bot_id + 10_000;
+        let (active_count, same_unknown) = active_runtime_admission(&runtimes, unknown_bot).await;
+        assert_eq!(active_count, 2);
+        assert_eq!(same_unknown, None);
+
+        drop(first);
+        drop(second);
         drop(storage);
         cleanup_database(&path);
     }

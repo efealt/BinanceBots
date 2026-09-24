@@ -95,8 +95,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=12')) {
-  throw new Error("Trading page must load the Phase 4.8B Bot workspace client with active-order overlay fix");
+if (!trading.includes('/trading.js?v=13')) {
+  throw new Error("Trading page must load the Phase 4.8B concurrent Bot workspace client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -126,7 +126,10 @@ for (const required of [
   'fetchJson("/api/trading/bots")',
   'async function selectBot(botId)',
   'function openNewBotDraft()',
+  'async function persistCurrentBotFromForm()',
   'async function saveCurrentBot()',
+  'Create & Start Live-Paper',
+  'Save & Start Live-Paper',
   'Unsaved changes',
   'Running · Live-Paper',
   'setConfigLocked(Boolean(monitor.run.runtimeActive))',
@@ -196,6 +199,9 @@ if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/audit", get(run_aud
   throw new Error("Trading API is missing the authenticated canonical audit route");
 }
 const paper = fs.readFileSync("src/paper.rs", "utf8");
+if (!paper.includes("BotAlreadyActive") || !paper.includes("active_runtime_admission")) {
+  throw new Error("Live-Paper manager must enforce one active Run per Bot");
+}
 for (const required of [
   "trading_run_order_levels(run_id)",
   "trading_run_fill_audit(run_id)",
