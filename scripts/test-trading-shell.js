@@ -84,8 +84,18 @@ if (!trading.includes('/trading-contract.js?v=1')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=8')) {
-  throw new Error("Trading page must load the Phase 4.8B live-market Trading client");
+if (!trading.includes('/trading.js?v=9')) {
+  throw new Error("Trading page must load the Phase 4.8B trading-chart client");
+}
+for (const id of [
+  "trading-chart-last-price",
+  "trading-chart-open",
+  "trading-chart-high",
+  "trading-chart-low",
+  "trading-chart-close",
+  "trading-chart-time",
+]) {
+  if (!trading.includes('id="' + id + '"')) throw new Error("Trading market readout is missing #" + id);
 }
 if (trading.includes('value="BTCUSDT"')) {
   throw new Error("Trading symbol must come from the registered database catalog, not a hardcoded default");
@@ -122,6 +132,12 @@ for (const required of [
   'resetRunChartState("Live market remains available with no active Paper run.")',
   'candle.open_time_ms ?? candle.open_time',
   'candle.close_time_ms ?? candle.close_time',
+  'trigger: "axis"',
+  'type: "cross"',
+  'position: "right"',
+  'markLine: latestPrice === null ? undefined',
+  'zoomOnMouseWheel: true',
+  'moveOnMouseMove: true',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }

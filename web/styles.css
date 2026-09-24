@@ -612,7 +612,56 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 
 
 /* Trading page · Phase 4.6C live chart */
-.trading-chart-panel { margin-top: 0; }
+.trading-chart-panel { min-width: 0; margin-top: 0; }
+.trading-market-strip {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.45fr) repeat(4, minmax(90px, 0.72fr)) minmax(150px, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  font-variant-numeric: tabular-nums;
+}
+.trading-market-primary,
+.trading-market-stat {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.trading-market-primary { gap: 9px; }
+.trading-market-label,
+.trading-market-stat span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.trading-market-primary strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trading-market-stat strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trading-market-change { font-size: 0.72rem; font-weight: 800; white-space: nowrap; }
+.trading-market-change.is-up { color: var(--bid); }
+.trading-market-change.is-down { color: var(--ask); }
+.trading-market-time { justify-content: flex-end; }
+
 .trading-chart-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 16px 0 8px; color: var(--muted); font-size: 0.72rem; }
 .trading-chart-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .trading-chart-swatch { display: inline-block; width: 18px; height: 3px; border-radius: 999px; background: var(--muted); }
@@ -624,8 +673,19 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-chart-marker--sell { border-top: 9px solid var(--ask); }
 .trading-live-chart { width: 100%; height: 520px; min-height: 360px; margin-top: 4px; }
 .trading-chart-status { margin: 8px 0 0; }
+@media (max-width: 1050px) {
+  .trading-market-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .trading-market-primary { grid-column: span 2; }
+  .trading-market-time { justify-content: flex-start; }
+}
 @media (max-width: 760px) {
+  .trading-market-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trading-market-primary { grid-column: 1 / -1; }
   .trading-live-chart { height: 430px; min-height: 320px; }
+}
+@media (max-width: 480px) {
+  .trading-market-strip { grid-template-columns: 1fr; }
+  .trading-market-primary { grid-column: auto; }
 }
 
 
