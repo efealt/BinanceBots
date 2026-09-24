@@ -559,24 +559,51 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 
 /* Trading page · Phase 4.6B controls */
 .trading-control-panel { margin-top: 0; }
-.trading-paper-form { display: grid; gap: 16px; margin-top: 18px; }
-.trading-form-section { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
-.trading-parameter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.trading-parameter-grid--wide { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.trading-paper-form .field-control { min-width: 0; height: 42px; }
+.trading-paper-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 14px;
+  margin-top: 16px;
+}
+.trading-form-section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+.trading-parameter-grid,
+.trading-parameter-grid--wide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.trading-paper-form .field { min-width: 0; }
+.trading-paper-form .field-control { width: 100%; min-width: 0; height: 42px; }
+#trading-control-error,
+.trading-control-actions { grid-column: 1 / -1; }
 .trading-control-actions { display: grid; grid-template-columns: minmax(150px, 220px) minmax(150px, 220px) minmax(0, 1fr); align-items: center; gap: 12px; }
 .trading-control-actions .button { width: 100%; margin-top: 0; }
 .trading-control-actions .panel-note { margin: 0; text-align: right; }
-@media (max-width: 1100px) {
-  .trading-parameter-grid, .trading-parameter-grid--wide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (max-width: 1180px) {
+  .trading-paper-form { grid-template-columns: 1fr; }
+  .trading-parameter-grid,
+  .trading-parameter-grid--wide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
 @media (max-width: 760px) {
-  .trading-parameter-grid, .trading-parameter-grid--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trading-parameter-grid,
+  .trading-parameter-grid--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trading-control-actions { grid-template-columns: 1fr 1fr; }
   .trading-control-actions .panel-note { grid-column: 1 / -1; text-align: left; }
 }
+
 @media (max-width: 520px) {
-  .trading-parameter-grid, .trading-parameter-grid--wide, .trading-control-actions { grid-template-columns: 1fr; }
+  .trading-parameter-grid,
+  .trading-parameter-grid--wide,
+  .trading-control-actions { grid-template-columns: 1fr; }
   .trading-control-actions .panel-note { grid-column: auto; }
 }
 
