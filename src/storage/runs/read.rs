@@ -536,13 +536,13 @@ impl StorageReader {
 use rusqlite::OptionalExtension;
 
 const RUN_SELECT_BASE: &str =
-    "SELECT run_id, comparison_id, mode, status, strategy_id, strategy_version,
+    "SELECT run_id, bot_id, comparison_id, mode, status, strategy_id, strategy_version,
             strategy_params_json, instrument_id, initial_capital_decimal,
             run_config_json, data_source_json, execution_assumptions_json,
             started_at_ms, ended_at_ms, created_at_ms, updated_at_ms
      FROM trading_runs";
 const RUN_SELECT: &str =
-    "SELECT run_id, comparison_id, mode, status, strategy_id, strategy_version,
+    "SELECT run_id, bot_id, comparison_id, mode, status, strategy_id, strategy_version,
             strategy_params_json, instrument_id, initial_capital_decimal,
             run_config_json, data_source_json, execution_assumptions_json,
             started_at_ms, ended_at_ms, created_at_ms, updated_at_ms
@@ -562,21 +562,22 @@ fn query_rows<T>(
 fn map_trading_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<TradingRun> {
     Ok(TradingRun {
         run_id: row.get(0)?,
-        comparison_id: row.get(1)?,
-        mode: enum_from_row(row, 2, RunMode::parse)?,
-        status: enum_from_row(row, 3, RunStatus::parse)?,
-        strategy_id: row.get(4)?,
-        strategy_version: row.get(5)?,
-        strategy_params: json_from_row(row, 6)?,
-        instrument_id: row.get(7)?,
-        initial_capital: decimal_from_row(row, 8)?,
-        run_config: json_from_row(row, 9)?,
-        data_source: json_from_row(row, 10)?,
-        execution_assumptions: json_from_row(row, 11)?,
-        started_at_ms: row.get(12)?,
-        ended_at_ms: row.get(13)?,
-        created_at_ms: row.get(14)?,
-        updated_at_ms: row.get(15)?,
+        bot_id: row.get(1)?,
+        comparison_id: row.get(2)?,
+        mode: enum_from_row(row, 3, RunMode::parse)?,
+        status: enum_from_row(row, 4, RunStatus::parse)?,
+        strategy_id: row.get(5)?,
+        strategy_version: row.get(6)?,
+        strategy_params: json_from_row(row, 7)?,
+        instrument_id: row.get(8)?,
+        initial_capital: decimal_from_row(row, 9)?,
+        run_config: json_from_row(row, 10)?,
+        data_source: json_from_row(row, 11)?,
+        execution_assumptions: json_from_row(row, 12)?,
+        started_at_ms: row.get(13)?,
+        ended_at_ms: row.get(14)?,
+        created_at_ms: row.get(15)?,
+        updated_at_ms: row.get(16)?,
     })
 }
 

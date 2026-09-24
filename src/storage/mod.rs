@@ -1,3 +1,4 @@
+mod bots;
 mod reader;
 mod runs;
 mod schema;
@@ -50,6 +51,8 @@ pub enum StorageError {
     InvalidTradingValue { field: &'static str, value: String },
     #[error("trading instrument {0} was not found")]
     TradingInstrumentNotFound(i64),
+    #[error("trading bot {0} was not found")]
+    TradingBotNotFound(i64),
     #[error("trading run {0} was not found")]
     TradingRunNotFound(i64),
     #[error("trading order intent event {0} was not found for this run")]
@@ -64,6 +67,7 @@ pub enum StorageError {
     DataDownloadStartDateImmutable,
 }
 
+pub use bots::*;
 pub use reader::{
     AuthAuditEvent, DataDownload, DataDownloadSpec, DatasetSummary, DownloadRunPreparation,
     HistoricalDatasetInfo, HistoricalKline, OhlcvCandle, StorageReader,

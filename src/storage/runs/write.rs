@@ -12,9 +12,28 @@ impl StorageReader {
         if let Some(comparison_id) = spec.comparison_id.as_deref() {
             validate_nonempty("comparison_id", comparison_id)?;
         }
+        if spec.mode == RunMode::Paper && spec.bot_id.is_none() {
+            return Err(StorageError::InvalidTradingValue {
+                field: "bot_id",
+                value: "required for Live-Paper runs".into(),
+            });
+        }
 
         let mut connection = self.open_write()?;
         let transaction = connection.transaction()?;
+        if let Some(bot_id) = spec.bot_id {
+            let bot_exists: Option<i64> = transaction
+                .query_row(
+                    "SELECT bot_id FROM trading_bots WHERE bot_id = ?1",
+                    params![bot_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if bot_exists.is_none() {
+                return Err(StorageError::TradingBotNotFound(bot_id));
+            }
+        }
+
         let instrument_exists: Option<i64> = transaction
             .query_row(
                 "SELECT instrument_id FROM market_instruments WHERE instrument_id = ?1",
@@ -29,12 +48,13 @@ impl StorageReader {
         let now = now_ms();
         transaction.execute(
             "INSERT INTO trading_runs (
-                comparison_id, mode, status, strategy_id, strategy_version,
+                bot_id, comparison_id, mode, status, strategy_id, strategy_version,
                 strategy_params_json, instrument_id, initial_capital_decimal,
                 run_config_json, data_source_json, execution_assumptions_json,
                 created_at_ms, updated_at_ms
-             ) VALUES (?1, ?2, 'created', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+             ) VALUES (?1, ?2, ?3, 'created', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
             params![
+                spec.bot_id,
                 spec.comparison_id,
                 spec.mode.as_str(),
                 spec.strategy_id,

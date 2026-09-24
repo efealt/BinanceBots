@@ -216,7 +216,7 @@ Remaining:
 - [ ] Add Bot history, clear Run activity terminology, and compact the remaining workspace layout.
 - [ ] Complete integrated multi-bot production acceptance.
 
-**Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
+**Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
 
 ### 4.8C — Production smoke + visual acceptance
 

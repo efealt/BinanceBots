@@ -406,6 +406,20 @@ Phase 4 now has a dedicated automated verification suite that exercises the chro
 
 These tests add verification only; they do not change strategy rules, Paper execution semantics, or enable any Binance private-account behavior.
 
+## Phase 4.8B Phase 1 — Persistent Bot identity and saved configuration
+
+Trading now has a persistent Bot parent layer above execution Runs.
+
+- A **Bot** is durable identity plus saved configuration: stable `bot_id`, editable `bot_name`, validated configuration JSON, and created/updated timestamps.
+- Saved configuration contains the complete current Trading setup required to restore the form: Symbol/Market parameters, replay interval, initial capital, strategy ID/grid parameters, and execution assumptions.
+- Protected persistence endpoints are `POST /api/trading/bots`, `GET /api/trading/bots`, `GET /api/trading/bots/{bot_id}`, and `PUT /api/trading/bots/{bot_id}`.
+- Migration 005 adds `trading_bots` and nullable `trading_runs.bot_id`. Existing historical runs are deliberately not backfilled or guessed into Bot groups.
+- Newly created **Live-Paper** runs must reference a real persisted Bot. The storage layer enforces this invariant even when called outside the HTTP API.
+- A Run remains an immutable execution snapshot. Editing the parent Bot does not rewrite prior run strategy parameters, run configuration, data source, initial capital, or execution assumptions.
+- Paper runtime snapshots and run summaries expose the linked `bot_id` when present so the next workspace phase can group operational state by Bot.
+- During the Phase 1 → Phase 2 transition, the old pre-Bot Trading form remains operational: starting Live-Paper without a supplied `bot_id` first persists the validated submitted configuration as a Bot, then starts the linked Run. Phase 2 replaces this compatibility bridge with explicit New Bot / Save Bot selection.
+- **Live-Paper** means real-time Binance market data with simulated orders/fills. **Live-Real-Account** means real Binance account order submission and remains locked.
+
 ## UI
 
 - **Console** — current bot-console UI shell.

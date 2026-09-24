@@ -100,6 +100,7 @@ impl BacktestEngine {
         let execution_json = serde_json::to_value(&config.execution)
             .map_err(|error| BacktestError::InvalidConfig(error.to_string()))?;
         let run_spec = TradingRunSpec {
+            bot_id: None,
             comparison_id: config.comparison_id.clone(),
             mode: RunMode::Backtest,
             strategy_id: strategy.id().to_string(),

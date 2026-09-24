@@ -36,6 +36,7 @@ const SERVICE_RESTART_FAILURE_REASON: &str =
 
 #[derive(Clone, Debug)]
 pub struct PaperStartConfig {
+    pub bot_id: i64,
     pub symbol: String,
     pub market_type: MarketType,
     pub replay_interval: TradingInterval,
@@ -92,6 +93,7 @@ pub struct PaperBaseCandleView {
 #[derive(Clone, Debug, Serialize)]
 pub struct PaperSnapshot {
     pub run_id: i64,
+    pub bot_id: Option<i64>,
     pub stream_revision: u64,
     pub comparison_id: Option<String>,
     pub mode: String,
@@ -144,6 +146,7 @@ pub struct PaperChartSnapshot {
 #[derive(Clone, Debug, Serialize)]
 pub struct PaperRunSummary {
     pub run_id: i64,
+    pub bot_id: Option<i64>,
     pub canonical_status: String,
     pub runtime_status: String,
     pub symbol: String,
@@ -183,6 +186,7 @@ impl PaperManager {
 
     pub async fn start(self: &Arc<Self>, config: PaperStartConfig) -> Result<PaperSnapshot, PaperError> {
         validate_start_config(&config)?;
+        self.storage.trading_bot(config.bot_id)?;
 
         let active_handles: Vec<_> = self.runtimes.lock().await.values().cloned().collect();
         let mut active_count = 0;
@@ -213,6 +217,7 @@ impl PaperManager {
         let boundary = config.replay_interval.next_bucket_open_ms(now);
 
         let run = self.storage.create_trading_run(&TradingRunSpec {
+            bot_id: Some(config.bot_id),
             comparison_id: None,
             mode: RunMode::Paper,
             strategy_id: strategy_id.clone(),
@@ -255,6 +260,7 @@ impl PaperManager {
 
         let initial_snapshot = PaperSnapshot {
             run_id: run.run_id,
+            bot_id: Some(config.bot_id),
             stream_revision: 1,
             comparison_id: run.comparison_id.clone(),
             mode: "paper".into(),
@@ -415,6 +421,7 @@ impl PaperManager {
             };
             summaries.push(PaperRunSummary {
                 run_id: run.run_id,
+                bot_id: run.bot_id,
                 canonical_status: run.status.as_str().into(),
                 runtime_status,
                 symbol: json_string(&run.data_source, "symbol"),
@@ -506,6 +513,7 @@ impl PaperManager {
 
         Ok(PaperSnapshot {
             run_id,
+            bot_id: run.bot_id,
             stream_revision: 0,
             comparison_id: run.comparison_id,
             mode: "paper".into(),
@@ -1261,6 +1269,9 @@ fn build_strategy(config: &PaperStartConfig) -> Result<Box<dyn Strategy + Send>,
 }
 
 fn validate_start_config(config: &PaperStartConfig) -> Result<(), PaperError> {
+    if config.bot_id <= 0 {
+        return Err(PaperError::Invalid("bot_id must be positive".into()));
+    }
     if config.strategy_id != "static-grid-fixture" {
         return Err(PaperError::Invalid(
             "Phase 4 currently exposes only static-grid-fixture".into(),
@@ -1888,8 +1899,15 @@ mod tests {
         let instrument_id = storage
             .ensure_market_instrument(&format!("{}USDT", label.to_ascii_uppercase()), "spot")
             .unwrap();
+        let bot = storage
+            .create_trading_bot(&crate::storage::TradingBotSpec {
+                bot_name: format!("Test {label}"),
+                config: json!({"test": label}),
+            })
+            .unwrap();
         let run = storage
             .create_trading_run(&TradingRunSpec {
+                bot_id: Some(bot.bot_id),
                 comparison_id: Some(format!("phase-4-3-{label}")),
                 mode: RunMode::Paper,
                 strategy_id: strategy.id().to_string(),
@@ -1917,8 +1935,15 @@ mod tests {
         let instrument_id = storage
             .ensure_market_instrument(&format!("{}USDT", label.to_ascii_uppercase()), "spot")
             .unwrap();
+        let bot = storage
+            .create_trading_bot(&crate::storage::TradingBotSpec {
+                bot_name: format!("Test {label}"),
+                config: json!({"test": label}),
+            })
+            .unwrap();
         let run = storage
             .create_trading_run(&TradingRunSpec {
+                bot_id: Some(bot.bot_id),
                 comparison_id: Some(format!("phase-4-1-{label}")),
                 mode: RunMode::Paper,
                 strategy_id: "test-paper-noop".into(),
@@ -2530,6 +2555,7 @@ mod tests {
     fn market_snapshot_fields_are_synchronized_for_ui_refresh_state() {
         let mut snapshot = PaperSnapshot {
             run_id: 1,
+            bot_id: None,
             stream_revision: 1,
             comparison_id: None,
             mode: "paper".into(),
@@ -2635,6 +2661,7 @@ mod tests {
 
         let mut snapshot = PaperSnapshot {
             run_id,
+            bot_id: None,
             stream_revision: 7,
             comparison_id: None,
             mode: "paper".into(),

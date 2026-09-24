@@ -166,8 +166,15 @@ fn new_paper_core(
     let instrument_id = storage
         .ensure_market_instrument("BTCUSDT", "spot")
         .expect("ensure parity Paper instrument");
+    let bot = storage
+        .create_trading_bot(&crate::storage::TradingBotSpec {
+            bot_name: "Phase 4 parity bot".into(),
+            config: json!({"verification": "phase_4_8a"}),
+        })
+        .expect("create parity bot");
     let run = storage
         .create_trading_run(&TradingRunSpec {
+            bot_id: Some(bot.bot_id),
             comparison_id: Some("phase4-parity".into()),
             mode: RunMode::Paper,
             strategy_id: strategy.id().to_string(),

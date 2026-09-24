@@ -171,6 +171,7 @@ impl EventTimes {
 
 #[derive(Clone, Debug)]
 pub struct TradingRunSpec {
+    pub bot_id: Option<i64>,
     pub comparison_id: Option<String>,
     pub mode: RunMode,
     pub strategy_id: String,
@@ -186,6 +187,7 @@ pub struct TradingRunSpec {
 #[derive(Clone, Debug, Serialize)]
 pub struct TradingRun {
     pub run_id: i64,
+    pub bot_id: Option<i64>,
     pub comparison_id: Option<String>,
     pub mode: RunMode,
     pub status: RunStatus,

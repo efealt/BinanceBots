@@ -1,7 +1,7 @@
 use crate::{
     market::MarketType,
     paper::{PaperChartSnapshot, PaperError, PaperManager, PaperSnapshot, PaperStartConfig},
-    storage::{ExactDecimal, TimeInForce},
+    storage::{ExactDecimal, StorageError, StorageReader, TimeInForce, TradingBot, TradingBotSpec},
     trading::{ExecutionAssumptions, GridAnchor, StaticGridConfig, TradingInterval},
 };
 use axum::{
@@ -18,7 +18,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct GridRequest {
     anchor: String,
     fixed_anchor_price: Option<f64>,
@@ -27,15 +27,48 @@ struct GridRequest {
     quantity_per_order: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct StartTradingRunRequest {
-    mode: String,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct BotConfigurationRequest {
     symbol: String,
     market_type: String,
     replay_interval: String,
     initial_capital: String,
     strategy_id: String,
     grid: GridRequest,
+    execution: ExecutionAssumptions,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct StartTradingRunRequest {
+    mode: String,
+    bot_id: Option<i64>,
+    symbol: String,
+    market_type: String,
+    replay_interval: String,
+    initial_capital: String,
+    strategy_id: String,
+    grid: GridRequest,
+    execution: ExecutionAssumptions,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SaveTradingBotRequest {
+    bot_name: String,
+    configuration: BotConfigurationRequest,
+}
+
+#[derive(Clone)]
+struct TradingApiState {
+    manager: Arc<PaperManager>,
+    storage: Arc<StorageReader>,
+}
+
+struct ValidatedConfiguration {
+    stored: BotConfigurationRequest,
+    market_type: MarketType,
+    replay_interval: TradingInterval,
+    initial_capital: ExactDecimal,
+    grid_config: StaticGridConfig,
     execution: ExecutionAssumptions,
 }
 
@@ -56,34 +89,156 @@ struct RunsResponse<T> {
 }
 
 #[derive(Serialize)]
+struct BotsResponse {
+    bots: Vec<TradingBot>,
+}
+
+#[derive(Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 enum TradingStreamMessage {
     Snapshot(PaperSnapshot),
     Update(PaperSnapshot),
 }
 
-pub fn router(manager: Arc<PaperManager>) -> Router {
+pub fn router(manager: Arc<PaperManager>, storage: Arc<StorageReader>) -> Router {
     Router::new()
+        .route("/api/trading/bots", post(create_bot).get(list_bots))
+        .route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))
         .route("/api/trading/runs", post(start_run).get(list_runs))
         .route("/api/trading/runs/{run_id}", get(run_snapshot))
         .route("/api/trading/runs/{run_id}/chart", get(run_chart))
         .route("/api/trading/runs/{run_id}/audit", get(run_audit))
         .route("/api/trading/runs/{run_id}/stop", post(stop_run))
         .route("/api/trading/runs/{run_id}/stream", get(run_stream))
-        .with_state(manager)
+        .with_state(TradingApiState { manager, storage })
+}
+
+async fn create_bot(
+    State(state): State<TradingApiState>,
+    Json(request): Json<SaveTradingBotRequest>,
+) -> Result<(StatusCode, Json<TradingBot>), TradingApiError> {
+    let validated = validate_configuration(request.configuration)?;
+    let bot = state.storage.create_trading_bot(&TradingBotSpec {
+        bot_name: request.bot_name,
+        config: configuration_json(&validated.stored)?,
+    })?;
+    Ok((StatusCode::CREATED, Json(bot)))
+}
+
+async fn update_bot(
+    State(state): State<TradingApiState>,
+    Path(bot_id): Path<i64>,
+    Json(request): Json<SaveTradingBotRequest>,
+) -> Result<Json<TradingBot>, TradingApiError> {
+    validate_bot_id(bot_id)?;
+    let validated = validate_configuration(request.configuration)?;
+    Ok(Json(state.storage.update_trading_bot(
+        bot_id,
+        &TradingBotSpec {
+            bot_name: request.bot_name,
+            config: configuration_json(&validated.stored)?,
+        },
+    )?))
+}
+
+async fn bot_snapshot(
+    State(state): State<TradingApiState>,
+    Path(bot_id): Path<i64>,
+) -> Result<Json<TradingBot>, TradingApiError> {
+    validate_bot_id(bot_id)?;
+    Ok(Json(state.storage.trading_bot(bot_id)?))
+}
+
+async fn list_bots(
+    State(state): State<TradingApiState>,
+) -> Result<Json<BotsResponse>, TradingApiError> {
+    Ok(Json(BotsResponse {
+        bots: state.storage.trading_bots()?,
+    }))
 }
 
 async fn start_run(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Json(request): Json<StartTradingRunRequest>,
 ) -> Result<(StatusCode, Json<PaperSnapshot>), TradingApiError> {
     require_phase4_paper_mode(&request.mode)?;
 
+    let validated = validate_configuration(BotConfigurationRequest {
+        symbol: request.symbol,
+        market_type: request.market_type,
+        replay_interval: request.replay_interval,
+        initial_capital: request.initial_capital,
+        strategy_id: request.strategy_id,
+        grid: request.grid,
+        execution: request.execution,
+    })?;
+    let config_json = configuration_json(&validated.stored)?;
+
+    let bot_id = match request.bot_id {
+        Some(bot_id) => {
+            validate_bot_id(bot_id)?;
+            let bot = state.storage.trading_bot(bot_id)?;
+            if bot.config != config_json {
+                return Err(TradingApiError::Invalid(
+                    "Live-Paper configuration differs from the saved bot; save the bot before starting it".into(),
+                ));
+            }
+            bot_id
+        }
+        None => {
+            // Compatibility for the pre-Bot Trading UI during 4.8B Phase 1.
+            // Phase 2 adds explicit New Bot / Save Bot selection. Even during this
+            // transition, no new Live-Paper run is allowed to remain anonymous.
+            state.storage.create_trading_bot(&TradingBotSpec {
+                bot_name: format!("{} Live-Paper", validated.stored.symbol),
+                config: config_json,
+            })?.bot_id
+        }
+    };
+
+    let snapshot = state.manager
+        .start(PaperStartConfig {
+            bot_id,
+            symbol: validated.stored.symbol,
+            market_type: validated.market_type,
+            replay_interval: validated.replay_interval,
+            initial_capital: validated.initial_capital,
+            strategy_id: validated.stored.strategy_id,
+            grid_config: validated.grid_config,
+            execution: validated.execution,
+        })
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(snapshot)))
+}
+
+fn validate_configuration(
+    mut request: BotConfigurationRequest,
+) -> Result<ValidatedConfiguration, TradingApiError> {
+    request.symbol = request.symbol.trim().to_ascii_uppercase();
+    if request.symbol.is_empty() {
+        return Err(TradingApiError::Invalid("symbol is required".into()));
+    }
+
     let market_type = MarketType::parse(request.market_type.trim())?;
+    request.market_type = market_type.as_str().into();
+
     let replay_interval = TradingInterval::parse(request.replay_interval.trim())
         .ok_or_else(|| TradingApiError::Invalid("replay_interval must be 1m, 1h, or 1d".into()))?;
+    request.replay_interval = replay_interval.as_str().into();
+
     let initial_capital = ExactDecimal::new(request.initial_capital.trim())?;
-    let anchor = match request.grid.anchor.trim() {
+    request.initial_capital = initial_capital.as_str().into();
+
+    request.strategy_id = request.strategy_id.trim().to_string();
+    if request.strategy_id != "static-grid-fixture" {
+        return Err(TradingApiError::Invalid(
+            "Live-Paper currently exposes only static-grid-fixture".into(),
+        ));
+    }
+
+    request.grid.anchor = request.grid.anchor.trim().to_ascii_lowercase();
+    let anchor = match request.grid.anchor.as_str() {
         "previous_close" => GridAnchor::PreviousClose,
         "fixed" => GridAnchor::Fixed,
         _ => {
@@ -104,47 +259,48 @@ async fn start_run(
     grid_config.validate().map_err(TradingApiError::Invalid)?;
     request.execution.validate().map_err(TradingApiError::Invalid)?;
 
-    let snapshot = manager
-        .start(PaperStartConfig {
-            symbol: request.symbol,
-            market_type,
-            replay_interval,
-            initial_capital,
-            strategy_id: request.strategy_id,
-            grid_config,
-            execution: request.execution,
-        })
-        .await?;
+    Ok(ValidatedConfiguration {
+        execution: request.execution.clone(),
+        stored: request,
+        market_type,
+        replay_interval,
+        initial_capital,
+        grid_config,
+    })
+}
 
-    Ok((StatusCode::CREATED, Json(snapshot)))
+fn configuration_json(
+    configuration: &BotConfigurationRequest,
+) -> Result<serde_json::Value, TradingApiError> {
+    serde_json::to_value(configuration).map_err(|error| TradingApiError::Invalid(error.to_string()))
 }
 
 async fn stop_run(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Path(run_id): Path<i64>,
 ) -> Result<Json<PaperSnapshot>, TradingApiError> {
     validate_run_id(run_id)?;
-    Ok(Json(manager.stop(run_id).await?))
+    Ok(Json(state.manager.stop(run_id).await?))
 }
 
 async fn run_snapshot(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Path(run_id): Path<i64>,
 ) -> Result<Json<PaperSnapshot>, TradingApiError> {
     validate_run_id(run_id)?;
-    Ok(Json(manager.snapshot(run_id).await?))
+    Ok(Json(state.manager.snapshot(run_id).await?))
 }
 
 async fn run_chart(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Path(run_id): Path<i64>,
 ) -> Result<Json<PaperChartSnapshot>, TradingApiError> {
     validate_run_id(run_id)?;
-    Ok(Json(manager.chart_snapshot(run_id).await?))
+    Ok(Json(state.manager.chart_snapshot(run_id).await?))
 }
 
 async fn run_audit(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Path(run_id): Path<i64>,
     Query(query): Query<AuditQuery>,
 ) -> Result<Json<crate::storage::TradingAuditPage>, TradingApiError> {
@@ -155,27 +311,27 @@ async fn run_audit(
         ));
     }
     let limit = query.limit.unwrap_or(250).clamp(1, 500);
-    Ok(Json(manager.audit_page(run_id, query.after_sequence, limit)?))
+    Ok(Json(state.manager.audit_page(run_id, query.after_sequence, limit)?))
 }
 
 async fn list_runs(
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Query(query): Query<RunsQuery>,
 ) -> Result<Json<RunsResponse<crate::paper::PaperRunSummary>>, TradingApiError> {
     let limit = query.limit.unwrap_or(25).clamp(1, 100);
     Ok(Json(RunsResponse {
-        runs: manager.list_runs(limit).await?,
+        runs: state.manager.list_runs(limit).await?,
     }))
 }
 
 async fn run_stream(
     websocket: WebSocketUpgrade,
-    State(manager): State<Arc<PaperManager>>,
+    State(state): State<TradingApiState>,
     Path(run_id): Path<i64>,
 ) -> Result<Response, TradingApiError> {
     validate_run_id(run_id)?;
-    let (initial, receiver) = manager.stream_bootstrap(run_id).await?;
-    let stream_manager = Arc::clone(&manager);
+    let (initial, receiver) = state.manager.stream_bootstrap(run_id).await?;
+    let stream_manager = Arc::clone(&state.manager);
     Ok(websocket
         .on_upgrade(move |socket| {
             stream_runtime(socket, run_id, stream_manager, initial, receiver)
@@ -268,8 +424,17 @@ fn require_phase4_paper_mode(mode: &str) -> Result<(), TradingApiError> {
     match mode.trim().to_ascii_lowercase().as_str() {
         "paper" => Ok(()),
         "live" => Err(TradingApiError::LiveLocked),
-        _ => Err(TradingApiError::Invalid("mode must be paper or live".into())),
+        _ => Err(TradingApiError::Invalid(
+            "mode must be paper (Live-Paper) or live (Live-Real-Account)".into(),
+        )),
     }
+}
+
+fn validate_bot_id(bot_id: i64) -> Result<(), TradingApiError> {
+    if bot_id <= 0 {
+        return Err(TradingApiError::Invalid("bot_id must be positive".into()));
+    }
+    Ok(())
 }
 
 fn validate_run_id(run_id: i64) -> Result<(), TradingApiError> {
@@ -312,16 +477,16 @@ impl IntoResponse for TradingApiError {
         let status = match &self {
             Self::Invalid(_) => StatusCode::BAD_REQUEST,
             Self::LiveLocked => StatusCode::LOCKED,
-            Self::Paper(PaperError::RunNotFound(_)) | Self::Paper(PaperError::RunNotActive(_)) => {
-                StatusCode::NOT_FOUND
-            }
+            Self::Paper(PaperError::RunNotFound(_))
+            | Self::Paper(PaperError::RunNotActive(_))
+            | Self::Storage(StorageError::TradingBotNotFound(_)) => StatusCode::NOT_FOUND,
             Self::Paper(PaperError::Busy(_)) => StatusCode::CONFLICT,
             Self::Paper(PaperError::Invalid(_)) => StatusCode::BAD_REQUEST,
             Self::Paper(PaperError::Market(_)) | Self::Market(_) => StatusCode::BAD_GATEWAY,
             Self::Paper(_) | Self::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = if matches!(self, Self::LiveLocked) {
-            "Live execution is locked until Phase 8; Phase 4 supports Paper only.".to_string()
+            "Live-Real-Account execution is locked; Live-Paper is the current forward execution mode.".to_string()
         } else {
             message
         };
@@ -333,7 +498,7 @@ impl std::fmt::Display for TradingApiError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(message) => formatter.write_str(message),
-            Self::LiveLocked => formatter.write_str("Live mode is locked"),
+            Self::LiveLocked => formatter.write_str("Live-Real-Account execution is locked"),
             Self::Paper(error) => error.fmt(formatter),
             Self::Market(error) => error.fmt(formatter),
             Self::Storage(error) => error.fmt(formatter),
@@ -403,6 +568,7 @@ mod tests {
 
         let request = StartTradingRunRequest {
             mode: "live".into(),
+            bot_id: None,
             symbol: "THIS_DOES_NOT_NEED_TO_EXIST".into(),
             market_type: "definitely_invalid".into(),
             replay_interval: "definitely_invalid".into(),
@@ -421,7 +587,11 @@ mod tests {
             },
         };
 
-        let error = start_run(State(manager), Json(request))
+        let state = TradingApiState {
+            manager,
+            storage: Arc::clone(&storage),
+        };
+        let error = start_run(State(state), Json(request))
             .await
             .err()
             .expect("Live start must be server-side locked");
@@ -432,4 +602,70 @@ mod tests {
         drop(storage);
         cleanup_database(&path);
     }
+
+    fn sample_bot_configuration(spacing_bps: f64) -> BotConfigurationRequest {
+        BotConfigurationRequest {
+            symbol: "BTCUSDT".into(),
+            market_type: "spot".into(),
+            replay_interval: "1m".into(),
+            initial_capital: "1000.00".into(),
+            strategy_id: "static-grid-fixture".into(),
+            grid: GridRequest {
+                anchor: "previous_close".into(),
+                fixed_anchor_price: None,
+                spacing_bps,
+                levels_per_side: 3,
+                quantity_per_order: 1.0,
+            },
+            execution: ExecutionAssumptions::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn bot_api_saves_and_updates_without_creating_a_run() {
+        let path = temp_database("bot-save");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let manager = PaperManager::new(
+            Arc::clone(&storage),
+            Arc::new(MarketService::new()),
+        ).unwrap();
+        let state = TradingApiState {
+            manager,
+            storage: Arc::clone(&storage),
+        };
+
+        let (status, Json(bot)) = create_bot(
+            State(state.clone()),
+            Json(SaveTradingBotRequest {
+                bot_name: "BTC Grid".into(),
+                configuration: sample_bot_configuration(25.0),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(bot.bot_name, "BTC Grid");
+        assert!(storage.trading_runs_by_mode(crate::storage::RunMode::Paper, 10).unwrap().is_empty());
+
+        let Json(updated) = update_bot(
+            State(state.clone()),
+            Path(bot.bot_id),
+            Json(SaveTradingBotRequest {
+                bot_name: "BTC Grid Revised".into(),
+                configuration: sample_bot_configuration(40.0),
+            }),
+        ).await.unwrap();
+
+        assert_eq!(updated.bot_id, bot.bot_id);
+        assert_eq!(updated.bot_name, "BTC Grid Revised");
+        assert_eq!(updated.config["grid"]["spacing_bps"], 40.0);
+
+        let Json(listed) = list_bots(State(state)).await.unwrap();
+        assert_eq!(listed.bots.len(), 1);
+        assert_eq!(listed.bots[0].bot_id, bot.bot_id);
+
+        drop(storage);
+        cleanup_database(&path);
+    }
+
 }

@@ -35,6 +35,7 @@ fn cleanup(path: &std::path::Path) {
 
 fn spec(mode: RunMode, instrument_id: i64) -> TradingRunSpec {
     TradingRunSpec {
+        bot_id: None,
         comparison_id: Some("paper-replay-001".into()),
         mode,
         strategy_id: "test-grid".into(),
@@ -68,7 +69,13 @@ fn persists_reconstructs_and_links_all_run_modes() {
     let instrument_id = create_instrument(&path);
 
     let backtest = reader.create_trading_run(&spec(RunMode::Backtest, instrument_id)).unwrap();
-    let paper = reader.create_trading_run(&spec(RunMode::Paper, instrument_id)).unwrap();
+    let bot = reader.create_trading_bot(&crate::storage::TradingBotSpec {
+        bot_name: "Test Paper Bot".into(),
+        config: json!({"test": true}),
+    }).unwrap();
+    let mut paper_spec = spec(RunMode::Paper, instrument_id);
+    paper_spec.bot_id = Some(bot.bot_id);
+    let paper = reader.create_trading_run(&paper_spec).unwrap();
     let live = reader.create_trading_run(&spec(RunMode::Live, instrument_id)).unwrap();
 
     reader.set_trading_run_status(

@@ -16,6 +16,10 @@ const TRADING_RUNS_MIGRATION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/migrations/004_trading_runs.sql"
 ));
+const TRADING_BOTS_MIGRATION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/migrations/005_trading_bots.sql"
+));
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
@@ -45,6 +49,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error
 
     if current_version < 4 {
         apply_migration(connection, 4, TRADING_RUNS_MIGRATION)?;
+    }
+
+    if current_version < 5 {
+        apply_migration(connection, 5, TRADING_BOTS_MIGRATION)?;
     }
 
     Ok(())
@@ -99,7 +107,7 @@ mod tests {
                        'live_capture_sessions', 'live_events', 'live_kline_updates',
                        'live_book_ticker', 'live_depth_snapshots', 'live_depth_levels',
                        'live_trades', 'auth_audit_events',
-                       'trading_runs', 'trading_run_events', 'trading_run_status_events',
+                       'trading_bots', 'trading_runs', 'trading_run_events', 'trading_run_status_events',
                        'trading_decisions', 'trading_order_intents', 'trading_orders',
                        'trading_order_state_events', 'trading_fills',
                        'trading_position_snapshots', 'trading_equity_snapshots'
@@ -109,14 +117,14 @@ mod tests {
             )
             .expect("count storage tables");
 
-        assert_eq!(table_count, 33);
+        assert_eq!(table_count, 34);
 
         let version: i64 = connection
             .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
             .expect("read schema version");
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
     }
 
     #[test]
@@ -126,7 +134,7 @@ mod tests {
 
         let result = apply_migration(
             &mut connection,
-            5,
+            6,
             "CREATE TABLE migration_probe (id INTEGER PRIMARY KEY);
              THIS IS NOT VALID SQL;",
         );
@@ -147,6 +155,6 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version after failed migration");
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
     }
 }

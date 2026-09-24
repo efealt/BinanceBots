@@ -20,7 +20,7 @@ pub fn protected_router(
         .merge(market::router(market_service))
         .merge(data::router(Arc::clone(&storage_reader)))
         .merge(backtests::router(Arc::clone(&storage_reader)))
-        .merge(trading::router(paper_manager))
+        .merge(trading::router(paper_manager, Arc::clone(&storage_reader)))
         .merge(security::router(storage_reader))
 }
 
