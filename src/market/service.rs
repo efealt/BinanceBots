@@ -510,7 +510,10 @@ mod tests {
 
         feed.begin_connection_epoch().await;
         feed.set_status(FeedStatus::Live).await;
-        let error = subscription.recv().await.unwrap_err();
+        let error = match subscription.recv().await {
+            Err(error) => error,
+            Ok(_) => panic!("expected connection epoch failure"),
+        };
         assert!(matches!(
             error,
             RunMarketFeedError::ConnectionEpochChanged {
@@ -531,7 +534,10 @@ mod tests {
             feed.set_status(FeedStatus::Loading).await;
         }
 
-        let error = subscription.recv().await.unwrap_err();
+        let error = match subscription.recv().await {
+            Err(error) => error,
+            Ok(_) => panic!("expected lag failure"),
+        };
         assert!(matches!(
             error,
             RunMarketFeedError::Lagged { missed_events, .. } if missed_events > 0

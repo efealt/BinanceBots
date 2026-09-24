@@ -263,6 +263,6 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version after failed migration");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
     }
 }
