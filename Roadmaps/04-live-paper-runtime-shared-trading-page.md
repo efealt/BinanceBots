@@ -191,7 +191,7 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 ### 4.8A — Automated parity + safety verification
 
 - [x] Feed the same synthetic completed-candle sequence through Backtest and Paper and compare decisions, intents, fills, accounting, and ordering.
-- [x] Verify start-at-mid-interval arming and previous-candle bootstrap.
+- [x] Verify start-at-mid-interval immediate bootstrap from the latest completed replay candle without pre-start execution leakage.
 - [x] Verify duplicate/out-of-order/stale/gap handling.
 - [x] Verify idempotent stop and snapshot/live-stream reconnect behavior.
 - [x] Verify every Phase 4 Live-mode start path is rejected server-side.
@@ -220,7 +220,22 @@ Remaining:
 
 **Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
 
-### 4.8C — Production smoke + visual acceptance
+### 4.8C — Live-Paper real-time execution adapter
+
+Detailed roadmap: `Roadmaps/04.8C-live-paper-realtime-execution-adapter.md`
+
+- [ ] Split historical Backtest execution from real-time Live-Paper execution without duplicating strategy code.
+- [ ] Deliver backend Binance trade events directly to running Live-Paper Runs.
+- [ ] Fill resting Live-Paper limit orders immediately on qualifying live trades under Touch / Trade Through rules.
+- [ ] Keep latency, partial fills, fees, and other Paper execution assumptions explicit rather than using candle close as an artificial delay.
+- [ ] Serialize live trade execution and completed-candle strategy decisions inside one deterministic Run state machine.
+- [ ] Update parity tests to compare shared strategy/intents/accounting rather than falsely requiring identical Backtest/Paper fill timing.
+- [ ] Preserve the frozen XAGUSDT Backtest regression unchanged.
+- [ ] Production-test an intrabar Touch and prove the fill persists before candle close.
+
+**Checkpoint:** Live-Paper is a real-time simulated execution environment using the same strategy code as Backtest, not a candle-based Backtest loop running live.
+
+### 4.8D — Production smoke + visual acceptance
 
 - [ ] Create and save an idle bot without starting a run.
 - [ ] Start at least two different Live-Paper bots and verify concurrent backend ownership and state isolation.

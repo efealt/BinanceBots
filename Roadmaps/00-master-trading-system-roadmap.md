@@ -100,9 +100,11 @@ The shared `Strategy` interface, portfolio/accounting, execution engine, Backtes
 
 Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
 
+Live-Paper execution correction roadmap: `Roadmaps/04.8C-live-paper-realtime-execution-adapter.md`
+
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
 
-Paper uses the same strategy interface, canonical run model, portfolio/order state model, and simulated-execution component already proven in Backtest. The main change is the clock/data source: historical replay becomes real-time market input.
+Paper uses the same strategy interface, canonical run model, order-intent contract, portfolio/accounting, and persistence model as Backtest, but **not the same market-execution adapter**. Backtest interprets historical bars/ticks; Live-Paper executes resting simulated orders from real-time Binance trade events. This separation prevents Live-Paper from inheriting historical candle-close limitations while preserving one strategy implementation.
 
 Phase 4 also creates one new authenticated **Trading** page that is designed from the beginning for both Paper and future Live execution. The page is shared rather than duplicated because Paper and Live need the same operational view: live price/candlestick data, active grid/order levels on the chart, fills, open orders, current position/inventory, cash/equity/PnL, exposure, fees, strategy parameters, run status/run ID, connection/feed status, event/order/fill logs, and start/stop controls.
 
