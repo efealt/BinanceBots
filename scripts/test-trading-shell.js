@@ -37,7 +37,16 @@ for (const required of [
   'id="trading-portfolio-realized"',
   'id="trading-portfolio-unrealized"',
   'id="trading-portfolio-fees"',
-  'id="trading-orders-body"',
+  'id="trading-buy-orders"',
+  'id="trading-sell-orders"',
+  'id="trading-buy-count"',
+  'id="trading-sell-count"',
+  'id="trading-activity-list"',
+  'id="trading-activity-load-older"',
+  'id="trading-audit-toggle"',
+  'id="trading-history-list"',
+  'id="trading-history-badge"',
+  'id="trading-detail-run-badge"',
   'id="trading-audit-body"',
   'id="trading-audit-load-all"',
   'data-mode-panel="paper"',
@@ -97,8 +106,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=14')) {
-  throw new Error("Trading page must load the Phase 4.8B preview-capable Bot workspace client");
+if (!trading.includes('/trading.js?v=15')) {
+  throw new Error("Trading page must load the Phase 5B lower-workspace client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -144,7 +153,15 @@ for (const required of [
   'syncChartFromMonitor(monitor)',
   'renderPortfolio(monitor)',
   'renderOpenOrders(monitor)',
-  'syncAuditFromMonitor(monitor)',
+  'syncRunActivityFromMonitor(monitor)',
+  'syncCanonicalAuditFromMonitor(monitor)',
+  'loadActivity(runId',
+  '"/api/trading/bots/" + botId + "/runs?limit=100"',
+  'async function inspectHistoricalRun(runId)',
+  'async function returnToCurrentBotDetails()',
+  'detailRunId()',
+  'trading-order-card',
+  'newest first',
   'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
   'LightweightCharts.createSeriesMarkers',
   'LightweightCharts.LineSeries',
@@ -153,7 +170,7 @@ for (const required of [
   'chart.series.createPriceLine',
   'subscribeCrosshairMove',
   'chart.updateCandle(toMarketChartCandle(normalized))',
-  'loadCompleteAudit(currentRunId)',
+  'loadCompleteAudit(runId)',
   'renderNoRun();',
   'fetch("/api/data/downloads"',
   'registeredMarketsBySymbol',
@@ -172,6 +189,10 @@ for (const required of [
   ".trading-page { display: grid; min-width: 0;",
   "grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.8fr);",
   ".trading-control-panel { min-width: 0;",
+  ".trading-order-columns {",
+  ".trading-portfolio-layout {",
+  ".trading-activity-list {",
+  ".trading-history-list {",
 ]) {
   if (!tradingCss.includes(required)) throw new Error("Trading responsive layout contract is missing: " + required);
 }

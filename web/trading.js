@@ -67,11 +67,24 @@ const portfolioUnrealized = document.querySelector("#trading-portfolio-unrealize
 const portfolioFees = document.querySelector("#trading-portfolio-fees");
 const portfolioMark = document.querySelector("#trading-portfolio-mark");
 const ordersBadge = document.querySelector("#trading-orders-badge");
-const ordersBody = document.querySelector("#trading-orders-body");
+const buyOrders = document.querySelector("#trading-buy-orders");
+const sellOrders = document.querySelector("#trading-sell-orders");
+const buyCount = document.querySelector("#trading-buy-count");
+const sellCount = document.querySelector("#trading-sell-count");
 const ordersStatus = document.querySelector("#trading-orders-status");
+const detailRunBadge = document.querySelector("#trading-detail-run-badge");
+const inspectionExitButton = document.querySelector("#trading-inspection-exit");
+const activityList = document.querySelector("#trading-activity-list");
+const activityStatus = document.querySelector("#trading-activity-status");
+const activityLoadOlderButton = document.querySelector("#trading-activity-load-older");
+const auditToggleButton = document.querySelector("#trading-audit-toggle");
+const canonicalAudit = document.querySelector("#trading-canonical-audit");
 const auditBody = document.querySelector("#trading-audit-body");
 const auditStatus = document.querySelector("#trading-audit-status");
 const auditLoadAllButton = document.querySelector("#trading-audit-load-all");
+const historyBadge = document.querySelector("#trading-history-badge");
+const historyList = document.querySelector("#trading-history-list");
+const historyStatus = document.querySelector("#trading-history-status");
 
 let stream = null;
 let reconnectTimer = null;
@@ -105,6 +118,23 @@ let auditFullMode = false;
 let auditRequestToken = 0;
 let auditRefreshInFlight = false;
 let auditLastRefreshAt = 0;
+let activityRunId = null;
+let activityItems = [];
+let activityTotal = 0;
+let activityCanonicalTotal = 0;
+let activitySuppressedEquity = 0;
+let activityHasMore = false;
+let activityOldestSequence = null;
+let activityRequestToken = 0;
+let activityRefreshInFlight = false;
+let activityLastRefreshAt = 0;
+let botHistoryRuns = [];
+let historyRequestToken = 0;
+let historyRefreshInFlight = false;
+let historyLastRefreshAt = 0;
+let inspectedRunId = null;
+let inspectedMonitor = null;
+let inspectionRequestToken = 0;
 let registeredMarketsBySymbol = new Map();
 let instrumentCatalogReady = false;
 let instrumentCatalogError = null;
@@ -671,8 +701,10 @@ function resetTradingChart(message = "Loading live market…") {
 }
 
 function selectedMarketStreamKey() {
-  const symbol = String(symbolInput.value || "").trim().toUpperCase();
-  const marketType = String(marketTypeInput.value || "").trim().toLowerCase();
+  const inspectionSymbol = inspectedMonitor?.market.symbol;
+  const inspectionMarket = inspectedMonitor?.market.marketType;
+  const symbol = String(inspectionSymbol || symbolInput.value || "").trim().toUpperCase();
+  const marketType = String(inspectionMarket || marketTypeInput.value || "").trim().toLowerCase();
   if (!symbol || !hasRegisteredInstrument(symbol, marketType)) return null;
   return { symbol, marketType, interval: "1m" };
 }
@@ -1011,7 +1043,7 @@ async function loadChartBootstrap(runId, quiet = false) {
     const chartUrl = activeAdapter.urls.chart(runId);
     if (!chartUrl) throw new Error(activeAdapter.label + " chart adapter is unavailable.");
     const payload = await fetchJson(chartUrl);
-    if (token !== chartBootstrapToken || currentRunId !== runId) return;
+    if (token !== chartBootstrapToken || detailRunId() !== runId) return;
     chartRunId = runId;
     if (!chartCandles.length) {
       for (const candle of payload.candles ?? []) upsertChartCandle(candle);
@@ -1028,7 +1060,7 @@ async function loadChartBootstrap(runId, quiet = false) {
     }
     renderTradingChart();
   } catch (error) {
-    if (token === chartBootstrapToken && currentRunId === runId) {
+    if (token === chartBootstrapToken && detailRunId() === runId) {
       setChartStatus("Could not load run overlays · " + error.message);
     }
   } finally {
@@ -1124,6 +1156,38 @@ function formatUtcTimestamp(timestamp) {
   return new Date(value).toISOString().replace("T", " ").replace("Z", "");
 }
 
+function setMetricTone(element, value) {
+  const number = numeric(value);
+  element.classList.remove("is-positive", "is-negative");
+  if (number === null || number === 0) return;
+  element.classList.add(number > 0 ? "is-positive" : "is-negative");
+}
+
+function detailRunId() {
+  return inspectedRunId ?? currentRunId;
+}
+
+function detailMonitor() {
+  return inspectedMonitor ?? currentMonitor;
+}
+
+function updateDetailRunContext(monitor = detailMonitor()) {
+  if (!monitor?.run.id) {
+    detailRunBadge.textContent = "No Run";
+    detailRunBadge.className = "badge badge--muted";
+    inspectionExitButton.hidden = true;
+    return;
+  }
+
+  const historical = inspectedRunId != null;
+  const status = humanize(monitor.run.runtimeStatus || monitor.run.canonicalStatus || (historical ? "historical" : "current"));
+  detailRunBadge.textContent = historical
+    ? ("History · Run #" + monitor.run.id + " · " + status)
+    : ("Current · Run #" + monitor.run.id + " · " + status);
+  detailRunBadge.className = "badge " + (historical ? "trading-history-inspection-badge" : "badge--muted");
+  inspectionExitButton.hidden = !historical;
+}
+
 function renderPortfolio(monitor) {
   const portfolio = monitor.portfolio;
   portfolioPosition.textContent = formatOperationalNumber(portfolio.positionQuantity);
@@ -1134,7 +1198,13 @@ function renderPortfolio(monitor) {
   portfolioUnrealized.textContent = formatOperationalNumber(portfolio.unrealizedPnl);
   portfolioFees.textContent = formatOperationalNumber(portfolio.feesPaid);
   portfolioMark.textContent = formatOperationalNumber(monitor.market.markPrice);
-  portfolioBadge.textContent = monitor.run.runtimeActive ? "Live snapshot" : "Persisted final";
+  portfolioBadge.textContent = inspectedRunId != null
+    ? "Historical final"
+    : (monitor.run.runtimeActive ? "Live snapshot" : "Persisted final");
+
+  setMetricTone(portfolioPosition, portfolio.positionQuantity);
+  setMetricTone(portfolioRealized, portfolio.realizedPnl);
+  setMetricTone(portfolioUnrealized, portfolio.unrealizedPnl);
 }
 
 function emptyTableRow(columnCount, message) {
@@ -1154,42 +1224,82 @@ function tableCell(value, className = "") {
   return cell;
 }
 
+function emptyOrderState(message) {
+  const empty = document.createElement("div");
+  empty.className = "trading-order-empty";
+  empty.textContent = message;
+  return empty;
+}
+
+function renderOrderCard(order) {
+  const card = document.createElement("article");
+  card.className = "trading-order-card trading-order-card--" + order.side;
+
+  const top = document.createElement("div");
+  top.className = "trading-order-card-top";
+  const orderId = document.createElement("strong");
+  orderId.textContent = "Order #" + order.id;
+  const age = document.createElement("span");
+  age.textContent = formatAge(order.submittedAtMs);
+  top.append(orderId, age);
+
+  const price = document.createElement("div");
+  price.className = "trading-order-price";
+  price.textContent = formatOperationalNumber(order.price);
+
+  const original = numeric(order.originalQuantity) ?? 0;
+  const filled = numeric(order.filledQuantity) ?? 0;
+  const remaining = numeric(order.remainingQuantity) ?? 0;
+  const fillPercent = original > 0 ? Math.min(100, Math.max(0, (filled / original) * 100)) : 0;
+  const state = filled > 0 ? ("Partial · " + fillPercent.toFixed(1) + "%") : "Resting";
+
+  const meta = document.createElement("div");
+  meta.className = "trading-order-card-meta";
+  meta.innerHTML =
+    "<span><small>Remaining</small><strong>" + formatOperationalNumber(remaining) + "</strong></span>"
+    + "<span><small>Original</small><strong>" + formatOperationalNumber(original) + "</strong></span>"
+    + "<span><small>Filled</small><strong>" + formatOperationalNumber(filled) + "</strong></span>";
+
+  const foot = document.createElement("div");
+  foot.className = "trading-order-card-foot";
+  const stateElement = document.createElement("span");
+  stateElement.textContent = state;
+  const typeElement = document.createElement("span");
+  typeElement.textContent = humanize(order.orderType || "limit");
+  foot.append(stateElement, typeElement);
+
+  card.append(top, price, meta, foot);
+  return card;
+}
+
 function renderOpenOrders(monitor) {
   const orders = [...monitor.orders].sort(
     (left, right) => (left.submittedAtMs ?? 0) - (right.submittedAtMs ?? 0)
   );
-  ordersBody.replaceChildren();
+  const buys = orders.filter((order) => order.side === "buy");
+  const sells = orders.filter((order) => order.side === "sell");
+
+  buyOrders.replaceChildren();
+  sellOrders.replaceChildren();
   ordersBadge.textContent = orders.length + " open";
+  buyCount.textContent = String(buys.length);
+  sellCount.textContent = String(sells.length);
 
-  if (!orders.length) {
-    ordersBody.appendChild(emptyTableRow(8, monitor.run.runtimeActive ? "No active orders." : "No open orders in this persisted terminal state."));
-    ordersStatus.textContent = monitor.run.runtimeActive
-      ? "Backend snapshot currently has no resting orders."
-      : "Terminal snapshot · no live orders.";
-    return;
+  if (buys.length) {
+    for (const order of buys) buyOrders.appendChild(renderOrderCard(order));
+  } else {
+    buyOrders.appendChild(emptyOrderState(monitor.run.runtimeActive ? "No resting BUY orders." : "No BUY orders in this persisted state."));
   }
 
-  for (const order of orders) {
-    const row = document.createElement("tr");
-    const side = order.side;
-    const original = order.originalQuantity;
-    const filled = order.filledQuantity;
-    const remaining = order.remainingQuantity;
-    const fillPercent = original > 0 ? Math.min(100, Math.max(0, (filled / original) * 100)) : 0;
-    const fillState = filled > 0 ? "Partial · " + fillPercent.toFixed(1) + "%" : "Resting";
-
-    row.appendChild(tableCell("#" + order.id));
-    row.appendChild(tableCell(humanize(side), "trading-side trading-side--" + side));
-    row.appendChild(tableCell(formatOperationalNumber(order.price)));
-    row.appendChild(tableCell(formatOperationalNumber(original)));
-    row.appendChild(tableCell(formatOperationalNumber(filled)));
-    row.appendChild(tableCell(formatOperationalNumber(remaining)));
-    row.appendChild(tableCell(fillState));
-    row.appendChild(tableCell(formatAge(order.submittedAtMs)));
-    ordersBody.appendChild(row);
+  if (sells.length) {
+    for (const order of sells) sellOrders.appendChild(renderOrderCard(order));
+  } else {
+    sellOrders.appendChild(emptyOrderState(monitor.run.runtimeActive ? "No resting SELL orders." : "No SELL orders in this persisted state."));
   }
 
-  ordersStatus.textContent = orders.length + " backend-owned open order" + (orders.length === 1 ? "" : "s") + " · updated " + formatUtcTimestamp(monitor.run.updatedAtMs) + " UTC";
+  ordersStatus.textContent = orders.length
+    ? (orders.length + " backend-owned open order" + (orders.length === 1 ? "" : "s") + " · updated " + formatUtcTimestamp(monitor.run.updatedAtMs) + " UTC")
+    : (monitor.run.runtimeActive ? "Backend snapshot currently has no resting orders." : "Historical/terminal snapshot · no live orders.");
 }
 
 function auditEventDetails(item) {
@@ -1206,10 +1316,143 @@ function auditEventDetails(item) {
   return parts.length ? parts.join(" · ") : "—";
 }
 
+function activityKindClass(item) {
+  const kind = String(item?.event?.event_kind ?? "").toLowerCase();
+  if (kind === "fill") return "is-fill";
+  if (kind === "order_state" || kind === "order_intent") return "is-order";
+  if (kind === "position") return "is-position";
+  if (kind === "run_status") return "is-status";
+  return "";
+}
+
+function renderActivity() {
+  activityList.replaceChildren();
+  if (!activityItems.length) {
+    const empty = document.createElement("div");
+    empty.className = "trading-activity-empty";
+    empty.textContent = activityRunId ? "No meaningful Run activity is persisted yet." : "No Run activity selected.";
+    activityList.appendChild(empty);
+  } else {
+    for (const item of activityItems) {
+      const event = item.event ?? {};
+      const row = document.createElement("article");
+      row.className = "trading-activity-item " + activityKindClass(item);
+
+      const stamp = document.createElement("div");
+      stamp.className = "trading-activity-stamp";
+      const time = document.createElement("strong");
+      time.textContent = formatUtcTimestamp(event.event_time_ms);
+      const seq = document.createElement("span");
+      seq.textContent = "Seq " + String(event.run_sequence ?? "—");
+      stamp.append(time, seq);
+
+      const action = document.createElement("div");
+      action.className = "trading-activity-action";
+      const label = document.createElement("strong");
+      label.textContent = humanize(item.label || event.event_kind || "event");
+      const details = document.createElement("span");
+      details.textContent = auditEventDetails(item);
+      action.append(label, details);
+      if (item.note) {
+        const note = document.createElement("small");
+        note.textContent = item.note;
+        action.appendChild(note);
+      }
+
+      row.append(stamp, action);
+      activityList.appendChild(row);
+    }
+  }
+
+  const hidden = activitySuppressedEquity;
+  activityStatus.textContent = activityRunId
+    ? ("Showing " + activityItems.length + " of " + activityTotal + " meaningful actions · newest first"
+      + (hidden ? (" · " + hidden + " repetitive Equity row" + (hidden === 1 ? "" : "s") + " hidden from this view") : "")
+      + ".")
+    : "Select a Run to load meaningful activity newest first.";
+  activityLoadOlderButton.disabled = !activityRunId || !activityHasMore || activityRefreshInFlight;
+  activityLoadOlderButton.textContent = activityHasMore ? "Load older" : "No older activity";
+  auditToggleButton.disabled = !activityRunId;
+}
+
+function resetActivity(message = "No Live-Paper Run selected.") {
+  activityRequestToken += 1;
+  activityRunId = null;
+  activityItems = [];
+  activityTotal = 0;
+  activityCanonicalTotal = 0;
+  activitySuppressedEquity = 0;
+  activityHasMore = false;
+  activityOldestSequence = null;
+  activityRefreshInFlight = false;
+  activityLastRefreshAt = 0;
+  activityList.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "trading-activity-empty";
+  empty.textContent = message;
+  activityList.appendChild(empty);
+  activityStatus.textContent = message;
+  activityLoadOlderButton.disabled = true;
+  activityLoadOlderButton.textContent = "Load older";
+  auditToggleButton.disabled = true;
+}
+
+async function loadActivity(runId, { older = false, quiet = false } = {}) {
+  if (!runId || activityRefreshInFlight) return;
+  const token = ++activityRequestToken;
+  activityRefreshInFlight = true;
+  if (!quiet) activityStatus.textContent = older ? "Loading older Run activity…" : ("Loading Run #" + runId + " activity…");
+  try {
+    const params = new URLSearchParams({ limit: "60" });
+    if (older && activityOldestSequence != null) params.set("before_sequence", String(activityOldestSequence));
+    const page = await fetchJson("/api/trading/runs/" + runId + "/activity?" + params.toString());
+    if (token !== activityRequestToken || detailRunId() !== runId) return;
+
+    const incoming = Array.isArray(page.activities) ? page.activities : [];
+    if (older && activityRunId === runId) {
+      const bySequence = new Map(activityItems.map((item) => [Number(item.event?.run_sequence), item]));
+      for (const item of incoming) bySequence.set(Number(item.event?.run_sequence), item);
+      activityItems = Array.from(bySequence.values()).sort(
+        (left, right) => Number(right.event?.run_sequence ?? 0) - Number(left.event?.run_sequence ?? 0)
+      );
+    } else {
+      activityItems = incoming;
+    }
+    activityRunId = runId;
+    activityTotal = Number(page.total_activities ?? activityItems.length);
+    activityCanonicalTotal = Number(page.total_canonical_events ?? activityTotal);
+    activitySuppressedEquity = Number(page.suppressed_equity_events ?? Math.max(0, activityCanonicalTotal - activityTotal));
+    activityHasMore = Boolean(page.has_more);
+    activityOldestSequence = page.oldest_sequence == null ? null : Number(page.oldest_sequence);
+    activityLastRefreshAt = Date.now();
+    renderActivity();
+  } catch (error) {
+    if (token === activityRequestToken && detailRunId() === runId) {
+      activityStatus.textContent = "Could not load Run activity · " + error.message;
+    }
+  } finally {
+    if (token === activityRequestToken) {
+      activityRefreshInFlight = false;
+      renderActivity();
+    }
+  }
+}
+
+function syncRunActivityFromMonitor(monitor) {
+  const runId = monitor?.run.id;
+  if (!runId || inspectedRunId != null || detailRunId() !== runId) return;
+  if (activityRunId !== runId) {
+    void loadActivity(runId);
+    return;
+  }
+  if (Date.now() - activityLastRefreshAt < 2000 || activityRefreshInFlight) return;
+  void loadActivity(runId, { quiet: true });
+}
+
 function renderAuditEvents() {
   auditBody.replaceChildren();
   if (!auditEvents.length) {
-    auditBody.appendChild(emptyTableRow(4, "No canonical events are persisted for this run yet."));
+    auditBody.appendChild(emptyTableRow(4, "No canonical events are persisted for this Run yet."));
   } else {
     for (const item of auditEvents) {
       const row = document.createElement("tr");
@@ -1231,13 +1474,13 @@ function renderAuditEvents() {
   }
 
   const shown = auditEvents.length;
-  const mode = auditFullMode ? "complete audit" : "latest canonical events";
+  const mode = auditFullMode ? "complete canonical audit" : "latest canonical events";
   auditStatus.textContent = "Showing " + shown + " of " + auditTotalEvents + " persisted events · " + mode + ".";
-  auditLoadAllButton.disabled = auditFullMode && !auditHasMore;
+  auditLoadAllButton.disabled = !auditRunId || (auditFullMode && !auditHasMore);
   auditLoadAllButton.textContent = auditFullMode && !auditHasMore ? "Complete audit loaded" : "Load complete audit";
 }
 
-function resetAudit(message = "No Live-Paper run selected.") {
+function resetAudit(message = "Canonical audit is available on demand.") {
   auditRequestToken += 1;
   auditRunId = null;
   auditEvents = [];
@@ -1247,6 +1490,8 @@ function resetAudit(message = "No Live-Paper run selected.") {
   auditFullMode = false;
   auditRefreshInFlight = false;
   auditLastRefreshAt = 0;
+  canonicalAudit.hidden = true;
+  auditToggleButton.textContent = "Canonical audit";
   auditBody.replaceChildren(emptyTableRow(4, message));
   auditStatus.textContent = message;
   auditLoadAllButton.disabled = true;
@@ -1261,7 +1506,7 @@ async function loadAuditTail(runId, quiet = false) {
     const auditUrl = activeAdapter.urls.auditTail(runId, 250);
     if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
     const page = await fetchJson(auditUrl);
-    if (token !== auditRequestToken || currentRunId !== runId) return;
+    if (token !== auditRequestToken || detailRunId() !== runId) return;
     auditRunId = runId;
     auditEvents = page.events ?? [];
     auditTotalEvents = Number(page.total_events ?? auditEvents.length);
@@ -1271,7 +1516,7 @@ async function loadAuditTail(runId, quiet = false) {
     auditLastRefreshAt = Date.now();
     renderAuditEvents();
   } catch (error) {
-    if (token === auditRequestToken && currentRunId === runId) {
+    if (token === auditRequestToken && detailRunId() === runId) {
       auditStatus.textContent = "Could not load canonical audit · " + error.message;
     }
   } finally {
@@ -1287,7 +1532,7 @@ async function appendNewAuditEvents(runId) {
     const auditUrl = activeAdapter.urls.auditAfter(runId, lastSequence, 500);
     if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
     const page = await fetchJson(auditUrl);
-    if (currentRunId !== runId || auditRunId !== runId) return;
+    if (detailRunId() !== runId || auditRunId !== runId) return;
     if (page.events?.length) {
       const bySequence = new Map(auditEvents.map((item) => [item.event.run_sequence, item]));
       for (const item of page.events) bySequence.set(item.event.run_sequence, item);
@@ -1319,7 +1564,7 @@ async function loadCompleteAudit(runId) {
       const auditUrl = activeAdapter.urls.auditAfter(runId, afterSequence, 500);
       if (!auditUrl) throw new Error(activeAdapter.label + " audit adapter is unavailable.");
       const page = await fetchJson(auditUrl);
-      if (token !== auditRequestToken || currentRunId !== runId) return;
+      if (token !== auditRequestToken || detailRunId() !== runId) return;
       all.push(...(page.events ?? []));
       total = Number(page.total_events ?? total);
       auditStatus.textContent = "Loading complete audit · " + all.length + " of " + total + " events…";
@@ -1339,7 +1584,7 @@ async function loadCompleteAudit(runId) {
     auditLastRefreshAt = Date.now();
     renderAuditEvents();
   } catch (error) {
-    if (token === auditRequestToken && currentRunId === runId) {
+    if (token === auditRequestToken && detailRunId() === runId) {
       auditStatus.textContent = "Could not load complete audit · " + error.message;
       auditLoadAllButton.disabled = false;
       auditLoadAllButton.textContent = "Load complete audit";
@@ -1349,19 +1594,207 @@ async function loadCompleteAudit(runId) {
   }
 }
 
-function syncAuditFromMonitor(monitor) {
+function syncCanonicalAuditFromMonitor(monitor) {
+  if (canonicalAudit.hidden) return;
   const runId = monitor?.run.id;
-  if (!runId) return;
+  if (!runId || inspectedRunId != null || detailRunId() !== runId) return;
   if (auditRunId !== runId) {
     void loadAuditTail(runId);
     return;
   }
   if (Date.now() - auditLastRefreshAt < 2000 || auditRefreshInFlight) return;
-  if (auditFullMode) {
-    void appendNewAuditEvents(runId);
-  } else {
-    void loadAuditTail(runId, true);
+  if (auditFullMode) void appendNewAuditEvents(runId);
+  else void loadAuditTail(runId, true);
+}
+
+function resetBotHistory(message = "Select a saved Bot to load its Run history.") {
+  historyRequestToken += 1;
+  botHistoryRuns = [];
+  historyRefreshInFlight = false;
+  historyLastRefreshAt = 0;
+  historyBadge.textContent = "0 Runs";
+  historyList.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "trading-history-empty";
+  empty.textContent = message;
+  historyList.appendChild(empty);
+  historyStatus.textContent = "Newest Run appears first. Historical selection is inspection-only.";
+}
+
+function historyMetric(label, value) {
+  const span = document.createElement("span");
+  const small = document.createElement("small");
+  small.textContent = label;
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  span.append(small, strong);
+  return span;
+}
+
+function renderBotHistory() {
+  historyList.replaceChildren();
+  historyBadge.textContent = botHistoryRuns.length + " Run" + (botHistoryRuns.length === 1 ? "" : "s");
+
+  if (!selectedBotId) {
+    const empty = document.createElement("div");
+    empty.className = "trading-history-empty";
+    empty.textContent = "Select a saved Bot to load its Run history.";
+    historyList.appendChild(empty);
+    historyStatus.textContent = "No persisted Bot selected.";
+    return;
   }
+
+  if (!botHistoryRuns.length) {
+    const empty = document.createElement("div");
+    empty.className = "trading-history-empty";
+    empty.textContent = "This Bot has no Runs yet.";
+    historyList.appendChild(empty);
+    historyStatus.textContent = "Saving a Bot does not create a Run.";
+    return;
+  }
+
+  for (const run of botHistoryRuns) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "trading-history-card";
+    const isCurrent = Boolean(run.runtime_active) && Number(run.run_id) === Number(currentRunId);
+    const isInspected = Number(run.run_id) === Number(inspectedRunId);
+    button.classList.toggle("is-current", isCurrent);
+    button.classList.toggle("is-inspected", isInspected);
+    button.setAttribute("aria-pressed", String(isCurrent ? inspectedRunId == null : isInspected));
+
+    const top = document.createElement("div");
+    top.className = "trading-history-card-top";
+    const title = document.createElement("strong");
+    title.textContent = "Run #" + run.run_id;
+    const status = document.createElement("span");
+    status.className = "trading-history-card-status";
+    const state = humanize(run.runtime_status || run.canonical_status);
+    status.textContent = run.runtime_active ? ("Current · " + state) : state;
+    top.append(title, status);
+
+    const meta = document.createElement("div");
+    meta.className = "trading-history-card-meta";
+    meta.textContent = (run.symbol || selectedBot?.config?.symbol || "—")
+      + " · " + (run.replay_interval || "—")
+      + " · " + formatUtcTimestamp(run.created_at_ms) + " UTC";
+
+    const metrics = document.createElement("div");
+    metrics.className = "trading-history-card-metrics";
+    metrics.append(
+      historyMetric("Fills", String(run.fill_count ?? 0)),
+      historyMetric("Position", formatOperationalNumber(run.ending_position)),
+      historyMetric("Realized", formatOperationalNumber(run.realized_pnl)),
+      historyMetric("Equity", formatOperationalNumber(run.latest_equity))
+    );
+
+    const action = document.createElement("span");
+    action.className = "trading-history-card-action";
+    action.textContent = isCurrent ? "View current Run" : (isInspected ? "Inspecting" : "Inspect Run");
+
+    button.append(top, meta, metrics, action);
+    button.addEventListener("click", () => {
+      if (isCurrent) void returnToCurrentBotDetails();
+      else void inspectHistoricalRun(Number(run.run_id));
+    });
+    historyList.appendChild(button);
+  }
+
+  historyStatus.textContent = "Newest Run first · history is read-only and never starts/stops execution.";
+}
+
+async function loadBotHistory(botId, quiet = false) {
+  if (!botId || historyRefreshInFlight) return;
+  const token = ++historyRequestToken;
+  historyRefreshInFlight = true;
+  if (!quiet) historyStatus.textContent = "Loading Bot #" + botId + " Run history…";
+  try {
+    const payload = await fetchJson("/api/trading/bots/" + botId + "/runs?limit=100");
+    if (token !== historyRequestToken || Number(selectedBotId) !== Number(botId)) return;
+    botHistoryRuns = Array.isArray(payload?.runs) ? payload.runs : [];
+    historyLastRefreshAt = Date.now();
+    renderBotHistory();
+  } catch (error) {
+    if (token === historyRequestToken && Number(selectedBotId) === Number(botId)) {
+      historyStatus.textContent = "Could not load Bot history · " + error.message;
+    }
+  } finally {
+    if (token === historyRequestToken) historyRefreshInFlight = false;
+  }
+}
+
+function syncBotHistoryFromMonitor() {
+  if (!selectedBotId || historyRefreshInFlight) return;
+  if (Date.now() - historyLastRefreshAt < 10000) return;
+  void loadBotHistory(selectedBotId, true);
+}
+
+function clearInspectionState() {
+  inspectionRequestToken += 1;
+  inspectedRunId = null;
+  inspectedMonitor = null;
+  updateDetailRunContext();
+}
+
+async function inspectHistoricalRun(runId) {
+  if (!selectedBotId || !Number.isInteger(runId) || runId <= 0) return;
+  const summary = botHistoryRuns.find((run) => Number(run.run_id) === runId);
+  if (!summary || Number(summary.bot_id) !== Number(selectedBotId)) return;
+  if (summary.runtime_active && Number(currentRunId) === runId) {
+    await returnToCurrentBotDetails();
+    return;
+  }
+
+  const token = ++inspectionRequestToken;
+  activityStatus.textContent = "Loading historical Run #" + runId + "…";
+  try {
+    const snapshotUrl = activeAdapter.urls.snapshot(runId);
+    if (!snapshotUrl) throw new Error(activeAdapter.label + " snapshot adapter is unavailable.");
+    const snapshot = await fetchJson(snapshotUrl);
+    if (token !== inspectionRequestToken || Number(selectedBotId) !== Number(summary.bot_id)) return;
+    const monitor = TradingContract.normalizeSnapshot(snapshot);
+    if (Number(monitor.run.botId) !== Number(selectedBotId)) {
+      throw new Error("Historical Run does not belong to the selected Bot.");
+    }
+
+    inspectedRunId = runId;
+    inspectedMonitor = monitor;
+    resetAudit("Canonical audit is available on demand for historical Run #" + runId + ".");
+    resetActivity("Loading historical Run #" + runId + " activity…");
+    updateDetailRunContext(monitor);
+    renderPortfolio(monitor);
+    renderOpenOrders(monitor);
+    resetRunChartState("Loading historical Run #" + runId + " overlays on the live market chart…");
+    syncMarketStreamToSelection(true);
+    void loadChartBootstrap(runId);
+    void loadActivity(runId);
+    renderBotHistory();
+  } catch (error) {
+    if (token === inspectionRequestToken) {
+      activityStatus.textContent = "Could not inspect historical Run #" + runId + " · " + error.message;
+    }
+  }
+}
+
+async function returnToCurrentBotDetails() {
+  clearInspectionState();
+  resetAudit();
+  resetActivity("Loading current Bot state…");
+  syncMarketStreamToSelection(true);
+  renderBotHistory();
+
+  if (currentMonitor?.run.runtimeActive && currentRunId) {
+    resetRunChartState("Restoring current Run #" + currentRunId + " overlays…");
+    renderPortfolio(currentMonitor);
+    renderOpenOrders(currentMonitor);
+    updateDetailRunContext(currentMonitor);
+    syncChartFromMonitor(currentMonitor);
+    void loadActivity(currentRunId);
+    return;
+  }
+
+  renderIdleBotWorkspace();
+  renderBotHistory();
 }
 
 function showControlError(message) {
@@ -1568,6 +2001,8 @@ async function selectBot(botId) {
   const bot = tradingBots.find((candidate) => Number(candidate.bot_id) === Number(botId));
   if (!bot) return;
   clearPreview(false);
+  clearInspectionState();
+  resetBotHistory("Loading Bot #" + bot.bot_id + " Run history…");
   const token = ++botSelectionToken;
   const activeRun = activeRunForBot(bot.bot_id);
 
@@ -1579,6 +2014,7 @@ async function selectBot(botId) {
   selectedBotBaseline = botFormFingerprint();
   showControlError("");
   renderBotStrip();
+  void loadBotHistory(bot.bot_id);
 
   if (!activeRun) {
     renderIdleBotWorkspace();
@@ -1621,6 +2057,8 @@ async function selectBot(botId) {
 
 function openNewBotDraft() {
   clearPreview(false);
+  clearInspectionState();
+  resetBotHistory();
   botSelectionToken += 1;
   closeStream();
   selectedBotId = null;
@@ -1660,6 +2098,7 @@ async function persistCurrentBotFromForm() {
   renderBotStrip();
   renderSelectedBotContext();
   setConfigLocked(false);
+  void loadBotHistory(bot.bot_id);
   return bot;
 }
 
@@ -1730,11 +2169,17 @@ function renderNoRun() {
   portfolioBadge.textContent = "No active run";
   for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
     element.textContent = "—";
+    element.classList.remove("is-positive", "is-negative");
   }
   ordersBadge.textContent = "0 open";
-  ordersBody.replaceChildren(emptyTableRow(8, "No active Live-Paper run."));
+  buyCount.textContent = "0";
+  sellCount.textContent = "0";
+  buyOrders.replaceChildren(emptyOrderState("No active BUY orders."));
+  sellOrders.replaceChildren(emptyOrderState("No active SELL orders."));
   ordersStatus.textContent = "No active Live-Paper run.";
-  resetAudit("No active Live-Paper run for the selected Bot.");
+  resetActivity("No active Live-Paper Run for the selected Bot.");
+  resetAudit("Canonical audit is available after selecting a Run.");
+  updateDetailRunContext(null);
 }
 
 function renderSnapshot(snapshot) {
@@ -1749,6 +2194,7 @@ function renderSnapshot(snapshot) {
     renderIdleBotWorkspace("Run #" + terminalRunId + " is " + terminalStatus + ". The Bot remains saved and idle.");
     setConnection("connected", "Bot #" + (selectedBotId ?? "—") + " idle · Run #" + terminalRunId + " " + terminalStatus);
     renderBotStrip();
+    if (selectedBotId) void loadBotHistory(selectedBotId, true);
     return;
   }
   setTradingMode(monitor.run.mode);
@@ -1778,10 +2224,15 @@ function renderSnapshot(snapshot) {
     : (activeAdapter.locked
       ? activeAdapter.lockReason
       : "Loaded persisted Run #" + monitor.run.id + ". " + activeAdapter.label + " setup is editable for the next run."));
-  syncChartFromMonitor(monitor);
-  renderPortfolio(monitor);
-  renderOpenOrders(monitor);
-  syncAuditFromMonitor(monitor);
+  if (inspectedRunId == null) {
+    syncChartFromMonitor(monitor);
+    renderPortfolio(monitor);
+    renderOpenOrders(monitor);
+    updateDetailRunContext(monitor);
+    syncRunActivityFromMonitor(monitor);
+    syncCanonicalAuditFromMonitor(monitor);
+  }
+  syncBotHistoryFromMonitor();
 
   const runtimeState = monitor.market.feedStatus || "loading";
   setDot(topDot, runtimeState === "live" ? "live" : runtimeState);
@@ -1893,6 +2344,7 @@ newBotButton.addEventListener("click", openNewBotDraft);
 saveBotButton.addEventListener("click", () => void saveCurrentBot());
 previewButton.addEventListener("click", async () => {
   if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
+  if (inspectedRunId != null) await returnToCurrentBotDetails();
   showControlError("");
   const requestToken = ++previewRequestToken;
   const fingerprint = previewConfigFingerprint();
@@ -1938,6 +2390,7 @@ liveModeButton.addEventListener("click", () => {
 tradingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (currentMonitor?.run.runtimeActive || activeAdapter.locked) return;
+  if (inspectedRunId != null) await returnToCurrentBotDetails();
   showControlError("");
   try {
     const wasDraft = botDraftMode || !selectedBotId;
@@ -1967,6 +2420,7 @@ tradingForm.addEventListener("submit", async (event) => {
     updateRunSummaryFromSnapshot(snapshot);
     renderSnapshot(snapshot);
     renderBotStrip();
+    void loadBotHistory(selectedBotId, true);
     setConnection("connected", "Bot #" + selectedBotId + " · Run #" + snapshot.run_id + " created");
     connectStream(snapshot.run_id);
   } catch (error) {
@@ -1976,8 +2430,26 @@ tradingForm.addEventListener("submit", async (event) => {
   }
 });
 
+activityLoadOlderButton.addEventListener("click", () => {
+  const runId = detailRunId();
+  if (runId) void loadActivity(runId, { older: true });
+});
+
+auditToggleButton.addEventListener("click", () => {
+  const runId = detailRunId();
+  if (!runId) return;
+  canonicalAudit.hidden = !canonicalAudit.hidden;
+  auditToggleButton.textContent = canonicalAudit.hidden ? "Canonical audit" : "Hide canonical audit";
+  if (!canonicalAudit.hidden && auditRunId !== runId) void loadAuditTail(runId);
+});
+
 auditLoadAllButton.addEventListener("click", () => {
-  if (currentRunId) void loadCompleteAudit(currentRunId);
+  const runId = detailRunId();
+  if (runId) void loadCompleteAudit(runId);
+});
+
+inspectionExitButton.addEventListener("click", () => {
+  void returnToCurrentBotDetails();
 });
 
 stopButton.addEventListener("click", async () => {
@@ -1992,8 +2464,10 @@ stopButton.addEventListener("click", async () => {
     const stoppedRunId = snapshot.run_id;
     closeStream();
     updateRunSummaryFromSnapshot(snapshot);
+    clearInspectionState();
     renderBotStrip();
     renderIdleBotWorkspace("Run #" + stoppedRunId + " stopped. Bot #" + selectedBotId + " remains saved and idle.");
+    void loadBotHistory(selectedBotId, true);
     setConnection("connected", "Bot #" + selectedBotId + " idle · Run #" + stoppedRunId + " stopped");
   } catch (error) {
     showControlError(error.message);

@@ -475,6 +475,23 @@ The lower Trading workspace now has dedicated read-only backend contracts for hi
 - Tests prove Bot-history isolation and ordering, per-Run summary ownership, newest-first activity filtering, Equity-noise suppression, and canonical audit non-mutation.
 
 
+## Phase 4.8B Phase 5B — Lower Trading workspace
+
+The accepted upper Trading workflow remains unchanged: Bot strip, Live-Paper configuration/controls, and Shared market monitor continue to own Bot selection, execution control, and the live chart.
+
+The lower workspace is now presentation-oriented while staying faithful to canonical backend state:
+
+- **Portfolio monitor** is compact: signed inventory and equity are primary, with realized/unrealized PnL, fees, exposure, cash, and mark price grouped in smaller metrics.
+- **Open orders** are split into BUY-left / SELL-right execution columns on desktop and stack vertically on narrow screens. Every backend order remains a distinct card with Order ID, price, remaining/original/filled quantity, state, and age.
+- **Run activity** is the default execution record view. It consumes the Phase 5A newest-first meaningful-activity endpoint, so fills/orders/positions/lifecycle events are immediately visible while repetitive Equity heartbeat events are counted but suppressed from the default list.
+- The **canonical audit** remains available on demand in the same workspace, including a complete-audit loader. No canonical data is rewritten or hidden from explicit inspection.
+- **Bot history** shows Runs newest first with active/current vs terminal status and compact persisted result summaries. Historical selection is read-only.
+- Historical inspection uses separate browser detail state from the active runtime state. If the Bot is currently running, its WebSocket and backend ownership continue unaffected while the lower panels and chart overlays inspect an older Run. Returning to the current Bot restores the active Run details.
+- The market chart remains live during historical inspection and follows the inspected Run's symbol/market when that differs from the Bot's current saved configuration; the saved configuration itself is never mutated by inspection.
+- Lower panels use responsive `minmax(0,...)` grids and stack on narrow screens; the redesign introduces no page-level horizontal scrolling.
+- Console remains untouched in Phase 5B; its lightweight real-Bot monitoring conversion is Phase 6.
+
+
 ## UI
 
 - **Console** — current bot-console UI shell.

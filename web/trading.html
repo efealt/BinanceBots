@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-12" />
+    <link rel="stylesheet" href="/styles.css?v=trading-13" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -277,15 +277,25 @@
             <span id="trading-portfolio-badge" class="badge badge--muted">Snapshot</span>
           </div>
 
-          <div class="backtest-kpi-grid trading-portfolio-grid">
-            <div class="backtest-kpi"><span>Position / inventory</span><strong id="trading-portfolio-position">—</strong></div>
-            <div class="backtest-kpi"><span>Cash</span><strong id="trading-portfolio-cash">—</strong></div>
-            <div class="backtest-kpi"><span>Equity</span><strong id="trading-portfolio-equity">—</strong></div>
-            <div class="backtest-kpi"><span>Exposure</span><strong id="trading-portfolio-exposure">—</strong></div>
-            <div class="backtest-kpi"><span>Realized PnL</span><strong id="trading-portfolio-realized">—</strong></div>
-            <div class="backtest-kpi"><span>Unrealized PnL</span><strong id="trading-portfolio-unrealized">—</strong></div>
-            <div class="backtest-kpi"><span>Fees paid</span><strong id="trading-portfolio-fees">—</strong></div>
-            <div class="backtest-kpi"><span>Mark price</span><strong id="trading-portfolio-mark">—</strong></div>
+          <div class="trading-portfolio-layout">
+            <div class="trading-portfolio-hero">
+              <span>Position / inventory</span>
+              <strong id="trading-portfolio-position">—</strong>
+              <small>Current signed quantity</small>
+            </div>
+            <div class="trading-portfolio-hero">
+              <span>Equity</span>
+              <strong id="trading-portfolio-equity">—</strong>
+              <small>Cash + marked position</small>
+            </div>
+            <div class="trading-portfolio-metrics">
+              <div class="trading-portfolio-metric"><span>Realized PnL</span><strong id="trading-portfolio-realized">—</strong></div>
+              <div class="trading-portfolio-metric"><span>Unrealized PnL</span><strong id="trading-portfolio-unrealized">—</strong></div>
+              <div class="trading-portfolio-metric"><span>Fees paid</span><strong id="trading-portfolio-fees">—</strong></div>
+              <div class="trading-portfolio-metric"><span>Exposure</span><strong id="trading-portfolio-exposure">—</strong></div>
+              <div class="trading-portfolio-metric"><span>Cash</span><strong id="trading-portfolio-cash">—</strong></div>
+              <div class="trading-portfolio-metric"><span>Mark price</span><strong id="trading-portfolio-mark">—</strong></div>
+            </div>
           </div>
         </section>
 
@@ -298,53 +308,94 @@
             <span id="trading-orders-badge" class="badge badge--muted">0 open</span>
           </div>
 
-          <div class="table-wrap trading-table-wrap">
-            <table class="run-table trading-orders-table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Side</th>
-                  <th>Price</th>
-                  <th>Original qty</th>
-                  <th>Filled</th>
-                  <th>Remaining</th>
-                  <th>Fill state</th>
-                  <th>Age</th>
-                </tr>
-              </thead>
-              <tbody id="trading-orders-body">
-                <tr><td class="empty-row" colspan="8">No active Live-Paper orders.</td></tr>
-              </tbody>
-            </table>
+          <div class="trading-order-columns">
+            <section class="trading-order-side trading-order-side--buy" aria-labelledby="trading-buy-orders-heading">
+              <div class="trading-order-side-heading">
+                <div>
+                  <span class="trading-order-side-kicker">Bid side</span>
+                  <h3 id="trading-buy-orders-heading">BUY</h3>
+                </div>
+                <span id="trading-buy-count" class="badge badge--muted">0</span>
+              </div>
+              <div id="trading-buy-orders" class="trading-order-list">
+                <div class="trading-order-empty">No BUY orders.</div>
+              </div>
+            </section>
+
+            <section class="trading-order-side trading-order-side--sell" aria-labelledby="trading-sell-orders-heading">
+              <div class="trading-order-side-heading">
+                <div>
+                  <span class="trading-order-side-kicker">Ask side</span>
+                  <h3 id="trading-sell-orders-heading">SELL</h3>
+                </div>
+                <span id="trading-sell-count" class="badge badge--muted">0</span>
+              </div>
+              <div id="trading-sell-orders" class="trading-order-list">
+                <div class="trading-order-empty">No SELL orders.</div>
+              </div>
+            </section>
           </div>
           <p id="trading-orders-status" class="panel-note trading-table-status">Waiting for Live-Paper snapshot.</p>
         </section>
 
-        <section class="panel trading-audit-panel" aria-labelledby="trading-audit-heading">
-          <div class="panel-heading trading-audit-heading">
+        <section class="panel trading-audit-panel trading-activity-panel" aria-labelledby="trading-activity-heading">
+          <div class="panel-heading trading-activity-heading">
             <div>
-              <p class="eyebrow">Canonical run record</p>
-              <h2 id="trading-audit-heading">Event and fill audit</h2>
+              <p class="eyebrow">Run activity</p>
+              <h2 id="trading-activity-heading">Latest meaningful actions</h2>
             </div>
-            <button id="trading-audit-load-all" class="button button--secondary" type="button">Load complete audit</button>
+            <div class="trading-activity-actions">
+              <span id="trading-detail-run-badge" class="badge badge--muted">No Run</span>
+              <button id="trading-inspection-exit" class="button button--secondary" type="button" hidden>Back to current Bot</button>
+              <button id="trading-activity-load-older" class="button button--secondary" type="button" disabled>Load older</button>
+              <button id="trading-audit-toggle" class="button button--secondary" type="button" disabled>Canonical audit</button>
+            </div>
           </div>
 
-          <div class="table-wrap trading-table-wrap trading-audit-table-wrap">
-            <table class="run-table trading-audit-table">
-              <thead>
-                <tr>
-                  <th>Seq</th>
-                  <th>Event time · UTC</th>
-                  <th>Event</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody id="trading-audit-body">
-                <tr><td class="empty-row" colspan="4">No canonical events loaded.</td></tr>
-              </tbody>
-            </table>
+          <div id="trading-activity-list" class="trading-activity-list" aria-live="polite">
+            <div class="trading-activity-empty">No Run activity selected.</div>
           </div>
-          <p id="trading-audit-status" class="panel-note trading-table-status">The latest canonical events load automatically. Use “Load complete audit” to retrieve every persisted event.</p>
+          <p id="trading-activity-status" class="panel-note trading-table-status">Select a Run to load meaningful activity newest first.</p>
+
+          <div id="trading-canonical-audit" class="trading-canonical-audit" hidden>
+            <div class="trading-canonical-heading">
+              <div>
+                <span class="trading-order-side-kicker">Complete source of truth</span>
+                <h3>Canonical event and fill audit</h3>
+              </div>
+              <button id="trading-audit-load-all" class="button button--secondary" type="button" disabled>Load complete audit</button>
+            </div>
+            <div class="table-wrap trading-table-wrap trading-audit-table-wrap">
+              <table class="run-table trading-audit-table">
+                <thead>
+                  <tr>
+                    <th>Seq</th>
+                    <th>Event time · UTC</th>
+                    <th>Event</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="trading-audit-body">
+                  <tr><td class="empty-row" colspan="4">Canonical audit is available on demand.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p id="trading-audit-status" class="panel-note trading-table-status">Canonical events are preserved unchanged and load only when requested.</p>
+          </div>
+        </section>
+
+        <section class="panel trading-history-panel" aria-labelledby="trading-history-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Bot history</p>
+              <h2 id="trading-history-heading">Runs for selected Bot</h2>
+            </div>
+            <span id="trading-history-badge" class="badge badge--muted">0 Runs</span>
+          </div>
+          <div id="trading-history-list" class="trading-history-list" aria-live="polite">
+            <div class="trading-history-empty">Select a saved Bot to load its Run history.</div>
+          </div>
+          <p id="trading-history-status" class="panel-note trading-table-status">Newest Run appears first. Historical selection is inspection-only.</p>
         </section>
 
         <section class="panel trading-context-panel">
@@ -383,6 +434,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=2"></script>
-    <script src="/trading.js?v=14"></script>
+    <script src="/trading.js?v=15"></script>
   </body>
 </html>
