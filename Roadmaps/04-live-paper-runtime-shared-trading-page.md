@@ -12,7 +12,7 @@ Run the same strategy engine against **real-time Binance public market data** in
 
 Phase 4 also creates the permanent **Trading** page used by both Paper and future Live mode. In this phase, Paper is fully operational and Live is visible but locked.
 
-The browser is an operator/monitor only. The Paper runtime belongs to the backend and continues when the browser is closed.
+The browser is an operator/monitor only. The Live-Paper runtime belongs to the backend and continues when the browser is closed.
 
 ## Non-negotiable rules
 
@@ -27,7 +27,7 @@ The browser is an operator/monitor only. The Paper runtime belongs to the backen
 
 ---
 
-## 4.1 — Paper runtime contract
+## 4.1 — Live-Paper runtime contract
 
 Build the runtime foundation before building the page.
 
@@ -36,7 +36,7 @@ Build the runtime foundation before building the page.
 - [x] Define explicit Paper lifecycle states using the canonical run lifecycle: created → running → completed/stopped/failed.
 - [x] Keep runtime state isolated per run so the architecture does not depend on one global bot, even if UI/resource policy initially limits active runs.
 
-**Checkpoint:** A Paper run has a clear backend lifecycle and uses the same core trading contracts as Backtest.
+**Checkpoint:** A Live-Paper run has a clear backend lifecycle and uses the same core trading contracts as Backtest.
 
 ---
 
@@ -46,7 +46,7 @@ Make the market clock deterministic before strategy execution is enabled.
 
 - [x] Feed Paper from the existing backend Binance public market-data path, never from browser-delivered data.
 - [x] Use completed 1-minute market candles as the base stream and aggregate them in UTC to the configured 1m / 1h / 1d Paper interval using the same bucket rules as Backtest.
-- [x] Start a new Paper run on a clean replay boundary. If started during an incomplete interval, enter an **arming** state and begin at the next full interval rather than treating a partial candle as a complete historical candle.
+- [x] Start a new Live-Paper run on a clean replay boundary. If started during an incomplete interval, enter an **arming** state and begin at the next full interval rather than treating a partial candle as a complete historical candle.
 - [x] Bootstrap the immediately previous completed replay candle before `on_start` so previous-close strategies have the same information contract as Backtest.
 - [x] Detect duplicate, out-of-order, stale, and missing candles before they reach the strategy.
 
@@ -88,9 +88,9 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 - [x] Make **Stop** idempotent.
 - [x] Persist the terminal `stopped` state and stop reason.
 - [x] Guarantee no further strategy decisions or fills after stop.
-- [x] Confirm browser disconnect/logout does not stop a backend Paper run.
+- [x] Confirm browser disconnect/logout does not stop a backend Live-Paper run.
 
-**Checkpoint:** A Paper run is backend-owned and stops exactly once when explicitly requested.
+**Checkpoint:** A Live-Paper run is backend-owned and stops exactly once when explicitly requested.
 
 ### 4.4B — Feed reconnect + gap integrity
 
@@ -98,11 +98,11 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 - [x] Reject/fail on an unrecoverable missing completed interval rather than silently backfilling it as real-time Paper.
 - [x] Persist the failure reason for later Paper-vs-Backtest analysis.
 
-**Checkpoint:** A Paper run never crosses an unknown market-data gap silently.
+**Checkpoint:** A Live-Paper run never crosses an unknown market-data gap silently.
 
 ### 4.4C — Service restart handling
 
-- [x] Detect Paper runs that were `created` or `running` when the service restarts.
+- [x] Detect Live-Paper runs that were `created` or `running` when the service restarts.
 - [x] Recover only when chronology can be proven safe; otherwise terminate the interrupted run explicitly.
 - [x] Persist the restart/interruption reason.
 
@@ -114,7 +114,7 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.5A — Control endpoints + Live lock
 
-- [x] Add authenticated endpoints to create/start, stop, inspect, and list Paper runs.
+- [x] Add authenticated endpoints to create/start, stop, inspect, and list Live-Paper runs.
 - [x] Reject every `mode=live` start/control path server-side in Phase 4.
 
 **Checkpoint:** Paper can be controlled through authenticated backend APIs and Live cannot be started.
@@ -149,12 +149,12 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 ### 4.6B — Configuration + run controls
 
-- [x] Expose the current strategy parameters and Paper execution assumptions.
+- [x] Expose the current strategy parameters and Live-Paper execution assumptions.
 - [x] Add **Start Paper** and **Stop** controls.
 - [x] Lock configuration while a run is active.
 - [x] Prevent mode changes while a run is active.
 
-**Checkpoint:** A Paper run can be safely configured and controlled from the page.
+**Checkpoint:** A Live-Paper run can be safely configured and controlled from the page.
 
 ### 4.6C — Live chart + order/fill overlays
 
@@ -211,17 +211,17 @@ Foundation already complete:
 Remaining:
 - [ ] Add persistent Bot identity + saved configuration above the existing Run model.
 - [ ] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
-- [ ] Make Paper execution bot-aware and support multiple different Paper bots concurrently.
+- [ ] Make Live-Paper execution bot-aware and support multiple different Live-Paper bots concurrently.
 - [ ] Add backend-derived **Show on graph** preview for the selected/new bot.
 - [ ] Add Bot history, clear Run activity terminology, and compact the remaining workspace layout.
 - [ ] Complete integrated multi-bot production acceptance.
 
-**Checkpoint:** Trading is the persistent operational home for saved bots and their forward Paper runs. Live execution remains locked until its later phase.
+**Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
 
 ### 4.8C — Production smoke + visual acceptance
 
 - [ ] Create and save an idle bot without starting a run.
-- [ ] Start at least two different Paper bots and verify concurrent backend ownership and state isolation.
+- [ ] Start at least two different Live-Paper bots and verify concurrent backend ownership and state isolation.
 - [ ] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, run activity, and Bot history.
 - [ ] Close/reopen the page and verify all running bots continue and restore correctly.
 - [ ] Stop/restart a bot and verify separate immutable run IDs remain under the same Bot history.

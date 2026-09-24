@@ -16,6 +16,11 @@
 - ChatGPT Chat with connected GitHub and Render access is the primary coding and maintenance agent: it reads the repository instructions, edits GitHub directly, documents behavior, and diagnoses the deployed system through authenticated application access plus Render deployment/runtime logs.
 - Local Codex/desktop tooling is optional support for tasks that specifically require the user's machine; it is not the default or required path for routine repository development.
 - We co-create strategies. Do not change strategy rules or live-trading behavior without agreement.
+- Trading terminology is strict and must never use the word **Live** alone when execution mode could be ambiguous:
+  - **Live-Paper** = real-time Binance market data with simulated orders/fills; no real account orders.
+  - **Live-Real-Account** = real Binance account execution through the private API with real orders/funds.
+  - **Backtest** = historical replay on stored data, separate from both Live-Paper and Live-Real-Account.
+  Use these exact terms in roadmap text, UI copy, status labels, documentation, and discussion whenever execution mode is described.
 - This is a private production project for a live account, not a demo or throwaway MVP. Move quickly while keeping order handling, risk controls, recovery, and observability explicit.
 - Every explicitly requested feature must be implemented as production-ready code for the current architecture and live-account use. Do not intentionally deliver a basic, temporary, first-version, MVP, or deferred implementation unless the user explicitly requests that scope. Required correctness, performance, reliability, security, validation, and integration belong in the requested feature now.
 - Never silently sample, truncate, simplify, mock, or downgrade a requested feature for speed. Do not replace the requested result with a preview, placeholder, or smaller approximation.
