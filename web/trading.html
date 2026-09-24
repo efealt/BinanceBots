@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-5" />
+    <link rel="stylesheet" href="/styles.css?v=trading-6" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -40,11 +40,33 @@
 
       <main class="trading-page">
         <section class="trading-mode-header" aria-labelledby="trading-heading">
-          <div>
+          <div class="trading-heading-copy">
             <p class="eyebrow">Shared execution workspace</p>
             <h1 id="trading-heading">Trading</h1>
             <p class="lede">Backend-owned Paper runtime now. This same workspace remains the operational surface when Live execution is unlocked later.</p>
           </div>
+
+          <section class="trading-health-block" aria-label="Runtime health">
+            <span class="trading-mode-label">Runtime health</span>
+            <div class="trading-health-row">
+              <span class="trading-health-name">Run</span>
+              <strong id="trading-run-id">—</strong>
+              <span id="trading-run-status" class="trading-health-detail">Looking for a trading run…</span>
+              <span id="trading-run-badge" class="badge badge--muted">Checking</span>
+            </div>
+            <div class="trading-health-row">
+              <span class="trading-health-name">Binance feed</span>
+              <strong id="trading-feed-label">Unknown</strong>
+              <span id="trading-feed-detail" class="trading-health-detail">No trading runtime selected</span>
+              <span class="status-dot pending" id="trading-feed-dot"></span>
+            </div>
+            <div class="trading-health-row">
+              <span class="trading-health-name">Backend</span>
+              <strong id="trading-connection-label">Connecting</strong>
+              <span id="trading-connection-detail" class="trading-health-detail">Reading protected Paper state</span>
+              <span class="status-dot pending" id="trading-connection-dot"></span>
+            </div>
+          </section>
 
           <div class="trading-mode-block">
             <span class="trading-mode-label">Execution mode</span>
@@ -54,35 +76,6 @@
             </div>
             <p class="trading-mode-note">Live execution is locked server-side until Phase 8.</p>
           </div>
-        </section>
-
-        <section class="trading-status-grid" aria-label="Trading runtime status">
-          <article class="status-card trading-status-card">
-            <div class="card-header">
-              <p>Trading run</p>
-              <span id="trading-run-badge" class="badge badge--muted">Checking</span>
-            </div>
-            <strong id="trading-run-id">—</strong>
-            <span id="trading-run-status">Looking for a trading run…</span>
-          </article>
-
-          <article class="status-card trading-status-card">
-            <div class="card-header">
-              <p>Binance feed</p>
-              <span class="status-dot pending" id="trading-feed-dot"></span>
-            </div>
-            <strong id="trading-feed-label">Unknown</strong>
-            <span id="trading-feed-detail">No trading runtime selected</span>
-          </article>
-
-          <article class="status-card trading-status-card">
-            <div class="card-header">
-              <p>Backend connection</p>
-              <span class="status-dot pending" id="trading-connection-dot"></span>
-            </div>
-            <strong id="trading-connection-label">Connecting</strong>
-            <span id="trading-connection-detail">Reading protected Paper state</span>
-          </article>
         </section>
 
 

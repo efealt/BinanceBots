@@ -497,24 +497,39 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 /* Trading page · Phase 4.6A shell */
 .trading-page { display: grid; gap: 16px; }
 .trading-mode-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 32px;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(430px, 500px) minmax(300px, 390px);
+  align-items: stretch;
+  gap: 14px;
   padding: 4px 0 14px;
 }
-.trading-mode-header > div:first-child { max-width: 720px; }
-.trading-mode-block { min-width: min(100%, 390px); padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.trading-heading-copy { align-self: end; max-width: 680px; padding-right: 18px; }
+.trading-health-block,
+.trading-mode-block { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
 .trading-mode-label { display: block; margin-bottom: 9px; color: var(--muted); font-size: 0.7rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.trading-health-block { display: grid; align-content: start; }
+.trading-health-row {
+  display: grid;
+  grid-template-columns: 88px minmax(88px, 0.8fr) minmax(130px, 1.5fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 29px;
+  border-top: 1px solid var(--border);
+}
+.trading-health-row:first-of-type { border-top: 0; }
+.trading-health-name { color: var(--muted); font-size: 0.68rem; font-weight: 700; }
+.trading-health-row strong,
+.trading-health-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trading-health-row strong { font-size: 0.76rem; }
+.trading-health-detail { color: var(--muted); font-size: 0.66rem; }
+.trading-health-row .badge { padding: 3px 7px; font-size: 0.62rem; }
+.trading-mode-block { align-self: stretch; }
 .trading-mode-selector { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 5px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-raised); }
 .trading-mode-option { min-height: 42px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.05em; }
 .trading-mode-option.is-active { background: var(--accent); color: white; box-shadow: var(--shadow); }
 .trading-mode-option--locked { cursor: not-allowed; opacity: 0.62; }
 .trading-mode-option--locked span { display: block; margin-top: 2px; font-size: 0.58rem; font-weight: 650; letter-spacing: 0.02em; text-transform: none; }
 .trading-mode-note { margin: 9px 2px 0; color: var(--muted); font-size: 0.7rem; line-height: 1.4; }
-.trading-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.trading-status-card { min-width: 0; }
-.trading-status-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trading-context-panel { margin-top: 0; }
 .trading-context-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
 .trading-context-grid > div { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); }
@@ -523,14 +538,21 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .trading-context-grid strong { margin-top: 6px; overflow: hidden; font-size: 0.88rem; text-overflow: ellipsis; white-space: nowrap; }
 .trading-runtime-note { margin-top: 16px; margin-bottom: 0; }
 
-@media (max-width: 900px) {
-  .trading-mode-header { align-items: stretch; flex-direction: column; }
-  .trading-mode-block { width: 100%; }
-  .trading-status-grid { grid-template-columns: 1fr; }
+@media (max-width: 1180px) {
+  .trading-mode-header { grid-template-columns: minmax(0, 1fr) minmax(300px, 390px); }
+  .trading-heading-copy { grid-column: 1 / -1; max-width: 720px; padding-right: 0; }
+}
+
+@media (max-width: 760px) {
+  .trading-mode-header { grid-template-columns: 1fr; }
+  .trading-heading-copy { grid-column: auto; }
+  .trading-health-row { grid-template-columns: 84px minmax(80px, 0.8fr) minmax(110px, 1.5fr) auto; }
   .trading-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 560px) {
+  .trading-health-row { grid-template-columns: 76px minmax(0, 1fr) auto; }
+  .trading-health-detail { grid-column: 2 / -1; padding-bottom: 6px; }
   .trading-context-grid { grid-template-columns: 1fr; }
 }
 
