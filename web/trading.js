@@ -62,6 +62,11 @@ const auditLoadAllButton = document.querySelector("#trading-audit-load-all");
 
 let stream = null;
 let reconnectTimer = null;
+let marketStream = null;
+let marketReconnectTimer = null;
+let marketConnectionToken = 0;
+let marketStreamKey = null;
+let chartRenderScheduled = false;
 let currentRunId = null;
 let currentSnapshot = null;
 let currentMonitor = null;
@@ -267,7 +272,16 @@ function ensureTradingChart() {
   return tradingChart;
 }
 
-function resetTradingChart(message = "No Paper run selected.") {
+function resetRunChartState(message = null) {
+  chartBootstrapToken += 1;
+  chartRunId = null;
+  chartOrderLevels = new Map();
+  chartFillMarkers = new Map();
+  if (message) setChartStatus(message);
+  scheduleTradingChartRender();
+}
+
+function resetTradingChart(message = "Loading live market…") {
   chartBootstrapToken += 1;
   chartRunId = null;
   chartCandles = [];
@@ -276,6 +290,144 @@ function resetTradingChart(message = "No Paper run selected.") {
   if (tradingChart) tradingChart.clear();
   tradingChartBadge.textContent = "Binance 1m";
   setChartStatus(message);
+}
+
+function scheduleTradingChartRender() {
+  if (chartRenderScheduled) return;
+  chartRenderScheduled = true;
+  window.requestAnimationFrame(() => {
+    chartRenderScheduled = false;
+    renderTradingChart();
+  });
+}
+
+function selectedMarketStreamKey() {
+  const symbol = String(symbolInput.value || "").trim().toUpperCase();
+  const marketType = String(marketTypeInput.value || "").trim().toLowerCase();
+  if (!symbol || !hasRegisteredInstrument(symbol, marketType)) return null;
+  return { symbol, marketType, interval: "1m" };
+}
+
+function marketStreamKeyString(key) {
+  return key ? [key.symbol, key.marketType, key.interval].join("|") : null;
+}
+
+function setMarketFeedState(state, detail = "") {
+  const states = {
+    live: ["live", "Live"],
+    loading: ["loading", "Connecting"],
+    reconnecting: ["reconnecting", "Reconnecting"],
+    error: ["reconnecting", "Unavailable"],
+    pending: ["pending", "Inactive"],
+  };
+  const [dotState, label] = states[state] ?? states.pending;
+  setDot(feedDot, dotState);
+  feedLabel.textContent = label;
+  feedDetail.textContent = detail;
+}
+
+function marketStreamUrl(key) {
+  const params = new URLSearchParams({
+    symbol: key.symbol,
+    interval: key.interval,
+    market_type: key.marketType,
+  });
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return protocol + "//" + window.location.host + "/api/market/stream?" + params;
+}
+
+function closeMarketStream() {
+  marketConnectionToken += 1;
+  if (marketReconnectTimer !== null) {
+    window.clearTimeout(marketReconnectTimer);
+    marketReconnectTimer = null;
+  }
+  const socket = marketStream;
+  marketStream = null;
+  marketStreamKey = null;
+  if (socket) socket.close();
+}
+
+function scheduleMarketReconnect(key, token) {
+  if (marketReconnectTimer !== null) return;
+  marketReconnectTimer = window.setTimeout(() => {
+    marketReconnectTimer = null;
+    if (token === marketConnectionToken && marketStreamKeyString(key) === marketStreamKey) {
+      openMarketStream(key, false);
+    }
+  }, 1000);
+}
+
+function applyMarketStreamSnapshot(snapshot, key) {
+  chartCandles = [];
+  for (const candle of snapshot?.candles ?? []) upsertChartCandle(candle);
+  setMarketFeedState(snapshot?.status ?? "live", key.symbol + " · " + marketTypeLabel(key.marketType) + " · Binance public 1m");
+  scheduleTradingChartRender();
+}
+
+function applyMarketStreamUpdate(update, key) {
+  if (update?.candle) upsertChartCandle(update.candle);
+  setMarketFeedState(update?.status ?? "live", key.symbol + " · " + marketTypeLabel(key.marketType) + " · Binance public 1m");
+  scheduleTradingChartRender();
+}
+
+function openMarketStream(key = selectedMarketStreamKey(), clearCandles = true) {
+  if (!key) {
+    closeMarketStream();
+    if (!currentMonitor?.run.runtimeActive) resetTradingChart("Choose a registered Symbol and Market.");
+    setMarketFeedState("pending", "Choose a registered Binance market");
+    return;
+  }
+
+  const keyString = marketStreamKeyString(key);
+  if (marketStream && marketStreamKey === keyString) return;
+
+  closeMarketStream();
+  const token = marketConnectionToken;
+  marketStreamKey = keyString;
+  if (clearCandles) {
+    chartCandles = [];
+    if (!currentMonitor?.run.runtimeActive) {
+      chartOrderLevels = new Map();
+      chartFillMarkers = new Map();
+      chartRunId = null;
+    }
+    scheduleTradingChartRender();
+  }
+
+  setMarketFeedState("loading", key.symbol + " · " + marketTypeLabel(key.marketType) + " · loading Binance 1m");
+  setChartStatus("Loading live Binance 1-minute candles for " + key.symbol + "…");
+  const socket = new WebSocket(marketStreamUrl(key));
+  marketStream = socket;
+
+  socket.addEventListener("message", (event) => {
+    if (token !== marketConnectionToken || socket !== marketStream || marketStreamKey !== keyString) return;
+    try {
+      const message = JSON.parse(event.data);
+      if (message.type === "snapshot") applyMarketStreamSnapshot(message.data, key);
+      if (message.type === "update") applyMarketStreamUpdate(message.data, key);
+    } catch {
+      setMarketFeedState("reconnecting", key.symbol + " · invalid market update");
+    }
+  });
+
+  socket.addEventListener("error", () => {
+    if (token === marketConnectionToken && socket === marketStream) socket.close();
+  });
+
+  socket.addEventListener("close", () => {
+    if (token !== marketConnectionToken || socket !== marketStream) return;
+    marketStream = null;
+    setMarketFeedState("reconnecting", key.symbol + " · reconnecting Binance public 1m");
+    scheduleMarketReconnect(key, token);
+  });
+}
+
+function syncMarketStreamToSelection(clearCandles = true) {
+  const key = selectedMarketStreamKey();
+  const keyString = marketStreamKeyString(key);
+  if (keyString && keyString === marketStreamKey && marketStream) return;
+  openMarketStream(key, clearCandles);
 }
 
 function normalizeOrderLevel(order) {
@@ -364,9 +516,9 @@ function renderTradingChart() {
     const overlayCount = chartOrderLevels.size;
     const fillCount = chartFillMarkers.size;
     setChartStatus(
-      currentMonitor?.run.runtimeActive
-        ? "Waiting for Binance 1-minute candles."
-        : "No live candle window is retained for this inactive run · " + overlayCount + " persisted order levels · " + fillCount + " persisted fills."
+      marketStreamKey
+        ? "Waiting for live Binance 1-minute candles."
+        : "Choose a registered Symbol and Market to open the live chart."
     );
     return;
   }
@@ -516,9 +668,11 @@ function renderTradingChart() {
     ],
   }, true);
 
-  tradingChartBadge.textContent = "Binance 1m · " + (currentMonitor?.market.symbol || "market");
+  const selectedKey = selectedMarketStreamKey();
+  const chartSymbol = currentMonitor?.market.symbol || selectedKey?.symbol || "market";
+  tradingChartBadge.textContent = "Binance 1m · " + chartSymbol;
   setChartStatus(
-    chartCandles.length + " live-feed candles · " + chartOrderLevels.size + " canonical order levels · " + chartFillMarkers.size + " persisted fills · UTC"
+    chartCandles.length + " live candles · " + chartOrderLevels.size + " active/run order levels · " + chartFillMarkers.size + " run fills · UTC"
   );
 }
 
@@ -532,8 +686,9 @@ async function loadChartBootstrap(runId, quiet = false) {
     const payload = await fetchJson(chartUrl);
     if (token !== chartBootstrapToken || currentRunId !== runId) return;
     chartRunId = runId;
-    chartCandles = [];
-    for (const candle of payload.candles ?? []) upsertChartCandle(candle);
+    if (!chartCandles.length) {
+      for (const candle of payload.candles ?? []) upsertChartCandle(candle);
+    }
     chartOrderLevels = new Map();
     for (const raw of payload.order_levels ?? []) {
       const order = normalizeOrderLevel(raw);
@@ -996,9 +1151,6 @@ function renderNoRun() {
   runIdElement.textContent = "No active run";
   runStatusElement.textContent = "No active " + activeAdapter.label + " runtime.";
   runBadgeElement.textContent = "Idle";
-  setDot(feedDot, "pending");
-  feedLabel.textContent = "Runtime inactive";
-  feedDetail.textContent = "No active backend " + activeAdapter.label + " runtime";
   setDot(topDot, "pending");
   topLabel.textContent = activeAdapter.label + " · inactive";
   symbolElement.textContent = "—";
@@ -1007,7 +1159,7 @@ function renderNoRun() {
   strategyElement.textContent = "—";
   setConfigLocked(false);
   setControlStatus(activeAdapter.locked ? activeAdapter.lockReason : "Ready to start a backend " + activeAdapter.label + " run.");
-  resetTradingChart("No active Paper run.");
+  resetRunChartState("Live market remains available with no active Paper run.");
   portfolioBadge.textContent = "No active run";
   for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
     element.textContent = "—";
@@ -1042,7 +1194,10 @@ function renderSnapshot(snapshot) {
   marketTypeElement.textContent = humanize(monitor.market.marketType) || "—";
   intervalElement.textContent = monitor.market.replayInterval || "—";
   strategyElement.textContent = monitor.strategy.id || "—";
-  if (monitor.run.mode === "paper") applySnapshotToConfig(snapshot);
+  if (monitor.run.mode === "paper") {
+    applySnapshotToConfig(snapshot);
+    syncMarketStreamToSelection(false);
+  }
   setConfigLocked(Boolean(monitor.run.runtimeActive));
   setControlStatus(monitor.run.runtimeActive
     ? ("Run #" + monitor.run.id + " is active. Stop it before changing " + activeAdapter.label + " setup.")
@@ -1054,13 +1209,8 @@ function renderSnapshot(snapshot) {
   renderOpenOrders(monitor);
   syncAuditFromMonitor(monitor);
 
-  const feedState = monitor.market.feedStatus || "loading";
-  setDot(feedDot, feedState);
-  feedLabel.textContent = humanize(feedState);
-  feedDetail.textContent = monitor.market.symbol
-    ? monitor.market.symbol + " · Binance public 1m base feed"
-    : "Binance public market data";
-  setDot(topDot, feedState === "live" ? "live" : feedState);
+  const runtimeState = monitor.market.feedStatus || "loading";
+  setDot(topDot, runtimeState === "live" ? "live" : runtimeState);
   topLabel.textContent = activeAdapter.label + " · " + humanize(monitor.run.runtimeStatus);
 }
 
@@ -1171,6 +1321,10 @@ async function initializeTradingStatus() {
 symbolInput.addEventListener("change", () => {
   populateMarketOptions(symbolInput.value, marketTypeInput.value);
   setConfigLocked(Boolean(currentMonitor?.run.runtimeActive));
+  if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
+});
+marketTypeInput.addEventListener("change", () => {
+  if (!currentMonitor?.run.runtimeActive) syncMarketStreamToSelection(true);
 });
 anchorInput.addEventListener("change", syncFixedAnchorState);
 paperModeButton.addEventListener("click", () => {
@@ -1241,7 +1395,9 @@ if (tradingChartElement && "ResizeObserver" in window) {
 
 async function initializeTradingPage() {
   await loadRegisteredInstruments();
+  syncMarketStreamToSelection(true);
   await initializeTradingStatus();
+  syncMarketStreamToSelection(false);
 }
 
 initializeTheme();

@@ -84,6 +84,9 @@ if (!trading.includes('/trading-contract.js?v=1')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
+if (!trading.includes('/trading.js?v=7')) {
+  throw new Error("Trading page must load the Phase 4.8B live-market Trading client");
+}
 if (trading.includes('value="BTCUSDT"')) {
   throw new Error("Trading symbol must come from the registered database catalog, not a hardcoded default");
 }
@@ -114,6 +117,9 @@ for (const required of [
   'fetch("/api/data/downloads"',
   'registeredMarketsBySymbol',
   'populateMarketOptions(symbolInput.value',
+  '"/api/market/stream?"',
+  'syncMarketStreamToSelection(true)',
+  'resetRunChartState("Live market remains available with no active Paper run.")',
 ]) {
   if (!tradingJs.includes(required)) throw new Error("Trading control contract is missing: " + required);
 }

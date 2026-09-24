@@ -360,6 +360,10 @@ The Trading page now includes a live ECharts candlestick view backed only by ser
 
 Phase 4.6C does not add portfolio, open-order table, exposure, or full event-log panels; those remain Phase 4.6D.
 
+- The Trading chart's market candles are independent of Paper runtime state. After registered instrument discovery, the page connects to the existing authenticated `/api/market/stream` service, consumes its initial 1-minute snapshot, and keeps that selected market streaming before any Paper run exists.
+- Symbol/Market changes while no run is active reconnect the chart immediately. Starting or restoring Paper keeps the same live market chart and layers canonical run order lifetimes and fills on top; stopping clears only run overlays and leaves the selected live market visible.
+- This reuses the same backend `MarketService` as the Market page; no second market-data backend or browser-owned trading feed was introduced.
+
 ## Phase 4.6D Portfolio, open orders, and canonical audit
 
 The Trading page now exposes the complete Paper operational state required for monitoring and exact run auditability.
