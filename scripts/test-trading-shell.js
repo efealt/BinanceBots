@@ -109,6 +109,8 @@ for (const required of [
   'name: "Buy fills"',
   'name: "Sell fills"',
   'loadCompleteAudit(currentRunId)',
+  'renderNoRun();',
+  'stopped and remains persisted',
   'fetch("/api/data/downloads"',
   'registeredMarketsBySymbol',
   'populateMarketOptions(symbolInput.value',

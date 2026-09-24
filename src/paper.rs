@@ -2289,6 +2289,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_runs_preserves_terminal_history_for_explicit_history_access() {
+        let path = temp_database("list-terminal-history");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let mut core = test_core(Arc::clone(&storage), "terminalhistory");
+        let run_id = core.run_id;
+
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 1.0,
+        };
+        core.start(60_000, &previous).unwrap();
+        core.stop(90_000, "user_stop").unwrap();
+        drop(core);
+
+        let manager = PaperManager {
+            storage: Arc::clone(&storage),
+            market: Arc::new(MarketService::new()),
+            runtimes: Mutex::new(HashMap::new()),
+        };
+        let runs = manager.list_runs(10).await.unwrap();
+        let summary = runs
+            .iter()
+            .find(|summary| summary.run_id == run_id)
+            .expect("stopped Paper run must remain queryable");
+        assert_eq!(summary.canonical_status, "stopped");
+        assert_eq!(summary.runtime_status, "stopped");
+
+        let persisted = manager.snapshot(run_id).await.unwrap();
+        assert_eq!(persisted.run_id, run_id);
+        assert!(!persisted.runtime_active);
+        assert_eq!(persisted.canonical_status, "stopped");
+
+        drop(manager);
+        drop(storage);
+        cleanup_database(&path);
+    }
+
+    #[tokio::test]
     async fn dropping_browser_subscription_does_not_signal_or_remove_backend_runtime() {
         let path = temp_database("browser-disconnect");
         let storage = Arc::new(StorageReader::new(path.clone()));

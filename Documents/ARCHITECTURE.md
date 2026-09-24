@@ -1,7 +1,7 @@
 # BinanceGrid Architecture
 
 Status: current system  
-Last updated: 2026-09-22
+Last updated: 2026-09-24
 
 ## Runtime
 
@@ -324,7 +324,7 @@ The Phase 4.6A shell establishes the permanent shared Paper/Live surface without
 - a backend-connection card showing REST/stream connectivity;
 - runtime context for symbol, market type, replay interval, and strategy.
 
-On load, the page queries the protected Trading API, prefers an active `arming`/`running` Paper run when one exists, otherwise shows the newest persisted Paper run, and reads its complete backend snapshot. If that run is active, the page attaches to the authenticated per-run WebSocket from Phase 4.5C so header/feed status stays current. The browser remains an observer; closing or refreshing the page does not affect the backend runtime.
+On load, the page queries the protected Trading API and restores an active `arming`/`running` Paper run when one exists. If no active Paper runtime exists, the operational workspace remains empty rather than auto-loading the newest terminal run. Terminal Paper runs remain persisted and queryable through the canonical Trading APIs, but they are historical state rather than the current bot. If an active run exists, the page attaches to the authenticated per-run WebSocket from Phase 4.5C so header/feed status stays current. The browser remains an observer; closing or refreshing the page does not affect the backend runtime.
 
 The page is served by the existing protected static-file fallback, so it inherits the same server-enforced authentication boundary as the rest of the application.
 
@@ -342,7 +342,7 @@ The shared authenticated Trading page now operates the Phase 4 Paper control API
 - **Stop Paper** calls `POST /api/trading/runs/{run_id}/stop`, then renders the returned persisted terminal snapshot.
 - While a Paper runtime is active, strategy/configuration controls and the Paper mode selector are locked. The Stop control remains available.
 - Live remains disabled independently of this browser locking; the Phase 4 server-side Live rejection from 4.5A remains the safety boundary.
-- After a terminal run is loaded, the form becomes editable again and uses that run's recorded strategy/execution values as the starting point for a later Paper run.
+- When a Paper run terminates or the user stops it, the operational workspace clears run-specific portfolio/orders/audit/chart overlays and the form becomes editable again while retaining the visible just-used configuration. The terminal run remains persisted but is not presented as the current bot.
 
 The controls deliberately do not add chart/order/fill visualization; those are Phase 4.6C and 4.6D.
 
@@ -365,7 +365,7 @@ Phase 4.6C does not add portfolio, open-order table, exposure, or full event-log
 The Trading page now exposes the complete Paper operational state required for monitoring and exact run auditability.
 
 - Portfolio cards render backend snapshot values for current position/inventory, cash, equity, realized PnL, unrealized PnL, fees paid, mark price, and gross exposure as `abs(position × mark) / equity`.
-- Active Paper snapshots expose open orders with side, price, original quantity, filled quantity, remaining quantity, partial-fill state, and backend submission age. Terminal persisted runs correctly show no live open orders.
+- Active Paper snapshots expose open orders with side, price, original quantity, filled quantity, remaining quantity, partial-fill state, and backend submission age. When no active runtime exists, the operational orders panel is empty; terminal persisted runs are not auto-loaded into it.
 - `PaperSnapshot.mark_price` is synchronized from the backend Binance mid/last candle while active and reconstructed from the latest persisted position snapshot after the runtime ends, so terminal exposure is not estimated from browser-local data.
 - `GET /api/trading/runs/{run_id}/audit` exposes the canonical append-ordered run event stream. The default response returns the latest 250 events for operational viewing.
 - Audit pagination uses canonical `run_sequence` through `after_sequence` with a maximum page size of 500. The page's **Load complete audit** action walks every page from sequence zero until the server reports no later events, so long runs remain fully accessible rather than silently truncated.

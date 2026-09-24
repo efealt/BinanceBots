@@ -100,5 +100,20 @@ assert.equal(
   ]).run_id,
   2
 );
+assert.equal(
+  contract.selectRun([
+    { run_id: 3, runtime_status: "stopped" },
+    { run_id: 2, runtime_status: "failed" },
+    { run_id: 1, runtime_status: "completed" },
+  ]),
+  null
+);
+assert.equal(
+  contract.selectRun([
+    { run_id: 5, runtime_status: "stopped" },
+    { run_id: 4, runtime_status: "arming" },
+  ]).run_id,
+  4
+);
 
 console.log("Trading shared mode contract OK");

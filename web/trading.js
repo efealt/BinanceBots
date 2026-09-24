@@ -989,36 +989,45 @@ async function requestJson(url, options = {}) {
 }
 
 function renderNoRun() {
+  closeStream();
   currentSnapshot = null;
   currentMonitor = null;
   currentRunId = null;
-  runIdElement.textContent = "No run";
-  runStatusElement.textContent = "No " + activeAdapter.label + " run has been created yet.";
+  runIdElement.textContent = "No active run";
+  runStatusElement.textContent = "No active " + activeAdapter.label + " runtime.";
   runBadgeElement.textContent = "Idle";
   setDot(feedDot, "pending");
-  feedLabel.textContent = "Inactive";
-  feedDetail.textContent = "No backend " + activeAdapter.label + " runtime selected";
+  feedLabel.textContent = "Runtime inactive";
+  feedDetail.textContent = "No active backend " + activeAdapter.label + " runtime";
   setDot(topDot, "pending");
-  topLabel.textContent = activeAdapter.label + " mode";
+  topLabel.textContent = activeAdapter.label + " · inactive";
   symbolElement.textContent = "—";
   marketTypeElement.textContent = "—";
   intervalElement.textContent = "—";
   strategyElement.textContent = "—";
   setConfigLocked(false);
   setControlStatus(activeAdapter.locked ? activeAdapter.lockReason : "Ready to start a backend " + activeAdapter.label + " run.");
-  resetTradingChart("No Paper run selected.");
-  portfolioBadge.textContent = "Snapshot";
+  resetTradingChart("No active Paper run.");
+  portfolioBadge.textContent = "No active run";
   for (const element of [portfolioPosition, portfolioCash, portfolioEquity, portfolioExposure, portfolioRealized, portfolioUnrealized, portfolioFees, portfolioMark]) {
     element.textContent = "—";
   }
   ordersBadge.textContent = "0 open";
-  ordersBody.replaceChildren(emptyTableRow(8, "No active orders."));
-  ordersStatus.textContent = "No trading run selected.";
-  resetAudit("No trading run selected.");
+  ordersBody.replaceChildren(emptyTableRow(8, "No active Paper run."));
+  ordersStatus.textContent = "No active Paper run.";
+  resetAudit("No active Paper run. Prior run history remains persisted.");
 }
 
 function renderSnapshot(snapshot) {
   const monitor = TradingContract.normalizeSnapshot(snapshot);
+  if (!monitor.run.runtimeActive) {
+    const terminalStatus = humanize(monitor.run.runtimeStatus || monitor.run.canonicalStatus || "ended");
+    const terminalRunId = monitor.run.id;
+    renderNoRun();
+    setControlStatus("Run #" + terminalRunId + " is " + terminalStatus + " and remains persisted. Ready to start the next " + activeAdapter.label + " run.");
+    setConnection("connected", "No active " + activeAdapter.label + " runtime · Run #" + terminalRunId + " " + terminalStatus);
+    return;
+  }
   setTradingMode(monitor.run.mode);
   currentSnapshot = snapshot;
   currentMonitor = monitor;
@@ -1044,15 +1053,6 @@ function renderSnapshot(snapshot) {
   renderPortfolio(monitor);
   renderOpenOrders(monitor);
   syncAuditFromMonitor(monitor);
-
-  if (!monitor.run.runtimeActive) {
-    setDot(feedDot, "pending");
-    feedLabel.textContent = "Runtime inactive";
-    feedDetail.textContent = "Persisted state only · no live feed claimed";
-    setDot(topDot, "pending");
-    topLabel.textContent = activeAdapter.label + " · inactive";
-    return;
-  }
 
   const feedState = monitor.market.feedStatus || "loading";
   setDot(feedDot, feedState);
@@ -1150,7 +1150,7 @@ async function initializeTradingStatus() {
     const selected = selectRun(listing.runs ?? []);
     if (!selected) {
       renderNoRun();
-      setConnection("connected", "Protected Trading API available");
+      setConnection("connected", "Protected Trading API available · no active " + activeAdapter.label + " run");
       return;
     }
 
@@ -1217,9 +1217,11 @@ stopButton.addEventListener("click", async () => {
     const stopUrl = activeAdapter.urls.stop(currentRunId);
     if (!stopUrl) throw new Error(activeAdapter.label + " stop adapter is unavailable.");
     const snapshot = await requestJson(stopUrl, { method: "POST" });
+    const stoppedRunId = snapshot.run_id;
     closeStream();
-    renderSnapshot(snapshot);
-    setConnection("connected", "Run #" + snapshot.run_id + " stopped; persisted state loaded");
+    renderNoRun();
+    setControlStatus("Run #" + stoppedRunId + " stopped and remains persisted. Ready to start the next " + activeAdapter.label + " run.");
+    setConnection("connected", "Run #" + stoppedRunId + " stopped · no active " + activeAdapter.label + " runtime");
   } catch (error) {
     showControlError(error.message);
     setConfigLocked(true);

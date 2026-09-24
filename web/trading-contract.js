@@ -213,7 +213,6 @@
   function selectRun(runs) {
     const items = Array.isArray(runs) ? runs : [];
     return items.find((run) => ["arming", "running"].includes(String(run.runtime_status ?? run.runtimeStatus ?? "")))
-      ?? items[0]
       ?? null;
   }
 
