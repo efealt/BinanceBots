@@ -199,13 +199,25 @@ From 4.4 onward, each substep below is a separate implementation unit: **impleme
 
 **Checkpoint:** Automated tests prove the Phase 4 chronology and safety contract without using production UI behavior as evidence.
 
-### 4.8B — Production smoke + visual acceptance
+### 4.8B — Trading workspace production revision
+
+Detailed roadmap: `Roadmaps/04.8B-trading-workspace-production-revision.md`
+
+- [ ] Make the selected registered market live on the Trading chart before a Paper run exists.
+- [ ] Add backend-derived **Show on graph** strategy preview before execution.
+- [ ] Keep the operational workspace scoped to the current active run rather than automatically showing the newest terminal run.
+- [ ] Compact Runtime context and portfolio layout while preserving fluid responsive behavior.
+- [ ] Complete the detailed 4.8B roadmap sequentially.
+
+**Checkpoint:** Trading behaves as a live operational workspace before the final production smoke.
+
+### 4.8C — Production smoke + visual acceptance
 
 - [ ] Deploy the final Phase 4 implementation to Render.
 - [ ] Start a real Paper run from the hosted Trading page.
-- [ ] Verify live candles, grid/order lines, fills, positions, equity/PnL, fees, exposure, logs, and feed/runtime status.
+- [ ] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, logs, and feed/runtime status.
 - [ ] Close/reopen the page and verify the backend run continues and restores correctly.
-- [ ] Stop the run cleanly and verify the complete canonical Paper history remains persisted.
+- [ ] Stop the run cleanly and verify the active workspace clears while the complete canonical Paper history remains persisted.
 - [ ] Update `Documents/ARCHITECTURE.md` with the final implemented Phase 4 architecture.
 - [ ] Mark Phase 4 complete only after the hosted page is visually meaningful and the persisted run is coherent.
 
