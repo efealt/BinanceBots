@@ -440,6 +440,36 @@ pub struct TradingAuditPage {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct TradingActivityPage {
+    pub activities: Vec<TradingAuditEvent>,
+    pub total_activities: i64,
+    pub total_canonical_events: i64,
+    pub suppressed_equity_events: i64,
+    pub newest_sequence: Option<i64>,
+    pub oldest_sequence: Option<i64>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TradingBotRunSummaryRecord {
+    pub run_id: i64,
+    pub bot_id: i64,
+    pub mode: RunMode,
+    pub canonical_status: RunStatus,
+    pub strategy_id: String,
+    pub data_source: Value,
+    pub created_at_ms: i64,
+    pub started_at_ms: Option<i64>,
+    pub ended_at_ms: Option<i64>,
+    pub updated_at_ms: i64,
+    pub fill_count: i64,
+    pub ending_position: Option<ExactDecimal>,
+    pub fees_paid: Option<ExactDecimal>,
+    pub realized_pnl: Option<ExactDecimal>,
+    pub latest_equity: Option<ExactDecimal>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct TradingRunCounts {
     pub decisions: i64,
     pub order_intents: i64,

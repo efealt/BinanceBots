@@ -4,7 +4,7 @@ use crate::{
         CreateOrderInput, DecisionInput, EquitySnapshotInput, EventTimes, ExactDecimal, FillInput,
         LiquidityRole, OrderIntentInput, OrderSide, OrderStateInput, OrderStatus, OrderType,
         PositionSnapshotInput, RunMode, RunStatus, StorageError, StorageReader,
-        TradingAuditPage, TradingFillAudit, TradingOrderLevel, TradingRunSpec,
+        TradingActivityPage, TradingAuditPage, TradingFillAudit, TradingOrderLevel, TradingRunSpec,
     },
     trading::{
         decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
@@ -191,6 +191,29 @@ pub struct PaperRunSummary {
     pub created_at_ms: i64,
     pub started_at_ms: Option<i64>,
     pub ended_at_ms: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PaperBotRunSummary {
+    pub run_id: i64,
+    pub bot_id: i64,
+    pub mode: String,
+    pub canonical_status: String,
+    pub runtime_status: String,
+    pub runtime_active: bool,
+    pub symbol: String,
+    pub market_type: String,
+    pub replay_interval: String,
+    pub strategy_id: String,
+    pub created_at_ms: i64,
+    pub started_at_ms: Option<i64>,
+    pub ended_at_ms: Option<i64>,
+    pub updated_at_ms: i64,
+    pub fill_count: i64,
+    pub ending_position: Option<ExactDecimal>,
+    pub fees_paid: Option<ExactDecimal>,
+    pub realized_pnl: Option<ExactDecimal>,
+    pub latest_equity: Option<ExactDecimal>,
 }
 
 struct PaperRuntimeHandle {
@@ -461,6 +484,21 @@ impl PaperManager {
         Ok(self.storage.trading_run_audit_page(run_id, after_sequence, limit)?)
     }
 
+    pub fn activity_page(
+        &self,
+        run_id: i64,
+        before_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<TradingActivityPage, PaperError> {
+        let run = self.storage.trading_run(run_id)?;
+        if run.mode != RunMode::Paper {
+            return Err(PaperError::RunNotFound(run_id));
+        }
+        Ok(self
+            .storage
+            .trading_run_activity_page(run_id, before_sequence, limit)?)
+    }
+
     pub async fn chart_snapshot(&self, run_id: i64) -> Result<PaperChartSnapshot, PaperError> {
         let snapshot = self.snapshot(run_id).await?;
         let order_levels = self.storage.trading_run_order_levels(run_id)?;
@@ -523,6 +561,48 @@ impl PaperManager {
             });
         }
         Ok(summaries)
+    }
+
+    pub async fn bot_history(
+        &self,
+        bot_id: i64,
+        limit: usize,
+    ) -> Result<Vec<PaperBotRunSummary>, PaperError> {
+        self.storage.trading_bot(bot_id)?;
+        let records = self.storage.trading_bot_run_summaries(bot_id, limit)?;
+        let handles: HashMap<i64, Arc<PaperRuntimeHandle>> = self.runtimes.lock().await.clone();
+        let mut history = Vec::with_capacity(records.len());
+
+        for record in records {
+            let runtime_status = if let Some(handle) = handles.get(&record.run_id) {
+                handle.snapshot.read().await.runtime_status.clone()
+            } else {
+                record.canonical_status.as_str().to_string()
+            };
+            let runtime_active = matches!(runtime_status.as_str(), "arming" | "running");
+            history.push(PaperBotRunSummary {
+                run_id: record.run_id,
+                bot_id: record.bot_id,
+                mode: record.mode.as_str().into(),
+                canonical_status: record.canonical_status.as_str().into(),
+                runtime_status,
+                runtime_active,
+                symbol: json_string(&record.data_source, "symbol"),
+                market_type: json_string(&record.data_source, "market_type"),
+                replay_interval: json_string(&record.data_source, "replay_interval"),
+                strategy_id: record.strategy_id,
+                created_at_ms: record.created_at_ms,
+                started_at_ms: record.started_at_ms,
+                ended_at_ms: record.ended_at_ms,
+                updated_at_ms: record.updated_at_ms,
+                fill_count: record.fill_count,
+                ending_position: record.ending_position,
+                fees_paid: record.fees_paid,
+                realized_pnl: record.realized_pnl,
+                latest_equity: record.latest_equity,
+            });
+        }
+        Ok(history)
     }
 
     fn persisted_snapshot(&self, run_id: i64) -> Result<PaperSnapshot, PaperError> {

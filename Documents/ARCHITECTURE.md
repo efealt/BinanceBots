@@ -463,6 +463,18 @@ Trading now supports a backend-derived **Show on graph** preview before Live-Pap
 - **Live-Real-Account** remains server-side locked.
 
 
+## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
+
+The lower Trading workspace now has dedicated read-only backend contracts for history and presentation without changing execution semantics.
+
+- `GET /api/trading/bots/{bot_id}/runs` returns only Runs owned by that Bot, newest first. Each entry includes Run/mode identity, canonical and runtime status, timestamps, market/strategy context, fill count, latest position, fees paid, realized PnL, and latest equity when persisted.
+- Runtime status is overlaid from the in-memory Live-Paper runtime registry when a Run is currently `arming` or `running`; historical Runs fall back to their canonical persisted status.
+- `GET /api/trading/runs/{run_id}/activity` is a presentation feed derived from canonical persisted events. It is newest-first and excludes repetitive `equity` heartbeat events from the default activity list. The response reports both canonical and activity totals plus the number of suppressed Equity rows, and supports older-page retrieval with `before_sequence`.
+- The canonical `GET /api/trading/runs/{run_id}/audit` contract is unchanged. No canonical events are deleted, reordered in storage, rewritten, or summarized away.
+- Phase 5A is read-only with respect to execution: no changes were made to strategy logic, order/fill chronology, portfolio accounting, Bot state, Run lifecycle, or Live-Paper concurrency.
+- Tests prove Bot-history isolation and ordering, per-Run summary ownership, newest-first activity filtering, Equity-noise suppression, and canonical audit non-mutation.
+
+
 ## UI
 
 - **Console** — current bot-console UI shell.

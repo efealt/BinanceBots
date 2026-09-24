@@ -1,8 +1,8 @@
 use crate::{
     market::MarketType,
     paper::{
-        PaperChartSnapshot, PaperError, PaperManager, PaperPreviewConfig, PaperPreviewSnapshot,
-        PaperSnapshot, PaperStartConfig,
+        PaperBotRunSummary, PaperChartSnapshot, PaperError, PaperManager, PaperPreviewConfig,
+        PaperPreviewSnapshot, PaperSnapshot, PaperStartConfig,
     },
     storage::{ExactDecimal, StorageError, StorageReader, TimeInForce, TradingBot, TradingBotSpec},
     trading::{ExecutionAssumptions, GridAnchor, StaticGridConfig, TradingInterval},
@@ -92,6 +92,12 @@ struct AuditQuery {
     limit: Option<usize>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct ActivityQuery {
+    before_sequence: Option<i64>,
+    limit: Option<usize>,
+}
+
 #[derive(Serialize)]
 struct RunsResponse<T> {
     runs: Vec<T>,
@@ -100,6 +106,12 @@ struct RunsResponse<T> {
 #[derive(Serialize)]
 struct BotsResponse {
     bots: Vec<TradingBot>,
+}
+
+#[derive(Serialize)]
+struct BotHistoryResponse {
+    bot_id: i64,
+    runs: Vec<PaperBotRunSummary>,
 }
 
 #[derive(Serialize)]
@@ -113,11 +125,13 @@ pub fn router(manager: Arc<PaperManager>, storage: Arc<StorageReader>) -> Router
     Router::new()
         .route("/api/trading/bots", post(create_bot).get(list_bots))
         .route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))
+        .route("/api/trading/bots/{bot_id}/runs", get(bot_history))
         .route("/api/trading/preview", post(preview_run))
         .route("/api/trading/runs", post(start_run).get(list_runs))
         .route("/api/trading/runs/{run_id}", get(run_snapshot))
         .route("/api/trading/runs/{run_id}/chart", get(run_chart))
         .route("/api/trading/runs/{run_id}/audit", get(run_audit))
+        .route("/api/trading/runs/{run_id}/activity", get(run_activity))
         .route("/api/trading/runs/{run_id}/stop", post(stop_run))
         .route("/api/trading/runs/{run_id}/stream", get(run_stream))
         .with_state(TradingApiState { manager, storage })
@@ -164,6 +178,19 @@ async fn list_bots(
 ) -> Result<Json<BotsResponse>, TradingApiError> {
     Ok(Json(BotsResponse {
         bots: state.storage.trading_bots()?,
+    }))
+}
+
+async fn bot_history(
+    State(state): State<TradingApiState>,
+    Path(bot_id): Path<i64>,
+    Query(query): Query<RunsQuery>,
+) -> Result<Json<BotHistoryResponse>, TradingApiError> {
+    validate_bot_id(bot_id)?;
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    Ok(Json(BotHistoryResponse {
+        bot_id,
+        runs: state.manager.bot_history(bot_id, limit).await?,
     }))
 }
 
@@ -331,6 +358,25 @@ async fn run_audit(
     }
     let limit = query.limit.unwrap_or(250).clamp(1, 500);
     Ok(Json(state.manager.audit_page(run_id, query.after_sequence, limit)?))
+}
+
+async fn run_activity(
+    State(state): State<TradingApiState>,
+    Path(run_id): Path<i64>,
+    Query(query): Query<ActivityQuery>,
+) -> Result<Json<crate::storage::TradingActivityPage>, TradingApiError> {
+    validate_run_id(run_id)?;
+    if query.before_sequence.is_some_and(|value| value <= 0) {
+        return Err(TradingApiError::Invalid(
+            "before_sequence must be positive".into(),
+        ));
+    }
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    Ok(Json(
+        state
+            .manager
+            .activity_page(run_id, query.before_sequence, limit)?,
+    ))
 }
 
 async fn list_runs(

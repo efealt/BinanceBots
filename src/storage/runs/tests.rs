@@ -256,6 +256,216 @@ fn persists_reconstructs_and_links_all_run_modes() {
 }
 
 #[test]
+fn phase_5a_bot_history_and_activity_are_isolated_newest_first_and_non_destructive() {
+    let path = temp_database("phase-5a-history-activity");
+    let reader = StorageReader::new(path.clone());
+    reader.initialize().unwrap();
+    let instrument_id = create_instrument(&path);
+
+    let bot_a = reader.create_trading_bot(&crate::storage::TradingBotSpec {
+        bot_name: "Bot A".into(),
+        config: json!({"symbol": "BTCUSDT"}),
+    }).unwrap();
+    let bot_b = reader.create_trading_bot(&crate::storage::TradingBotSpec {
+        bot_name: "Bot B".into(),
+        config: json!({"symbol": "BTCUSDT"}),
+    }).unwrap();
+
+    let run_spec = |bot_id: i64, label: &str| TradingRunSpec {
+        bot_id: Some(bot_id),
+        comparison_id: None,
+        mode: RunMode::Paper,
+        strategy_id: "static-grid-fixture".into(),
+        strategy_version: "1".into(),
+        strategy_params: json!({"label": label}),
+        instrument_id,
+        initial_capital: ExactDecimal::new("100000").unwrap(),
+        run_config: json!({"test": "phase_5a"}),
+        data_source: json!({
+            "kind": "realtime_binance_public",
+            "symbol": "BTCUSDT",
+            "market_type": "spot",
+            "replay_interval": "1m"
+        }),
+        execution_assumptions: json!({}),
+    };
+
+    let a_old = reader.create_trading_run(&run_spec(bot_a.bot_id, "a-old")).unwrap();
+    let b_run = reader.create_trading_run(&run_spec(bot_b.bot_id, "b-only")).unwrap();
+    let a_new = reader.create_trading_run(&run_spec(bot_a.bot_id, "a-new")).unwrap();
+
+    reader.set_trading_run_status(
+        a_old.run_id,
+        RunStatus::Running,
+        EventTimes::new(1_000),
+        None,
+    ).unwrap();
+    reader.record_equity_snapshot(&EquitySnapshotInput {
+        run_id: a_old.run_id,
+        times: EventTimes::new(1_100),
+        equity: ExactDecimal::new("100001").unwrap(),
+        cash_balance: Some(ExactDecimal::new("100001").unwrap()),
+        realized_pnl: Some(ExactDecimal::new("1").unwrap()),
+        unrealized_pnl: Some(ExactDecimal::zero()),
+        fees_paid: Some(ExactDecimal::zero()),
+        metadata: json!({}),
+    }).unwrap();
+    reader.set_trading_run_status(
+        a_old.run_id,
+        RunStatus::Stopped,
+        EventTimes::new(1_200),
+        None,
+    ).unwrap();
+
+    reader.set_trading_run_status(
+        b_run.run_id,
+        RunStatus::Running,
+        EventTimes::new(2_000),
+        None,
+    ).unwrap();
+    reader.set_trading_run_status(
+        b_run.run_id,
+        RunStatus::Stopped,
+        EventTimes::new(2_100),
+        None,
+    ).unwrap();
+
+    reader.set_trading_run_status(
+        a_new.run_id,
+        RunStatus::Running,
+        EventTimes::new(3_000),
+        None,
+    ).unwrap();
+    let intent = reader.record_order_intent(&OrderIntentInput {
+        run_id: a_new.run_id,
+        times: EventTimes::new(3_100),
+        intent_key: Some("buy-1".into()),
+        side: OrderSide::Buy,
+        order_type: OrderType::Limit,
+        time_in_force: Some(TimeInForce::Gtc),
+        price: Some(ExactDecimal::new("100").unwrap()),
+        quantity: ExactDecimal::new("1").unwrap(),
+        stop_price: None,
+        reduce_only: false,
+        metadata: json!({}),
+    }).unwrap();
+    let order = reader.create_trading_order(&CreateOrderInput {
+        run_id: a_new.run_id,
+        times: EventTimes::new(3_100),
+        intent_event_id: Some(intent.event.event_id),
+        client_order_id: None,
+        exchange_order_id: None,
+        side: OrderSide::Buy,
+        order_type: OrderType::Limit,
+        time_in_force: Some(TimeInForce::Gtc),
+        price: Some(ExactDecimal::new("100").unwrap()),
+        quantity: ExactDecimal::new("1").unwrap(),
+        stop_price: None,
+        metadata: json!({}),
+    }).unwrap();
+    reader.record_order_state(&OrderStateInput {
+        order_id: order.order_id,
+        times: EventTimes::new(3_110),
+        status: OrderStatus::Accepted,
+        filled_quantity: ExactDecimal::zero(),
+        average_fill_price: None,
+        reject_reason: None,
+        metadata: json!({}),
+    }).unwrap();
+    reader.record_fill(&FillInput {
+        order_id: order.order_id,
+        times: EventTimes::new(3_200),
+        exchange_trade_id: None,
+        price: ExactDecimal::new("100").unwrap(),
+        quantity: ExactDecimal::new("1").unwrap(),
+        fee: Some(ExactDecimal::new("0.04").unwrap()),
+        fee_asset: Some("USDT".into()),
+        liquidity_role: Some(LiquidityRole::Maker),
+        metadata: json!({}),
+    }).unwrap();
+    reader.record_order_state(&OrderStateInput {
+        order_id: order.order_id,
+        times: EventTimes::new(3_210),
+        status: OrderStatus::Filled,
+        filled_quantity: ExactDecimal::new("1").unwrap(),
+        average_fill_price: Some(ExactDecimal::new("100").unwrap()),
+        reject_reason: None,
+        metadata: json!({}),
+    }).unwrap();
+    reader.record_position_snapshot(&PositionSnapshotInput {
+        run_id: a_new.run_id,
+        times: EventTimes::new(3_220),
+        position_quantity: ExactDecimal::new("1").unwrap(),
+        average_entry_price: Some(ExactDecimal::new("100").unwrap()),
+        mark_price: Some(ExactDecimal::new("101").unwrap()),
+        realized_pnl: Some(ExactDecimal::new("0.5").unwrap()),
+        unrealized_pnl: Some(ExactDecimal::new("1").unwrap()),
+        cash_balance: Some(ExactDecimal::new("99900").unwrap()),
+        metadata: json!({}),
+    }).unwrap();
+    for (time, equity) in [(3_230, "100001"), (3_240, "100002"), (3_250, "100003")] {
+        reader.record_equity_snapshot(&EquitySnapshotInput {
+            run_id: a_new.run_id,
+            times: EventTimes::new(time),
+            equity: ExactDecimal::new(equity).unwrap(),
+            cash_balance: Some(ExactDecimal::new("99900").unwrap()),
+            realized_pnl: Some(ExactDecimal::new("0.5").unwrap()),
+            unrealized_pnl: Some(ExactDecimal::new("1").unwrap()),
+            fees_paid: Some(ExactDecimal::new("0.04").unwrap()),
+            metadata: json!({}),
+        }).unwrap();
+    }
+    reader.set_trading_run_status(
+        a_new.run_id,
+        RunStatus::Stopped,
+        EventTimes::new(3_300),
+        Some("test stop"),
+    ).unwrap();
+
+    let history = reader.trading_bot_run_summaries(bot_a.bot_id, 100).unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].run_id, a_new.run_id);
+    assert_eq!(history[1].run_id, a_old.run_id);
+    assert!(history.iter().all(|run| run.bot_id == bot_a.bot_id));
+    assert!(!history.iter().any(|run| run.run_id == b_run.run_id));
+    assert_eq!(history[0].fill_count, 1);
+    assert_eq!(history[0].ending_position.as_ref().unwrap().as_str(), "1");
+    assert_eq!(history[0].fees_paid.as_ref().unwrap().as_str(), "0.04");
+    assert_eq!(history[0].realized_pnl.as_ref().unwrap().as_str(), "0.5");
+    assert_eq!(history[0].latest_equity.as_ref().unwrap().as_str(), "100003");
+
+    let canonical_before = reader.trading_run_audit_page(a_new.run_id, None, 500).unwrap();
+    let activity = reader.trading_run_activity_page(a_new.run_id, None, 200).unwrap();
+    assert_eq!(activity.total_canonical_events, canonical_before.total_events);
+    assert_eq!(
+        activity.suppressed_equity_events,
+        canonical_before
+            .events
+            .iter()
+            .filter(|event| event.event.event_kind == RunEventKind::Equity)
+            .count() as i64
+    );
+    assert!(activity.activities.iter().all(|event| event.event.event_kind != RunEventKind::Equity));
+    assert!(activity.activities.windows(2).all(|pair| {
+        pair[0].event.run_sequence > pair[1].event.run_sequence
+    }));
+    assert_eq!(
+        activity.activities.first().map(|event| event.event.event_kind),
+        Some(RunEventKind::RunStatus)
+    );
+    assert!(activity.activities.iter().any(|event| event.event.event_kind == RunEventKind::Fill));
+
+    let canonical_after = reader.trading_run_audit_page(a_new.run_id, None, 500).unwrap();
+    assert_eq!(canonical_after.total_events, canonical_before.total_events);
+    assert_eq!(
+        canonical_after.events.iter().map(|event| event.event.run_sequence).collect::<Vec<_>>(),
+        canonical_before.events.iter().map(|event| event.event.run_sequence).collect::<Vec<_>>()
+    );
+
+    cleanup(&path);
+}
+
+#[test]
 fn schema_rejects_invalid_mode_status_and_foreign_key() {
     let path = temp_database("trading-constraints");
     let reader = StorageReader::new(path.clone());

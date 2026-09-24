@@ -196,6 +196,12 @@ if (!tradingApi.includes('.route("/api/trading/bots", post(create_bot).get(list_
 if (!tradingApi.includes('.route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))')) {
   throw new Error("Trading API is missing the Bot read/update route");
 }
+if (!tradingApi.includes('.route("/api/trading/bots/{bot_id}/runs", get(bot_history))')) {
+  throw new Error("Trading API is missing the Phase 5A Bot history route");
+}
+if (!tradingApi.includes('.route("/api/trading/runs/{run_id}/activity", get(run_activity))')) {
+  throw new Error("Trading API is missing the Phase 5A Run activity route");
+}
 if (!tradingApi.includes('.route("/api/trading/preview", post(preview_run))')) {
   throw new Error("Trading API is missing the side-effect-free preview route");
 }
@@ -227,6 +233,10 @@ for (const required of [
 
 const storageRead = fs.readFileSync("src/storage/runs/read.rs", "utf8");
 for (const required of [
+  "pub fn trading_bot_run_summaries",
+  "pub fn trading_run_activity_page",
+  "event_kind <> 'equity'",
+  "ORDER BY e.run_sequence DESC",
   "pub fn trading_run_audit_page",
   "WITH selected AS",
   "LIMIT ?3",

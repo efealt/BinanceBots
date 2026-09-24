@@ -27,6 +27,96 @@ impl StorageReader {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn trading_bot_run_summaries(
+        &self,
+        bot_id: i64,
+        limit: usize,
+    ) -> Result<Vec<TradingBotRunSummaryRecord>, StorageError> {
+        self.trading_bot(bot_id)?;
+        let limit: i64 = limit.clamp(1, 100).try_into().map_err(|_| StorageError::ValueTooLarge)?;
+        let connection = self.open()?;
+        let mut statement = connection.prepare(
+            "SELECT
+                r.run_id,
+                r.bot_id,
+                r.mode,
+                r.status,
+                r.strategy_id,
+                r.data_source_json,
+                r.created_at_ms,
+                r.started_at_ms,
+                r.ended_at_ms,
+                r.updated_at_ms,
+                (SELECT COUNT(*) FROM trading_fills f WHERE f.run_id = r.run_id) AS fill_count,
+                (
+                    SELECT p.position_quantity_decimal
+                    FROM trading_position_snapshots p
+                    JOIN trading_run_events pe ON pe.event_id = p.event_id
+                    WHERE p.run_id = r.run_id
+                    ORDER BY pe.run_sequence DESC
+                    LIMIT 1
+                ) AS ending_position,
+                (
+                    SELECT q.fees_paid_decimal
+                    FROM trading_equity_snapshots q
+                    JOIN trading_run_events qe ON qe.event_id = q.event_id
+                    WHERE q.run_id = r.run_id
+                    ORDER BY qe.run_sequence DESC
+                    LIMIT 1
+                ) AS fees_paid,
+                COALESCE(
+                    (
+                        SELECT q.realized_pnl_decimal
+                        FROM trading_equity_snapshots q
+                        JOIN trading_run_events qe ON qe.event_id = q.event_id
+                        WHERE q.run_id = r.run_id
+                        ORDER BY qe.run_sequence DESC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT p.realized_pnl_decimal
+                        FROM trading_position_snapshots p
+                        JOIN trading_run_events pe ON pe.event_id = p.event_id
+                        WHERE p.run_id = r.run_id
+                        ORDER BY pe.run_sequence DESC
+                        LIMIT 1
+                    )
+                ) AS realized_pnl,
+                (
+                    SELECT q.equity_decimal
+                    FROM trading_equity_snapshots q
+                    JOIN trading_run_events qe ON qe.event_id = q.event_id
+                    WHERE q.run_id = r.run_id
+                    ORDER BY qe.run_sequence DESC
+                    LIMIT 1
+                ) AS latest_equity
+             FROM trading_runs r
+             WHERE r.bot_id = ?1
+             ORDER BY r.run_id DESC
+             LIMIT ?2"
+        )?;
+        let rows = statement.query_map(params![bot_id, limit], |row| {
+            Ok(TradingBotRunSummaryRecord {
+                run_id: row.get(0)?,
+                bot_id: row.get(1)?,
+                mode: enum_from_row(row, 2, RunMode::parse)?,
+                canonical_status: enum_from_row(row, 3, RunStatus::parse)?,
+                strategy_id: row.get(4)?,
+                data_source: json_from_row(row, 5)?,
+                created_at_ms: row.get(6)?,
+                started_at_ms: row.get(7)?,
+                ended_at_ms: row.get(8)?,
+                updated_at_ms: row.get(9)?,
+                fill_count: row.get(10)?,
+                ending_position: optional_decimal_from_row(row, 11)?,
+                fees_paid: optional_decimal_from_row(row, 12)?,
+                realized_pnl: optional_decimal_from_row(row, 13)?,
+                latest_equity: optional_decimal_from_row(row, 14)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn unfinished_trading_runs(
         &self,
         mode: RunMode,
@@ -287,6 +377,111 @@ impl StorageReader {
             first_sequence,
             last_sequence,
             has_earlier,
+            has_more,
+        })
+    }
+
+    pub fn trading_run_activity_page(
+        &self,
+        run_id: i64,
+        before_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<TradingActivityPage, StorageError> {
+        self.trading_run(run_id)?;
+        if before_sequence.is_some_and(|value| value <= 0) {
+            return Err(StorageError::InvalidTradingValue {
+                field: "before_sequence",
+                value: before_sequence.unwrap_or_default().to_string(),
+            });
+        }
+
+        let limit = limit.clamp(1, 200);
+        let limit_i64: i64 = limit.try_into().map_err(|_| StorageError::ValueTooLarge)?;
+        let connection = self.open()?;
+        let (total_canonical_events, total_activities, min_activity_sequence): (i64, i64, Option<i64>) =
+            connection.query_row(
+                "SELECT
+                    COUNT(*),
+                    SUM(CASE WHEN event_kind <> 'equity' THEN 1 ELSE 0 END),
+                    MIN(CASE WHEN event_kind <> 'equity' THEN run_sequence END)
+                 FROM trading_run_events
+                 WHERE run_id = ?1",
+                params![run_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+
+        let selection = if before_sequence.is_some() {
+            "SELECT event_id, run_id, run_sequence, event_kind, event_time_ms,
+                    exchange_time_ms, received_at_ms, persisted_at_ms
+             FROM trading_run_events
+             WHERE run_id = ?1
+               AND event_kind <> 'equity'
+               AND run_sequence < ?2
+             ORDER BY run_sequence DESC
+             LIMIT ?3"
+        } else {
+            "SELECT event_id, run_id, run_sequence, event_kind, event_time_ms,
+                    exchange_time_ms, received_at_ms, persisted_at_ms
+             FROM trading_run_events
+             WHERE run_id = ?1
+               AND event_kind <> 'equity'
+             ORDER BY run_sequence DESC
+             LIMIT ?2"
+        };
+        let sql = format!(
+            "WITH selected AS ({selection})
+             SELECT
+                e.event_id, e.run_id, e.run_sequence, e.event_kind, e.event_time_ms,
+                e.exchange_time_ms, e.received_at_ms, e.persisted_at_ms,
+                COALESCE(rs.status, d.decision_type, os.status, e.event_kind) AS label,
+                COALESCE(rs.note, os.reject_reason) AS note,
+                COALESCE(f.order_id, os.order_id) AS order_id,
+                COALESCE(fill_order.side, state_order.side, i.side) AS side,
+                COALESCE(fill_order.order_type, state_order.order_type, i.order_type) AS order_type,
+                os.status,
+                COALESCE(f.price_decimal, i.price_decimal, state_order.price_decimal) AS price_decimal,
+                COALESCE(f.quantity_decimal, i.quantity_decimal, state_order.quantity_decimal) AS quantity_decimal,
+                os.filled_quantity_decimal,
+                f.fee_decimal,
+                p.position_quantity_decimal,
+                q.equity_decimal
+             FROM selected e
+             LEFT JOIN trading_run_status_events rs ON rs.event_id = e.event_id
+             LEFT JOIN trading_decisions d ON d.event_id = e.event_id
+             LEFT JOIN trading_order_intents i ON i.event_id = e.event_id
+             LEFT JOIN trading_order_state_events os ON os.event_id = e.event_id
+             LEFT JOIN trading_orders state_order ON state_order.order_id = os.order_id
+             LEFT JOIN trading_fills f ON f.event_id = e.event_id
+             LEFT JOIN trading_orders fill_order ON fill_order.order_id = f.order_id
+             LEFT JOIN trading_position_snapshots p ON p.event_id = e.event_id
+             LEFT JOIN trading_equity_snapshots q ON q.event_id = e.event_id
+             ORDER BY e.run_sequence DESC"
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let activities = if let Some(before_sequence) = before_sequence {
+            statement
+                .query_map(params![run_id, before_sequence, limit_i64], map_audit_event)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            statement
+                .query_map(params![run_id, limit_i64], map_audit_event)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        let newest_sequence = activities.first().map(|event| event.event.run_sequence);
+        let oldest_sequence = activities.last().map(|event| event.event.run_sequence);
+        let has_more = match (oldest_sequence, min_activity_sequence) {
+            (Some(oldest), Some(minimum)) => oldest > minimum,
+            _ => false,
+        };
+
+        Ok(TradingActivityPage {
+            activities,
+            total_activities,
+            total_canonical_events,
+            suppressed_equity_events: total_canonical_events.saturating_sub(total_activities),
+            newest_sequence,
+            oldest_sequence,
             has_more,
         })
     }

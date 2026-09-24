@@ -213,7 +213,7 @@ Remaining:
 - [x] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
 - [x] Make Live-Paper execution bot-aware and support multiple different Live-Paper bots concurrently.
 - [x] Add backend-derived **Show on graph** preview for the selected/new bot.
-- [ ] Phase 5A — Add Bot history + quieter newest-first Run activity backend contracts while preserving the complete canonical audit.
+- [x] Phase 5A — Add Bot history + quieter newest-first Run activity backend contracts while preserving the complete canonical audit.
 - [ ] Phase 5B — Redesign only the lower Trading workspace: compact Portfolio monitor, compact BUY-left / SELL-right Open orders, newest-first Run activity, and Bot history. Keep the accepted Bots strip, Live-Paper controls, and Shared market monitor unchanged.
 - [ ] Complete integrated multi-bot production acceptance.
 
