@@ -166,8 +166,6 @@ for (const required of [
   'detailRunId()',
   'technicalAuditDialog.showModal()',
   'technicalAuditDialog.close()',
-  'Exit history',
-  'Technical audit',
   'trading-order-card',
   'newest first',
   'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
@@ -195,8 +193,14 @@ for (const required of [
 if (trading.includes('id="trading-canonical-audit"')) {
   throw new Error("Technical audit must not remain as a persistent inline Trading section");
 }
-if (trading.includes(">Back to current Bot</button>") || trading.includes(">Canonical audit</button>")) {
+if (!trading.includes(">Exit history</button>") || !trading.includes(">Technical audit</button>")) {
   throw new Error("Phase 5B utility wording must use Exit history / Technical audit");
+}
+if (!trading.includes('class="trading-help-tip"') || !trading.includes("data-tip=")) {
+  throw new Error("Run Activity utility controls must expose visible info affordances");
+}
+if (trading.includes(">Back to current Bot</button>") || trading.includes(">Canonical audit</button>")) {
+  throw new Error("Legacy Run Activity utility wording must not remain");
 }
 
 const tradingCss = fs.readFileSync("web/styles.css", "utf8");
