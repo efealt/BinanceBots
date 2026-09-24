@@ -215,7 +215,8 @@ Remaining:
 - [x] Add backend-derived **Show on graph** preview for the selected/new bot.
 - [x] Phase 5A — Add Bot history + quieter newest-first Run activity backend contracts while preserving the complete canonical audit.
 - [ ] Phase 5B — Redesign only the lower Trading workspace: compact Portfolio monitor, compact BUY-left / SELL-right Open orders, newest-first Run activity, and Bot history. Keep the accepted Bots strip, Live-Paper controls, and Shared market monitor unchanged.
-- [ ] Complete integrated multi-bot production acceptance.
+- [ ] Phase 6 — Convert Console into a lightweight real Bot monitor: real persisted Bots/Run status, slow status refresh, compact PnL/position/equity cards, and click-through to detailed Trading; no live chart/WebSocket duplication.
+- [ ] Phase 7 — Complete integrated multi-bot production acceptance across Console + Trading.
 
 **Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
 
