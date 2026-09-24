@@ -20,6 +20,10 @@ const TRADING_BOTS_MIGRATION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/migrations/005_trading_bots.sql"
 ));
+const CLEAN_PREBOT_TRADING_MIGRATION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/migrations/006_clean_prebot_trading.sql"
+));
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
@@ -55,6 +59,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error
         apply_migration(connection, 5, TRADING_BOTS_MIGRATION)?;
     }
 
+    if current_version < 6 {
+        apply_migration(connection, 6, CLEAN_PREBOT_TRADING_MIGRATION)?;
+    }
+
     Ok(())
 }
 
@@ -84,7 +92,11 @@ fn current_time_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_migration, migrate};
+    use super::{
+        apply_migration, migrate, AUTH_AUDIT_MIGRATION, CLEAN_PREBOT_TRADING_MIGRATION,
+        DOWNLOAD_START_DATE_MIGRATION, INITIAL_MIGRATION, TRADING_BOTS_MIGRATION,
+        TRADING_RUNS_MIGRATION,
+    };
     use rusqlite::Connection;
 
     #[test]
@@ -124,7 +136,76 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
+    }
+
+    #[test]
+    fn cleanup_migration_removes_trading_state_but_preserves_downloaded_data() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        connection.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE schema_migrations (
+                 version INTEGER PRIMARY KEY,
+                 applied_at_ms INTEGER NOT NULL
+             );",
+        ).unwrap();
+
+        apply_migration(&mut connection, 1, INITIAL_MIGRATION).unwrap();
+        apply_migration(&mut connection, 2, DOWNLOAD_START_DATE_MIGRATION).unwrap();
+        apply_migration(&mut connection, 3, AUTH_AUDIT_MIGRATION).unwrap();
+        apply_migration(&mut connection, 4, TRADING_RUNS_MIGRATION).unwrap();
+        apply_migration(&mut connection, 5, TRADING_BOTS_MIGRATION).unwrap();
+
+        connection.execute(
+            "INSERT INTO data_downloads
+             (download_id, provider, symbol, market_type, name, interval, created_at_ms, status)
+             VALUES (1, 'binance', 'BTCUSDT', 'spot', 'BTC test data', '1m', 1, 'complete')",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO market_instruments
+             (instrument_id, venue, market_type, symbol, created_at_ms)
+             VALUES (1, 'binance', 'spot', 'BTCUSDT', 1)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO trading_bots
+             (bot_id, bot_name, config_json, created_at_ms, updated_at_ms)
+             VALUES (1, 'Old dev bot', '{}', 1, 1)",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO trading_runs
+             (run_id, bot_id, mode, status, strategy_id, strategy_version,
+              strategy_params_json, instrument_id, initial_capital_decimal,
+              run_config_json, data_source_json, execution_assumptions_json,
+              created_at_ms, updated_at_ms)
+             VALUES (1, 1, 'paper', 'created', 'static-grid-fixture', '1',
+                     '{}', 1, '1000', '{}', '{}', '{}', 1, 1)",
+            [],
+        ).unwrap();
+
+        apply_migration(&mut connection, 6, CLEAN_PREBOT_TRADING_MIGRATION).unwrap();
+
+        let downloads: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM data_downloads WHERE download_id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        let runs: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM trading_runs",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        let bots: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM trading_bots",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(downloads, 1);
+        assert_eq!(runs, 0);
+        assert_eq!(bots, 0);
     }
 
     #[test]
@@ -134,7 +215,7 @@ mod tests {
 
         let result = apply_migration(
             &mut connection,
-            6,
+            7,
             "CREATE TABLE migration_probe (id INTEGER PRIMARY KEY);
              THIS IS NOT VALID SQL;",
         );
@@ -155,6 +236,6 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version after failed migration");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 }

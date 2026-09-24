@@ -76,7 +76,9 @@ fn persists_reconstructs_and_links_all_run_modes() {
     let mut paper_spec = spec(RunMode::Paper, instrument_id);
     paper_spec.bot_id = Some(bot.bot_id);
     let paper = reader.create_trading_run(&paper_spec).unwrap();
-    let live = reader.create_trading_run(&spec(RunMode::Live, instrument_id)).unwrap();
+    let mut live_spec = spec(RunMode::Live, instrument_id);
+    live_spec.bot_id = Some(bot.bot_id);
+    let live = reader.create_trading_run(&live_spec).unwrap();
 
     reader.set_trading_run_status(
         backtest.run_id,

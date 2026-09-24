@@ -12,10 +12,10 @@ impl StorageReader {
         if let Some(comparison_id) = spec.comparison_id.as_deref() {
             validate_nonempty("comparison_id", comparison_id)?;
         }
-        if spec.mode == RunMode::Paper && spec.bot_id.is_none() {
+        if matches!(spec.mode, RunMode::Paper | RunMode::Live) && spec.bot_id.is_none() {
             return Err(StorageError::InvalidTradingValue {
                 field: "bot_id",
-                value: "required for Live-Paper runs".into(),
+                value: "required for Live-Paper and Live-Real-Account runs".into(),
             });
         }
 

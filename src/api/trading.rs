@@ -41,7 +41,7 @@ struct BotConfigurationRequest {
 #[derive(Clone, Debug, Deserialize)]
 struct StartTradingRunRequest {
     mode: String,
-    bot_id: Option<i64>,
+    bot_id: i64,
     symbol: String,
     market_type: String,
     replay_interval: String,
@@ -174,27 +174,14 @@ async fn start_run(
     })?;
     let config_json = configuration_json(&validated.stored)?;
 
-    let bot_id = match request.bot_id {
-        Some(bot_id) => {
-            validate_bot_id(bot_id)?;
-            let bot = state.storage.trading_bot(bot_id)?;
-            if bot.config != config_json {
-                return Err(TradingApiError::Invalid(
-                    "Live-Paper configuration differs from the saved bot; save the bot before starting it".into(),
-                ));
-            }
-            bot_id
-        }
-        None => {
-            // Compatibility for the pre-Bot Trading UI during 4.8B Phase 1.
-            // Phase 2 adds explicit New Bot / Save Bot selection. Even during this
-            // transition, no new Live-Paper run is allowed to remain anonymous.
-            state.storage.create_trading_bot(&TradingBotSpec {
-                bot_name: format!("{} Live-Paper", validated.stored.symbol),
-                config: config_json,
-            })?.bot_id
-        }
-    };
+    validate_bot_id(request.bot_id)?;
+    let bot = state.storage.trading_bot(request.bot_id)?;
+    if bot.config != config_json {
+        return Err(TradingApiError::Invalid(
+            "Live-Paper configuration differs from the saved bot; save the bot before starting it".into(),
+        ));
+    }
+    let bot_id = request.bot_id;
 
     let snapshot = state.manager
         .start(PaperStartConfig {
@@ -568,7 +555,7 @@ mod tests {
 
         let request = StartTradingRunRequest {
             mode: "live".into(),
-            bot_id: None,
+            bot_id: 1,
             symbol: "THIS_DOES_NOT_NEED_TO_EXIST".into(),
             market_type: "definitely_invalid".into(),
             replay_interval: "definitely_invalid".into(),
