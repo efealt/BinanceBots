@@ -27,7 +27,6 @@ use tokio::{
 
 const BASE_INTERVAL_MS: i64 = 60_000;
 const POLL_INTERVAL_MS: u64 = 500;
-const ARMING_GRACE_MS: i64 = 120_000;
 const MAX_ACTIVE_PAPER_RUNS: usize = 4;
 const MAX_RECENT_RUNTIME_EVENTS: usize = 100;
 const MAX_RECENT_RUNTIME_FILLS: usize = 100;
@@ -268,8 +267,8 @@ impl PaperManager {
 
         let symbol = config.symbol.trim().to_ascii_uppercase();
         let now = system_now_ms();
-        // Preview uses the latest fully-known replay boundary. Live-Paper itself arms for
-        // the next boundary, so a previous-close preview can legitimately move before Start.
+        // Preview and Live-Paper Start both use the latest fully-known replay boundary.
+        // A previous-close preview changes only if Start crosses into a new replay bucket.
         let preview_boundary = config.replay_interval.bucket_open_ms(now);
         let key = MarketKey::new(
             &symbol,
@@ -309,7 +308,35 @@ impl PaperManager {
         let execution_json = serde_json::to_value(&config.execution)
             .map_err(|error| PaperError::Invalid(error.to_string()))?;
         let now = system_now_ms();
-        let boundary = config.replay_interval.next_bucket_open_ms(now);
+
+        // Start immediately from information that is already complete at click time.
+        // The reference boundary is the open of the replay bucket currently in progress;
+        // the strategy bootstrap candle is therefore the immediately previous completed
+        // replay candle. No unfinished candle is used to initialize the grid.
+        let reference_boundary = config.replay_interval.bucket_open_ms(now);
+        let bootstrap_key = MarketKey::new(
+            &symbol,
+            config.replay_interval.as_str(),
+            config.market_type,
+        )?;
+        let bootstrap_snapshot = self.market.snapshot_for(bootstrap_key).await?;
+        let previous = previous_completed_replay_candle(
+            &bootstrap_snapshot.candles,
+            reference_boundary,
+            config.replay_interval,
+        )
+        .ok_or_else(|| {
+            PaperError::Invalid(format!(
+                "Live-Paper start requires the completed {} candle immediately before reference boundary {}",
+                config.replay_interval.as_str(),
+                reference_boundary
+            ))
+        })?;
+
+        // Orders are created at the real Start time. The simulator must never evaluate
+        // any 1m OHLC range that began before those orders existed, so the first eligible
+        // base candle is the first full UTC minute at or after Start.
+        let first_execution_base_open_ms = first_full_base_open_at_or_after(now);
 
         // Serialize only runtime admission + registration. This prevents two simultaneous
         // Start requests for the same Bot from racing past the one-active-run invariant,
@@ -339,7 +366,9 @@ impl PaperManager {
             run_config: json!({
                 "source": "trading_ui",
                 "runtime": "paper",
-                "arming_boundary_ms": boundary
+                "start_policy": "immediate_latest_completed",
+                "start_reference_boundary_ms": reference_boundary,
+                "first_execution_base_open_ms": first_execution_base_open_ms
             }),
             data_source: json!({
                 "kind": "realtime_binance_public",
@@ -348,7 +377,9 @@ impl PaperManager {
                 "market_type": config.market_type.as_str(),
                 "source_interval": "1m",
                 "replay_interval": config.replay_interval.as_str(),
-                "arming_boundary_ms": boundary
+                "start_policy": "immediate_latest_completed",
+                "start_reference_boundary_ms": reference_boundary,
+                "first_execution_base_open_ms": first_execution_base_open_ms
             }),
             execution_assumptions: execution_json.clone(),
         })?;
@@ -360,7 +391,7 @@ impl PaperManager {
             .map_err(|_| PaperError::Invalid("initial capital cannot be represented by simulator".into()))?;
         let portfolio = PortfolioState::new(initial_cash).map_err(PaperError::Simulation)?;
         let execution = SimulatedExecution::new(config.execution.clone()).map_err(PaperError::Simulation)?;
-        let core = PaperRunCore {
+        let mut core = PaperRunCore {
             run_id: run.run_id,
             storage: Arc::clone(&self.storage),
             strategy,
@@ -369,18 +400,26 @@ impl PaperManager {
             status: RunStatus::Created,
         };
 
+        // Persist Running + the initial strategy output synchronously so Start returns an
+        // operational Run with its real grid already created instead of an arming placeholder.
+        if let Err(error) = core.start(now, &previous) {
+            let reason = error.to_string();
+            let _ = core.fail(now, &reason);
+            return Err(error);
+        }
+
         let initial_snapshot = PaperSnapshot {
             run_id: run.run_id,
             bot_id: Some(config.bot_id),
             stream_revision: 1,
             comparison_id: run.comparison_id.clone(),
             mode: "paper".into(),
-            runtime_status: "arming".into(),
-            canonical_status: "created".into(),
+            runtime_status: "running".into(),
+            canonical_status: "running".into(),
             runtime_active: true,
             created_at_ms: run.created_at_ms,
-            started_at_ms: run.started_at_ms,
-            ended_at_ms: run.ended_at_ms,
+            started_at_ms: Some(now),
+            ended_at_ms: None,
             symbol: symbol.clone(),
             market_type: config.market_type.as_str().into(),
             replay_interval: config.replay_interval.as_str().into(),
@@ -391,7 +430,9 @@ impl PaperManager {
             data_source: run.data_source.clone(),
             execution_assumptions: execution_json,
             initial_capital: config.initial_capital.as_str().to_string(),
-            arming_boundary_ms: boundary,
+            // Retained in the snapshot contract as the replay reference boundary used at
+            // start; new persistence names it start_reference_boundary_ms.
+            arming_boundary_ms: reference_boundary,
             feed_status: market_snapshot.status,
             best_bid: market_snapshot.quote.best_bid,
             best_ask: market_snapshot.quote.best_ask,
@@ -402,18 +443,18 @@ impl PaperManager {
                 .or_else(|| market_snapshot.candles.last().map(|candle| candle.close)),
             latest_base_candle: market_snapshot.candles.last().map(paper_base_candle),
             portfolio: core.portfolio.view(),
-            open_orders: Vec::new(),
+            open_orders: core.open_orders(),
             recent_fills: Vec::new(),
             recent_events: vec![PaperRuntimeEvent {
                 event_time_ms: now,
-                kind: "arming".into(),
+                kind: "running".into(),
                 message: format!(
-                    "Waiting for clean {} boundary at {}",
+                    "Live-Paper started immediately from the latest completed {} candle; first post-start 1m candle opens at {}.",
                     config.replay_interval.as_str(),
-                    boundary
+                    first_execution_base_open_ms
                 ),
             }],
-            latest_replay_candle: None,
+            latest_replay_candle: Some(previous),
             last_base_candle_open_ms: None,
             updated_at_ms: now,
         };
@@ -431,7 +472,14 @@ impl PaperManager {
         let manager = Arc::clone(self);
         tokio::spawn(async move {
             manager
-                .run_loop(handle, core, config, base_key, boundary, stop_rx)
+                .run_loop(
+                    handle,
+                    core,
+                    config,
+                    base_key,
+                    first_execution_base_open_ms,
+                    stop_rx,
+                )
                 .await;
         });
 
@@ -677,8 +725,9 @@ impl PaperManager {
             })
             .collect::<Vec<_>>();
 
-        let persisted_arming_boundary_ms =
-            json_i64(&run.data_source, "arming_boundary_ms").unwrap_or(run.created_at_ms);
+        let persisted_arming_boundary_ms = json_i64(&run.data_source, "start_reference_boundary_ms")
+            .or_else(|| json_i64(&run.data_source, "arming_boundary_ms"))
+            .unwrap_or(run.created_at_ms);
 
         Ok(PaperSnapshot {
             run_id,
@@ -737,25 +786,14 @@ impl PaperManager {
         mut core: PaperRunCore,
         config: PaperStartConfig,
         base_key: MarketKey,
-        boundary: i64,
+        first_execution_base_open_ms: i64,
         mut stop_rx: watch::Receiver<bool>,
     ) {
         let mut ticker = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let mut started = false;
         let mut feed_interrupted = false;
-        let mut aggregator = ReplayAggregator::new(config.replay_interval, boundary);
-        let bootstrap_key = match MarketKey::new(
-            &base_key.symbol,
-            config.replay_interval.as_str(),
-            config.market_type,
-        ) {
-            Ok(key) => key,
-            Err(error) => {
-                self.finish_failed(&handle, &mut core, error.to_string()).await;
-                return;
-            }
-        };
+        let mut aggregator =
+            ReplayAggregator::new(config.replay_interval, first_execution_base_open_ms);
 
         loop {
             tokio::select! {
@@ -817,52 +855,6 @@ impl PaperManager {
                         continue;
                     }
 
-                    if !started {
-                        if now < boundary {
-                            continue;
-                        }
-                        match self.previous_replay_candle(&bootstrap_key, boundary, config.replay_interval).await {
-                            Ok(Some(previous)) => {
-                                match core.start(boundary, &previous) {
-                                    Ok(()) => {
-                                        started = true;
-                                        self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
-                                            snapshot.runtime_status = "running".into();
-                                            snapshot.canonical_status = "running".into();
-                                            snapshot.started_at_ms = Some(boundary);
-                                            snapshot.updated_at_ms = now;
-                                            push_runtime_event(
-                                                snapshot,
-                                                now,
-                                                "running",
-                                                &format!("Live-Paper strategy started at clean {} boundary.", config.replay_interval.as_str()),
-                                            );
-                                        }).await;
-                                    }
-                                    Err(error) => {
-                                        self.finish_failed(&handle, &mut core, error.to_string()).await;
-                                        break;
-                                    }
-                                }
-                            }
-                            Ok(None) => {
-                                if now > boundary.saturating_add(ARMING_GRACE_MS) {
-                                    self.finish_failed(
-                                        &handle,
-                                        &mut core,
-                                        "previous completed replay candle was unavailable after arming boundary".into(),
-                                    ).await;
-                                    break;
-                                }
-                                continue;
-                            }
-                            Err(error) => {
-                                self.finish_failed(&handle, &mut core, error.to_string()).await;
-                                break;
-                            }
-                        }
-                    }
-
                     let expected = aggregator.expected_base_open_ms();
                     let candidates = match completed_base_candles_from_snapshot(
                         &market_snapshot.candles,
@@ -883,7 +875,7 @@ impl PaperManager {
                                 snapshot,
                                 now,
                                 "feed_resumed",
-                                "Binance market feed resumed with continuous 1m chronology proven from the expected candle.",
+                                "Binance market feed resumed with continuous 1m chronology proven from the expected post-start candle.",
                             );
                         }).await;
                     }
@@ -957,19 +949,6 @@ impl PaperManager {
         }
     }
 
-    async fn previous_replay_candle(
-        &self,
-        key: &MarketKey,
-        boundary: i64,
-        interval: TradingInterval,
-    ) -> Result<Option<MarketCandle>, PaperError> {
-        let snapshot = self.market.snapshot_for(key.clone()).await?;
-        Ok(previous_completed_replay_candle(
-            &snapshot.candles,
-            boundary,
-            interval,
-        ))
-    }
 
     async fn update_snapshot(
         &self,
@@ -1285,6 +1264,15 @@ impl PaperRunCore {
             })?;
         }
         Ok(())
+    }
+}
+
+fn first_full_base_open_at_or_after(timestamp_ms: i64) -> i64 {
+    let bucket_open = timestamp_ms.div_euclid(BASE_INTERVAL_MS) * BASE_INTERVAL_MS;
+    if timestamp_ms == bucket_open {
+        bucket_open
+    } else {
+        bucket_open.saturating_add(BASE_INTERVAL_MS)
     }
 }
 
@@ -1774,10 +1762,34 @@ mod tests {
     }
 
     #[test]
-    fn arming_boundary_is_the_next_clean_utc_interval() {
-        assert_eq!(TradingInterval::OneMinute.next_bucket_open_ms(61_234), 120_000);
-        assert_eq!(TradingInterval::OneHour.next_bucket_open_ms(3_600_001), 7_200_000);
-        assert_eq!(TradingInterval::OneDay.next_bucket_open_ms(90_000_000), 172_800_000);
+    fn immediate_start_uses_current_replay_reference_and_first_full_post_start_minute() {
+        assert_eq!(TradingInterval::OneMinute.bucket_open_ms(61_234), 60_000);
+        assert_eq!(TradingInterval::OneHour.bucket_open_ms(3_600_001), 3_600_000);
+        assert_eq!(TradingInterval::OneDay.bucket_open_ms(90_000_000), 86_400_000);
+
+        assert_eq!(first_full_base_open_at_or_after(61_234), 120_000);
+        assert_eq!(first_full_base_open_at_or_after(120_000), 120_000);
+        assert_eq!(first_full_base_open_at_or_after(120_001), 180_000);
+    }
+
+    #[test]
+    fn mid_interval_post_start_aggregation_never_replays_pre_start_minutes() {
+        let start_ms = 2_221_234;
+        let first_full = first_full_base_open_at_or_after(start_ms);
+        assert_eq!(first_full, 2_280_000);
+
+        let mut aggregator = ReplayAggregator::new(TradingInterval::OneHour, first_full);
+        let mut completed = None;
+        for open_time in (first_full..3_600_000).step_by(BASE_INTERVAL_MS as usize) {
+            completed = aggregator
+                .push(&candle(open_time, 100.0, 101.0, 99.0, 100.5))
+                .unwrap();
+        }
+        let partial = completed.expect("post-start partial hour completes at the UTC hour boundary");
+        assert_eq!(partial.open_time_ms, 0);
+        assert_eq!(partial.close_time_ms, 3_599_999);
+        assert_eq!(partial.open, 100.0);
+        assert_eq!(aggregator.expected_base_open_ms(), 3_600_000);
     }
 
     #[test]

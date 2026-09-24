@@ -188,7 +188,7 @@ fn new_paper_core(
                 "symbol": "BTCUSDT",
                 "market_type": "spot",
                 "replay_interval": "1m",
-                "arming_boundary_ms": 60_000
+                "start_reference_boundary_ms": 60_000
             }),
             execution_assumptions: serde_json::to_value(&execution).unwrap(),
         })
@@ -427,30 +427,32 @@ fn phase4_backtest_and_paper_are_semantically_equal_on_identical_completed_candl
 }
 
 #[test]
-fn phase4_mid_interval_arming_uses_next_boundary_and_previous_completed_candle_only() {
-    let mid_hour_ms = 3_600_001;
-    let boundary = TradingInterval::OneHour.next_bucket_open_ms(mid_hour_ms);
-    assert_eq!(boundary, 7_200_000);
+fn phase4_mid_interval_start_uses_latest_completed_candle_without_pre_start_replay() {
+    let mid_hour_ms = 5_821_234;
+    let reference_boundary = TradingInterval::OneHour.bucket_open_ms(mid_hour_ms);
+    assert_eq!(reference_boundary, 3_600_000);
 
-    let mut older = snapshot_candle(0, 99.0, 101.0, 98.0, 100.0);
-    older.close_time = 3_599_999;
-    let mut previous = snapshot_candle(3_600_000, 100.0, 104.0, 99.0, 103.0);
-    previous.close_time = 7_199_999;
-    let mut in_progress = snapshot_candle(7_200_000, 103.0, 105.0, 102.0, 104.0);
-    in_progress.close_time = 10_799_999;
+    let mut previous = snapshot_candle(0, 99.0, 101.0, 98.0, 100.0);
+    previous.close_time = 3_599_999;
+    let mut in_progress = snapshot_candle(3_600_000, 100.0, 104.0, 99.0, 103.0);
+    in_progress.close_time = 7_199_999;
     in_progress.is_closed = false;
 
     let bootstrap = previous_completed_replay_candle(
-        &[older, previous.clone(), in_progress],
-        boundary,
+        &[previous.clone(), in_progress],
+        reference_boundary,
         TradingInterval::OneHour,
     )
-    .expect("immediately previous completed replay candle");
+    .expect("latest completed replay candle at Start");
 
     assert_eq!(bootstrap.open_time_ms, previous.open_time);
     assert_eq!(bootstrap.close_time_ms, previous.close_time);
     assert_eq!(bootstrap.close, previous.close);
-    assert!(bootstrap.close_time_ms < boundary);
+    assert!(bootstrap.close_time_ms < reference_boundary);
+
+    let first_execution_minute = first_full_base_open_at_or_after(mid_hour_ms);
+    assert_eq!(first_execution_minute, 5_880_000);
+    assert!(first_execution_minute > mid_hour_ms);
 }
 
 #[test]

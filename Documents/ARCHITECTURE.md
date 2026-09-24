@@ -176,9 +176,10 @@ Focused tests verify canonical Paper lifecycle persistence and isolation between
 Paper's strategy clock is backend-owned and deterministic.
 
 - Active Paper replay consumes the existing server-side Binance public market service at a **1-minute base interval**; browser data is never an input to the strategy clock.
-- A run created during an interval starts in `arming` state and uses the next clean UTC 1m / 1h / 1d boundary as its first active boundary.
-- Before `on_start`, the backend obtains exactly the immediately previous completed replay candle for the configured interval. This gives previous-candle strategies the same information boundary used by Backtest.
-- Completed 1-minute candles are aggregated into 1m / 1h / 1d replay candles using the shared `TradingInterval` UTC bucket definitions.
+- **Start Live-Paper is immediate.** At click time the backend uses the open of the replay bucket already in progress as a reference boundary and obtains exactly the immediately previous completed 1m / 1h / 1d replay candle. The unfinished current replay candle is never used to initialize the strategy.
+- The Run is persisted as `Running` and its initial strategy orders are created synchronously before the Start response is returned; there is no routine wait for the next replay boundary.
+- To prevent retroactive fills, the simulator never evaluates a 1-minute OHLC range that began before the orders existed. Post-start market processing begins with the first full UTC 1-minute candle at or after Start. For 1h / 1d replay, the first replay bucket may therefore be a post-start partial bucket; it contains only full 1-minute candles after Start and never pre-start range data.
+- Subsequent completed 1-minute candles are aggregated into 1m / 1h / 1d replay candles using the shared `TradingInterval` UTC bucket definitions.
 - Snapshot validation prevents duplicate, out-of-order, misaligned, or missing completed 1-minute candles from reaching the strategy clock. Older candles already processed are recognized as rolling-snapshot history and ignored.
 - Deterministic tests compare Paper aggregation directly with the Backtest aggregation routine for 1m, 1h, and 1d and verify identical open/close timestamps and OHLCV values for the same completed minute sequence.
 
@@ -455,7 +456,7 @@ Trading now supports a backend-derived **Show on graph** preview before Live-Pap
 
 - `POST /api/trading/preview` accepts the visible Live-Paper configuration without requiring a saved Bot. It validates the same configuration contract used by Start and calls the same static-grid strategy initialization semantics entirely in memory.
 - Preview is deliberately non-canonical and side-effect free: it does not create or update Bots, Runs, order intents, orders, fills, positions, equity snapshots, or audit events.
-- Previous-close preview uses the latest fully-known replay boundary so it never relies on an unfinished future candle. The response includes `preview_boundary_ms` and the reference anchor; Live-Paper still recalculates at the Run's actual future arming boundary, so a moving previous close can legitimately change between preview and Start.
+- Previous-close preview uses the latest fully-known replay boundary so it never relies on an unfinished candle. Live-Paper Start now uses the same current reference-boundary rule and starts immediately from the latest completed replay candle. Preview and Start therefore match within the same replay bucket; they can differ only if the market crosses into a new replay bucket between the two actions.
 - The existing TradingView Lightweight Charts surface draws dotted `PREVIEW BUY/SELL` price lines and an explicit **Preview · not active** badge. Preview state never masquerades as canonical execution state.
 - Strategy-defining edits (symbol, market, replay interval, strategy, anchor, fixed anchor, spacing, levels, quantity) mark the preview stale. Stale levels use warning styling and the action becomes **Update preview**.
 - Selecting another Bot or opening a New Bot clears the prior preview. When a Live-Paper Run becomes active, preview overlays are removed and replaced by the Run's canonical order/fill overlays.
