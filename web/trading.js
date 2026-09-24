@@ -609,6 +609,7 @@ function normalizeOrderLevel(order) {
   const price = numeric(order.price);
   const quantity = numeric(order.quantity ?? order.original_quantity ?? order.originalQuantity);
   const activeFrom = numeric(order.active_from_ms ?? order.submitted_at_ms ?? order.submittedAtMs);
+  const activeTo = order.active_to_ms == null ? null : numeric(order.active_to_ms);
   if (price === null || activeFrom === null) return null;
   return {
     order_id: Number(order.order_id ?? order.id),
@@ -616,7 +617,7 @@ function normalizeOrderLevel(order) {
     price,
     quantity: quantity ?? 0,
     active_from_ms: activeFrom,
-    active_to_ms: numeric(order.active_to_ms),
+    active_to_ms: activeTo,
     final_status: order.final_status ?? null,
   };
 }
@@ -692,10 +693,10 @@ function renderRunOverlays() {
       const options = {
         price: order.price,
         color,
-        lineWidth: 1,
+        lineWidth: 2,
         lineStyle: LightweightCharts.LineStyle.Dashed,
         axisLabelVisible: true,
-        title: (order.side === "buy" ? "B" : "S") + " #" + order.order_id,
+        title: (order.side === "buy" ? "BUY" : "SELL") + " #" + order.order_id,
       };
       if (!priceLine) {
         priceLine = chart.series.createPriceLine(options);

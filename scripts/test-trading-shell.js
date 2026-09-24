@@ -95,8 +95,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=11')) {
-  throw new Error("Trading page must load the Phase 4.8B Bot workspace client");
+if (!trading.includes('/trading.js?v=12')) {
+  throw new Error("Trading page must load the Phase 4.8B Bot workspace client with active-order overlay fix");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -139,6 +139,7 @@ for (const required of [
   'LightweightCharts.createSeriesMarkers',
   'LightweightCharts.LineSeries',
   'LightweightCharts.LineStyle.Dashed',
+  'order.active_to_ms == null ? null : numeric(order.active_to_ms)',
   'chart.series.createPriceLine',
   'subscribeCrosshairMove',
   'chart.updateCandle(toMarketChartCandle(normalized))',
