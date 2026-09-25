@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_subscription_suppresses_duplicate_trade_identity() {
+    async fn phase5_run_subscription_suppresses_duplicate_trade_identity() {
         let feed = MarketFeed::new_with_event_capacity(key(), Vec::new(), 16);
         let mut subscription = feed.subscribe_for_run(12);
 
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_subscription_reports_connection_epoch_change() {
+    async fn phase5_run_subscription_fails_current_run_on_connection_epoch_change() {
         let feed = MarketFeed::new_with_event_capacity(key(), Vec::new(), 16);
         let mut subscription = feed.subscribe_for_run(13);
 
@@ -523,10 +523,70 @@ mod tests {
             }
         ));
         assert!(error.stable_reason().contains("execution_feed_reconnected"));
+
+        // Recovery is a fresh Run/subscription. The failed Run is never resumed with
+        // uncertain chronology, while a new subscription can start from the current epoch.
+        let mut replacement = feed.subscribe_for_run(99);
+        feed.apply_event(MarketEvent::Trade(trade(52, 2_100, 100.2)), 2_101).await;
+        let recovered = replacement.recv().await.unwrap();
+        assert_eq!(recovered.connection_epoch, 2);
+        assert!(matches!(
+            recovered.kind,
+            MarketRealtimeEventKind::Trade(ref value) if value.trade_id == 52
+        ));
     }
 
     #[tokio::test]
-    async fn run_subscription_reports_broadcast_lag_instead_of_silent_loss() {
+    async fn phase5_run_subscription_detects_sequence_gap_and_fresh_subscription_recovers() {
+        let (tx, _) = broadcast::channel(8);
+        let mut subscription = RunMarketSubscription::new(15, tx.subscribe());
+
+        tx.send(MarketRealtimeEvent {
+            sequence: 1,
+            connection_epoch: 1,
+            received_at_ms: 1_000,
+            kind: MarketRealtimeEventKind::Status(FeedStatus::Live),
+        })
+        .unwrap();
+        let first = subscription.recv().await.unwrap();
+        assert_eq!(first.sequence, 1);
+
+        tx.send(MarketRealtimeEvent {
+            sequence: 3,
+            connection_epoch: 1,
+            received_at_ms: 1_010,
+            kind: MarketRealtimeEventKind::Trade(trade(60, 1_009, 100.0)),
+        })
+        .unwrap();
+        let error = subscription.recv().await.unwrap_err();
+        assert!(matches!(
+            error,
+            RunMarketFeedError::SequenceGap {
+                expected_sequence: 2,
+                actual_sequence: 3,
+                ..
+            }
+        ));
+        assert!(error.stable_reason().contains("execution_feed_sequence_gap"));
+
+        let mut replacement = RunMarketSubscription::new(16, tx.subscribe());
+        tx.send(MarketRealtimeEvent {
+            sequence: 4,
+            connection_epoch: 1,
+            received_at_ms: 1_020,
+            kind: MarketRealtimeEventKind::Trade(trade(61, 1_019, 100.1)),
+        })
+        .unwrap();
+        let recovered = replacement.recv().await.unwrap();
+        assert_eq!(recovered.sequence, 4);
+        assert!(matches!(
+            recovered.kind,
+            MarketRealtimeEventKind::Trade(ref value) if value.trade_id == 61
+        ));
+    }
+
+    #[tokio::test]
+    async fn phase5_run_subscription_reports_broadcast_lag_instead_of_silent_loss() {
         let feed = MarketFeed::new_with_event_capacity(key(), Vec::new(), 2);
         let mut subscription = feed.subscribe_for_run(14);
 

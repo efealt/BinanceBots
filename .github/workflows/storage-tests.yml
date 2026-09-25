@@ -49,6 +49,8 @@ jobs:
         run: node scripts/test-trading-contract.js
       - name: Run Phase 4 parity + safety verification
         run: cargo test phase4_ -- --nocapture
+      - name: Run Phase 5 execution isolation verification
+        run: cargo test phase5_ -- --nocapture
       - name: Run Rust tests
         run: cargo test --all-targets
       - name: Run full frozen XAGUSDT grid regression

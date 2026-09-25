@@ -522,6 +522,19 @@ Each active Live-Paper Run now has one backend actor that exclusively owns strat
 - Bot concurrency limits, one-active-Run-per-Bot admission, immediate Start semantics, and Backtest chronology are unchanged.
 
 
+## Phase 4.8C Phase 5 — Backtest isolation and parity rules
+
+Backtest and Live-Paper intentionally share strategy semantics without sharing an execution clock.
+
+- Backtest continues to use `HistoricalExecution` with the existing OHLC Touch / Trade Through rules and candle-limited fill timing. The frozen XAGUSDT regression remains unchanged.
+- Live-Paper continues to use `LivePaperExecution` and real Binance trade events. Tests explicitly require qualifying Touch fills to occur at the trade timestamp rather than at candle close.
+- Parity verification compares only common semantics: strategy decisions, order intents/configuration, identical-fill accounting, canonical persistence invariants, and final portfolio state where the synthetic market inputs are made equivalent.
+- Extra Live-Paper Equity snapshots created at live fill time are valid mode-specific audit detail and are no longer forced to mirror Backtest candle-only event chronology.
+- Focused Phase 5 tests cover Touch, Trade Through, latency, no-pre-eligibility fills, multi-event partial fills, duplicate suppression, stop protection, feed lag, reconnect/epoch change, sequence gaps, and the fresh-subscription recovery contract.
+- A deterministic static-grid test proves one shared strategy emits the same resting intents to both adapters while each adapter legitimately assigns fill timing from its own information source.
+- If historical tick-level execution is added later, it will be a separate Backtest execution adapter. Strategy implementations and Live-Paper execution semantics will not be changed to accommodate it.
+
+
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
 
 The lower Trading workspace now has dedicated read-only backend contracts for history and presentation without changing execution semantics.

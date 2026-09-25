@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_execution_preserves_resting_candle_touch_semantics() {
+    fn phase5_historical_execution_preserves_resting_candle_touch_semantics() {
         let mut execution = HistoricalExecution::new(assumptions()).unwrap();
         execution
             .submit(
@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn live_paper_execution_accepts_real_time_trade_events() {
+    fn phase5_live_paper_touch_fills_on_trade_event_before_candle_close() {
         let mut execution = LivePaperExecution::new(assumptions()).unwrap();
         execution
             .submit(
@@ -505,12 +505,13 @@ mod tests {
             .unwrap();
         assert_eq!(fills.len(), 1);
         assert_eq!(fills[0].event_time_ms, 1_250);
+        assert!(fills[0].event_time_ms < 59_999);
         assert_eq!(fills[0].exchange_trade_id, Some(42));
         assert_eq!(fills[0].price, 99.5);
     }
 
     #[test]
-    fn live_paper_execution_respects_latency_partial_fills_and_duplicate_trade_ids() {
+    fn phase5_live_paper_respects_latency_partial_fills_and_duplicate_trade_ids() {
         let mut execution = LivePaperExecution::new(ExecutionAssumptions {
             latency_ms: 100,
             partial_fill_ratio: 0.5,
@@ -582,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn live_paper_trade_through_requires_strict_crossing() {
+    fn phase5_live_paper_trade_through_requires_strict_crossing() {
         let mut execution = LivePaperExecution::new(ExecutionAssumptions {
             limit_fill_policy: LimitFillPolicy::TradeThrough,
             ..ExecutionAssumptions::default()
@@ -631,7 +632,107 @@ mod tests {
     }
 
     #[test]
-    fn static_grid_intents_are_identical_when_submitted_to_both_execution_paths() {
+    fn phase5_same_strategy_allows_mode_specific_fill_clocks() {
+        let previous = MarketCandle {
+            open_time_ms: 0,
+            close_time_ms: 59_999,
+            open: 100.0,
+            high: 100.0,
+            low: 100.0,
+            close: 100.0,
+            volume: 10.0,
+        };
+        let mut strategy = StaticGridStrategy::new(StaticGridConfig {
+            anchor: GridAnchor::PreviousClose,
+            fixed_anchor_price: None,
+            spacing_bps: 100.0,
+            levels_per_side: 1,
+            quantity_per_order: 1.0,
+            time_in_force: TimeInForce::Gtc,
+        })
+        .unwrap();
+        let output = strategy
+            .on_start(&StrategyStartContext {
+                now_ms: 60_000,
+                previous_candle: Some(&previous),
+                portfolio: portfolio(),
+            })
+            .unwrap();
+
+        assert_eq!(output.order_intents.len(), 2);
+        let buy_limit = output
+            .order_intents
+            .iter()
+            .find(|intent| intent.side == OrderSide::Buy)
+            .and_then(|intent| intent.price)
+            .expect("BUY grid level");
+        let sell_limit = output
+            .order_intents
+            .iter()
+            .find(|intent| intent.side == OrderSide::Sell)
+            .and_then(|intent| intent.price)
+            .expect("SELL grid level");
+
+        let mut historical = HistoricalExecution::new(assumptions()).unwrap();
+        let mut live_paper = LivePaperExecution::new(assumptions()).unwrap();
+        for (index, intent) in output.order_intents.iter().cloned().enumerate() {
+            let order_id = i64::try_from(index + 1).unwrap();
+            historical.submit(order_id, 60_000, intent.clone()).unwrap();
+            live_paper.submit(order_id, 60_000, intent).unwrap();
+        }
+
+        let historical_fills = historical
+            .process_candle(&MarketCandle {
+                open_time_ms: 60_000,
+                close_time_ms: 119_999,
+                open: 100.0,
+                high: sell_limit,
+                low: buy_limit,
+                close: 100.0,
+                volume: 10.0,
+            })
+            .unwrap();
+        assert_eq!(historical_fills.len(), 2);
+        assert!(
+            historical_fills
+                .iter()
+                .all(|fill| fill.event_time_ms == 119_999 && fill.exchange_trade_id.is_none())
+        );
+
+        let first_live_fills = live_paper
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 500,
+                event_time_ms: 70_000,
+                price: buy_limit,
+                quantity: 10.0,
+            }))
+            .unwrap();
+        assert_eq!(first_live_fills.len(), 1);
+        assert_eq!(first_live_fills[0].side, OrderSide::Buy);
+        assert_eq!(first_live_fills[0].event_time_ms, 70_000);
+        assert_eq!(first_live_fills[0].exchange_trade_id, Some(500));
+
+        let second_live_fills = live_paper
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 501,
+                event_time_ms: 80_000,
+                price: sell_limit,
+                quantity: 10.0,
+            }))
+            .unwrap();
+        assert_eq!(second_live_fills.len(), 1);
+        assert_eq!(second_live_fills[0].side, OrderSide::Sell);
+        assert_eq!(second_live_fills[0].event_time_ms, 80_000);
+        assert_eq!(second_live_fills[0].exchange_trade_id, Some(501));
+
+        // Same strategy and intents; only the executor's available market information
+        // determines when the fills become knowable.
+        assert!(first_live_fills[0].event_time_ms < historical_fills[0].event_time_ms);
+        assert!(second_live_fills[0].event_time_ms < historical_fills[1].event_time_ms);
+    }
+
+    #[test]
+    fn phase5_static_grid_intents_are_identical_when_submitted_to_both_execution_paths() {
         let previous = previous_candle();
         let mut strategy = StaticGridStrategy::new(StaticGridConfig {
             anchor: GridAnchor::PreviousClose,

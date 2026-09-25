@@ -2550,7 +2550,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_is_idempotent_persists_reason_and_blocks_future_processing() {
+    fn phase5_stop_is_idempotent_persists_reason_and_blocks_future_processing() {
         let path = temp_database("stop-idempotent");
         let storage = Arc::new(StorageReader::new(path.clone()));
         storage.initialize().unwrap();
