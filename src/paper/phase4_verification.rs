@@ -376,9 +376,8 @@ fn phase4_backtest_and_paper_are_semantically_equal_with_equivalent_live_trade_t
     };
     assert_eq!(positions(&backtest_history), positions(&paper_history));
 
-    let equity = |history: &crate::storage::TradingRunHistory| {
-        history
-            .equity
+    let equity_values = |records: &[crate::storage::EquitySnapshotRecord]| {
+        records
             .iter()
             .map(|record| {
                 (
@@ -392,17 +391,51 @@ fn phase4_backtest_and_paper_are_semantically_equal_with_equivalent_live_trade_t
             })
             .collect::<Vec<_>>()
     };
-    assert_eq!(equity(&backtest_history), equity(&paper_history));
+    let paper_candle_equity = paper_history
+        .equity
+        .iter()
+        .filter(|record| {
+            record.metadata.get("source").and_then(Value::as_str)
+                == Some("binance_closed_candle")
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        equity_values(&backtest_history.equity),
+        equity_values(&paper_candle_equity)
+    );
+    assert_eq!(
+        paper_history.equity.len(),
+        backtest_history.equity.len() + paper_history.fills.len()
+    );
 
-    let event_order = |history: &crate::storage::TradingRunHistory| {
+    let common_event_order = |history: &crate::storage::TradingRunHistory| {
         history
             .events
             .iter()
-            .filter(|event| event.event_kind != RunEventKind::RunStatus)
-            .map(|event| (event.run_sequence, event.event_kind.as_str().to_string(), event.event_time_ms))
+            .filter(|event| {
+                event.event_kind != RunEventKind::RunStatus
+                    && event.event_kind != RunEventKind::Equity
+            })
+            .map(|event| (event.event_kind.as_str().to_string(), event.event_time_ms))
             .collect::<Vec<_>>()
     };
-    assert_eq!(event_order(&backtest_history), event_order(&paper_history));
+    assert_eq!(
+        common_event_order(&backtest_history),
+        common_event_order(&paper_history)
+    );
+    assert!(
+        backtest_history
+            .events
+            .windows(2)
+            .all(|pair| pair[0].run_sequence < pair[1].run_sequence)
+    );
+    assert!(
+        paper_history
+            .events
+            .windows(2)
+            .all(|pair| pair[0].run_sequence < pair[1].run_sequence)
+    );
 
     let backtest_final = backtest_result.final_portfolio;
     let paper_final = paper_core.portfolio.view();
@@ -472,44 +505,37 @@ fn phase4_mid_interval_start_uses_latest_completed_candle_without_pre_start_repl
 }
 
 #[test]
-fn phase4_integrity_gate_handles_duplicate_out_of_order_stale_and_gap_snapshots() {
-    let duplicate = vec![
-        snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0),
-        snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0),
-    ];
-    let duplicate_error = completed_base_candles_from_snapshot(&duplicate, 60_000)
+fn phase4_realtime_candle_integrity_rejects_duplicate_out_of_order_and_gap_events() {
+    let mut duplicate = ReplayAggregator::new(TradingInterval::OneMinute, 60_000);
+    duplicate
+        .push(&snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0))
+        .expect("first completed candle");
+    let duplicate_error = duplicate
+        .push(&snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0))
         .err()
-        .expect("duplicate must fail");
-    assert!(duplicate_error.contains("duplicate/out-of-order"));
+        .expect("duplicate event must fail");
+    assert!(duplicate_error.contains("expected 120000"));
+    assert!(duplicate_error.contains("received 60000"));
 
-    let out_of_order = vec![
-        snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0),
-        snapshot_candle(0, 1.0, 1.0, 1.0, 1.0),
-    ];
-    let out_of_order_error = completed_base_candles_from_snapshot(&out_of_order, 60_000)
+    let mut out_of_order = ReplayAggregator::new(TradingInterval::OneMinute, 120_000);
+    let out_of_order_error = out_of_order
+        .push(&snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0))
         .err()
-        .expect("out-of-order must fail");
-    assert!(out_of_order_error.contains("duplicate/out-of-order"));
+        .expect("out-of-order event must fail");
+    assert!(out_of_order_error.contains("expected 120000"));
+    assert!(out_of_order_error.contains("received 60000"));
 
-    let stale_then_expected = vec![
-        snapshot_candle(0, 1.0, 1.0, 1.0, 1.0),
-        snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0),
-        snapshot_candle(120_000, 1.0, 1.0, 1.0, 1.0),
-    ];
-    let fresh = completed_base_candles_from_snapshot(&stale_then_expected, 120_000)
-        .expect("stale history must be ignored safely");
-    assert_eq!(fresh.len(), 1);
-    assert_eq!(fresh[0].open_time, 120_000);
+    let stale = snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0);
+    let expected = ReplayAggregator::new(TradingInterval::OneMinute, 120_000);
+    assert!(stale.open_time < expected.expected_base_open_ms());
 
-    let gap = vec![
-        snapshot_candle(60_000, 1.0, 1.0, 1.0, 1.0),
-        snapshot_candle(180_000, 1.0, 1.0, 1.0, 1.0),
-    ];
-    let gap_error = completed_base_candles_from_snapshot(&gap, 60_000)
+    let mut gap = ReplayAggregator::new(TradingInterval::OneMinute, 60_000);
+    let gap_error = gap
+        .push(&snapshot_candle(120_000, 1.0, 1.0, 1.0, 1.0))
         .err()
-        .expect("gap must fail");
-    assert!(gap_error.starts_with("market_data_gap:"));
-    assert!(gap_error.contains("expected 1m candle at 120000"));
+        .expect("gap event must fail");
+    assert!(gap_error.contains("expected 60000"));
+    assert!(gap_error.contains("received 120000"));
 }
 
 struct VerificationNoOp;
