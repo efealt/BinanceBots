@@ -25,11 +25,11 @@ The browser is a client only. Backend work does not depend on the browser remain
 - Branch: `main`
 - Render region: Frankfurt
 - Build: `cargo build --release`
-- Start: `./target/release/binance-grid`
+- Start: `./target/release/binance-bots`
 - Health: `/api/health`
 - Persistent disk: `/var/data`
-- Production DB: `/var/data/binance_grid.sqlite3`
-- Local default DB: `data/binance_grid.sqlite3`
+- Production DB: `/var/data/binance_bots.sqlite3`
+- Local default DB: `data/binance_bots.sqlite3`
 
 Local and Render databases are separate files using the same migration-defined schema.
 

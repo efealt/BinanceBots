@@ -10,4 +10,4 @@ To capture one minute of public Binance WebSocket market data into SQLite:
 cargo run -- --capture-live --duration-seconds 60
 ```
 
-The default capture is BTCUSDT Spot and writes to `data/binance_grid.sqlite3`. Use `--symbol`, `--interval`, `--market-type`, `--duration-seconds`, and `--database` to change it. No API keys are used.
+The default capture is BTCUSDT Spot and writes to `data/binance_bots.sqlite3`. Use `--symbol`, `--interval`, `--market-type`, `--duration-seconds`, and `--database` to change it. No API keys are used.

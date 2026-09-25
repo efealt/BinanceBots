@@ -19,7 +19,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 const DEFAULT_SYMBOL: &str = "BTCUSDT";
 const DEFAULT_INTERVAL: &str = "1m";
 const DEFAULT_DURATION_SECONDS: u64 = 60;
-const DEFAULT_DATABASE: &str = "data/binance_grid.sqlite3";
+const DEFAULT_DATABASE: &str = "data/binance_bots.sqlite3";
 
 pub struct CaptureOptions {
     pub symbol: String,
@@ -35,7 +35,7 @@ impl CaptureOptions {
         let mut interval = DEFAULT_INTERVAL.to_string();
         let mut market_type = MarketType::Spot;
         let mut duration_seconds = DEFAULT_DURATION_SECONDS;
-        let mut database_path = std::env::var_os("BINANCE_GRID_DATABASE_PATH")
+        let mut database_path = std::env::var_os("BINANCE_BOTS_DATABASE_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_DATABASE));
         let mut index = 0;
@@ -186,7 +186,7 @@ fn usage() -> &'static str {
      --interval 1m|5m|1h             default: 1m\n\
      --market-type spot|usd_m_perpetual  default: spot\n\
      --duration-seconds N             default: 60\n\
-     --database PATH                  default: BINANCE_GRID_DATABASE_PATH or data/binance_grid.sqlite3"
+     --database PATH                  default: BINANCE_BOTS_DATABASE_PATH or data/binance_bots.sqlite3"
 }
 
 #[derive(Debug, Error)]

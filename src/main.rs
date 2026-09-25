@@ -13,7 +13,7 @@ use market::MarketService;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 
-const DEFAULT_DATABASE_PATH: &str = "data/binance_grid.sqlite3";
+const DEFAULT_DATABASE_PATH: &str = "data/binance_bots.sqlite3";
 const DEFAULT_PORT: u16 = 8080;
 
 #[tokio::main]
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn database_path() -> PathBuf {
-    std::env::var_os("BINANCE_GRID_DATABASE_PATH")
+    std::env::var_os("BINANCE_BOTS_DATABASE_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_DATABASE_PATH))
 }

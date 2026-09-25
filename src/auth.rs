@@ -33,15 +33,15 @@ impl AuthState {
     pub fn from_env(storage_reader: Arc<StorageReader>) -> Result<Self, AuthConfigError> {
         let render_runtime = env::var_os("PORT").is_some();
         let default_mode = if render_runtime { "enabled" } else { "disabled" };
-        let mode = env::var("BINANCE_GRID_AUTH_MODE").unwrap_or_else(|_| default_mode.to_string());
+        let mode = env::var("BINANCE_BOTS_AUTH_MODE").unwrap_or_else(|_| default_mode.to_string());
         let enabled = match mode.trim().to_ascii_lowercase().as_str() {
             "enabled" => true,
             "disabled" => false,
             _ => return Err(AuthConfigError::InvalidMode),
         };
 
-        let username = env::var("BINANCE_GRID_AUTH_USERNAME").unwrap_or_default();
-        let password = env::var("BINANCE_GRID_AUTH_PASSWORD").unwrap_or_default();
+        let username = env::var("BINANCE_BOTS_AUTH_USERNAME").unwrap_or_default();
+        let password = env::var("BINANCE_BOTS_AUTH_PASSWORD").unwrap_or_default();
 
         if enabled {
             if username.trim().is_empty() {
@@ -114,11 +114,11 @@ impl AuthState {
 
 #[derive(Debug, Error)]
 pub enum AuthConfigError {
-    #[error("BINANCE_GRID_AUTH_MODE must be enabled or disabled")]
+    #[error("BINANCE_BOTS_AUTH_MODE must be enabled or disabled")]
     InvalidMode,
-    #[error("BINANCE_GRID_AUTH_USERNAME is required when authentication is enabled")]
+    #[error("BINANCE_BOTS_AUTH_USERNAME is required when authentication is enabled")]
     MissingUsername,
-    #[error("BINANCE_GRID_AUTH_PASSWORD must contain at least 12 characters when authentication is enabled")]
+    #[error("BINANCE_BOTS_AUTH_PASSWORD must contain at least 12 characters when authentication is enabled")]
     WeakPassword,
 }
 
