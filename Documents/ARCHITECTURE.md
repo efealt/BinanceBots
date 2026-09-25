@@ -23,6 +23,7 @@ The browser is a client only. Backend work does not depend on the browser remain
 
 - Repository: `efealt/BinanceBots`
 - Branch: `main`
+- Render identity note: the existing Render service intentionally remains named `BinanceGrid` and continues to use `https://binancegrid.onrender.com`; changing the Render-generated hostname would require a replacement service and is deferred unless the user explicitly requests it.
 - Render region: Frankfurt
 - Build: `cargo build --release`
 - Start: `./target/release/binance-bots`
