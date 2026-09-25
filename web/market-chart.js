@@ -94,6 +94,7 @@ class MarketChart {
     this.candleCount = 0;
     this.firstCandleTime = null;
     this.weekendOverlay?.reset();
+    this.chart?.priceScale("right").applyOptions({ autoScale: true });
   }
 
   applyTheme() {

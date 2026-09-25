@@ -349,3 +349,11 @@ if (!tradingJs.includes('for (const field of ["symbol", "market_type", "strategy
 if (!tradingJs.includes('method: creating ? "POST" : "PUT"')) {
   throw new Error("Save as New Bot must create a fresh Bot instead of overwriting then cloning");
 }
+
+const marketChartJs = fs.readFileSync(path.join(root, "web", "market-chart.js"), "utf8");
+if (!marketChartJs.includes('this.chart?.priceScale("right").applyOptions({ autoScale: true });')) {
+  throw new Error("MarketChart reset must restore right-price autoscale when switching markets");
+}
+if (!trading.includes('/market-chart.js?v=6')) {
+  throw new Error("Trading page must load the market-switch price-scale reset");
+}
