@@ -558,7 +558,10 @@ mod tests {
             kind: MarketRealtimeEventKind::Trade(trade(60, 1_009, 100.0)),
         })
         .unwrap();
-        let error = subscription.recv().await.unwrap_err();
+        let error = match subscription.recv().await {
+            Err(error) => error,
+            Ok(_) => panic!("expected sequence-gap failure"),
+        };
         assert!(matches!(
             error,
             RunMarketFeedError::SequenceGap {
