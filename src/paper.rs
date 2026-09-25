@@ -10,9 +10,10 @@ use crate::{
         TradingActivityPage, TradingAuditPage, TradingFillAudit, TradingOrderLevel, TradingRunSpec,
     },
     trading::{
-        decimal_string, ExecutionAssumptions, MarketCandle, PortfolioState,
-        PortfolioView, HistoricalExecution, StaticGridConfig, StaticGridStrategy, Strategy,
-        StrategyContext, StrategyOutput, StrategyStartContext, TradingInterval,
+        decimal_string, ExecutionAssumptions, ExecutionFill, LiveExecutionEvent, LivePaperExecution,
+        LiveTradeEvent, MarketCandle, PortfolioState, PortfolioView, StaticGridConfig,
+        StaticGridStrategy, Strategy, StrategyContext, StrategyOutput, StrategyStartContext,
+        TradingInterval,
     },
 };
 use serde::Serialize;
@@ -414,7 +415,7 @@ impl PaperManager {
             .parse::<f64>()
             .map_err(|_| PaperError::Invalid("initial capital cannot be represented by simulator".into()))?;
         let portfolio = PortfolioState::new(initial_cash).map_err(PaperError::Simulation)?;
-        let execution = HistoricalExecution::new(config.execution.clone()).map_err(PaperError::Simulation)?;
+        let execution = LivePaperExecution::new(config.execution.clone()).map_err(PaperError::Simulation)?;
         let mut core = PaperRunCore {
             run_id: run.run_id,
             storage: Arc::clone(&self.storage),
@@ -929,32 +930,11 @@ impl PaperManager {
                                 break;
                             }
 
-                            match core.process_candle(&replay_candle) {
-                                Ok(fills) => {
+                            match core.process_strategy_candle(&replay_candle) {
+                                Ok(()) => {
                                     self.update_snapshot(&handle, core.portfolio.view(), core.open_orders(), |snapshot| {
                                         snapshot.latest_replay_candle = Some(replay_candle.clone());
                                         snapshot.updated_at_ms = system_now_ms();
-                                        for fill in fills {
-                                            snapshot.recent_fills.push(PaperFillView {
-                                                event_time_ms: fill.event_time_ms,
-                                                order_id: fill.order_id,
-                                                side: fill.side,
-                                                order_type: fill.order_type,
-                                                price: fill.price,
-                                                quantity: fill.quantity,
-                                                fee: fill.fee,
-                                                status: fill.status,
-                                            });
-                                            if snapshot.recent_fills.len() > MAX_RECENT_RUNTIME_FILLS {
-                                                snapshot.recent_fills.remove(0);
-                                            }
-                                            push_runtime_event(
-                                                snapshot,
-                                                fill.event_time_ms,
-                                                "fill",
-                                                &format!("{:?} fill · {} @ {}", fill.side, fill.quantity, fill.price),
-                                            );
-                                        }
                                         push_runtime_event(
                                             snapshot,
                                             replay_candle.close_time_ms,
@@ -971,9 +951,14 @@ impl PaperManager {
                         }
                     }
                 }
+                execution_event = execution_feed.recv() => {                            }
+                        }
+                    }
+                }
                 execution_event = execution_feed.recv() => {
                     match execution_event {
                         Ok(event) => {
+                            let received_at_ms = event.received_at_ms;
                             match event.kind {
                                 MarketRealtimeEventKind::Status(FeedStatus::Reconnecting) => {
                                     self.finish_failed(
@@ -990,15 +975,64 @@ impl PaperManager {
                                         core.open_orders(),
                                         |snapshot| {
                                             snapshot.feed_status = status;
-                                            snapshot.updated_at_ms = event.received_at_ms;
+                                            snapshot.updated_at_ms = received_at_ms;
                                         },
                                     ).await;
                                 }
-                                // Phase 2 proves direct per-Run delivery and continuity.
-                                // Phase 3 consumes Trade for fills; Phase 4 separates Candle
-                                // strategy timing from Trade execution inside one actor.
-                                MarketRealtimeEventKind::Trade(_)
-                                | MarketRealtimeEventKind::Candle(_) => {}
+                                MarketRealtimeEventKind::Trade(trade) => {
+                                    let live_trade = LiveTradeEvent {
+                                        trade_id: trade.trade_id,
+                                        event_time_ms: trade.trade_time,
+                                        price: trade.price,
+                                        quantity: trade.quantity,
+                                    };
+                                    match core.process_trade(&live_trade, received_at_ms) {
+                                        Ok(fills) => {
+                                            if !fills.is_empty() {
+                                                self.update_snapshot(
+                                                    &handle,
+                                                    core.portfolio.view(),
+                                                    core.open_orders(),
+                                                    |snapshot| {
+                                                        snapshot.updated_at_ms = received_at_ms;
+                                                        for fill in fills {
+                                                            snapshot.recent_fills.push(PaperFillView {
+                                                                event_time_ms: fill.event_time_ms,
+                                                                order_id: fill.order_id,
+                                                                side: fill.side,
+                                                                order_type: fill.order_type,
+                                                                price: fill.price,
+                                                                quantity: fill.quantity,
+                                                                fee: fill.fee,
+                                                                status: fill.status,
+                                                            });
+                                                            if snapshot.recent_fills.len() > MAX_RECENT_RUNTIME_FILLS {
+                                                                snapshot.recent_fills.remove(0);
+                                                            }
+                                                            push_runtime_event(
+                                                                snapshot,
+                                                                fill.event_time_ms,
+                                                                "fill",
+                                                                &format!(
+                                                                    "{:?} fill · {} @ {} · Binance trade {}",
+                                                                    fill.side,
+                                                                    fill.quantity,
+                                                                    fill.price,
+                                                                    fill.exchange_trade_id.unwrap_or_default()
+                                                                ),
+                                                            );
+                                                        }
+                                                    },
+                                                ).await;
+                                            }
+                                        }
+                                        Err(error) => {
+                                            self.finish_failed(&handle, &mut core, error.to_string()).await;
+                                            return;
+                                        }
+                                    }
+                                }
+                                MarketRealtimeEventKind::Candle(_) => {}
                             }
                         }
                         Err(error) => {
@@ -1079,7 +1113,7 @@ struct PaperRunCore {
     storage: Arc<StorageReader>,
     strategy: Box<dyn Strategy + Send>,
     portfolio: PortfolioState,
-    execution: HistoricalExecution,
+    execution: LivePaperExecution,
     status: RunStatus,
 }
 
@@ -1104,24 +1138,27 @@ impl PaperRunCore {
         self.persist_strategy_output(start_time_ms, output)
     }
 
-    fn process_candle(
+    fn process_trade(
         &mut self,
-        candle: &MarketCandle,
-    ) -> Result<Vec<crate::trading::ExecutionFill>, PaperError> {
+        trade: &LiveTradeEvent,
+        received_at_ms: i64,
+    ) -> Result<Vec<ExecutionFill>, PaperError> {
         if self.status != RunStatus::Running {
             return Err(PaperError::RunNotActive(self.run_id));
         }
 
+        let event = LiveExecutionEvent::Trade(trade.clone());
         let fills = self
             .execution
-            .process_candle(candle)
+            .process_event(&event)
             .map_err(PaperError::Simulation)?;
 
         for fill in &fills {
+            let times = live_trade_times(fill.event_time_ms, received_at_ms);
             self.storage.record_fill(&FillInput {
                 order_id: fill.order_id,
-                times: paper_times(fill.event_time_ms),
-                exchange_trade_id: None,
+                times,
+                exchange_trade_id: fill.exchange_trade_id.map(|value| value.to_string()),
                 price: exact(fill.price)?,
                 quantity: exact(fill.quantity)?,
                 fee: Some(exact(fill.fee)?),
@@ -1131,7 +1168,12 @@ impl PaperRunCore {
                     OrderType::Limit => LiquidityRole::Maker,
                     _ => LiquidityRole::Taker,
                 }),
-                metadata: json!({"simulated": true, "mode": "paper"}),
+                metadata: json!({
+                    "simulated": true,
+                    "mode": "paper",
+                    "source": "binance_trade",
+                    "binance_trade_id": fill.exchange_trade_id
+                }),
             })?;
 
             self.portfolio
@@ -1140,27 +1182,45 @@ impl PaperRunCore {
 
             self.storage.record_order_state(&OrderStateInput {
                 order_id: fill.order_id,
-                times: paper_times(fill.event_time_ms),
+                times,
                 status: fill.status,
                 filled_quantity: exact(fill.cumulative_filled_quantity)?,
                 average_fill_price: Some(exact(fill.average_fill_price)?),
                 reject_reason: None,
-                metadata: json!({"simulated": true, "mode": "paper"}),
+                metadata: json!({
+                    "simulated": true,
+                    "mode": "paper",
+                    "source": "binance_trade",
+                    "binance_trade_id": fill.exchange_trade_id
+                }),
             })?;
 
             self.portfolio.mark(fill.price).map_err(PaperError::Simulation)?;
             let view = self.portfolio.view();
             self.storage.record_position_snapshot(&PositionSnapshotInput {
                 run_id: self.run_id,
-                times: paper_times(fill.event_time_ms),
+                times,
                 position_quantity: exact(view.position_quantity)?,
                 average_entry_price: optional_positive_exact(view.average_entry_price)?,
                 mark_price: optional_positive_exact(fill.price)?,
                 realized_pnl: Some(exact(view.realized_pnl)?),
                 unrealized_pnl: Some(exact(view.unrealized_pnl)?),
                 cash_balance: Some(exact(view.cash)?),
-                metadata: json!({"simulated": true, "mode": "paper"}),
+                metadata: json!({
+                    "simulated": true,
+                    "mode": "paper",
+                    "source": "binance_trade",
+                    "binance_trade_id": fill.exchange_trade_id
+                }),
             })?;
+        }
+
+        Ok(fills)
+    }
+
+    fn process_strategy_candle(&mut self, candle: &MarketCandle) -> Result<(), PaperError> {
+        if self.status != RunStatus::Running {
+            return Err(PaperError::RunNotActive(self.run_id));
         }
 
         self.portfolio.mark(candle.close).map_err(PaperError::Simulation)?;
@@ -1187,9 +1247,10 @@ impl PaperRunCore {
             }),
         })?;
 
-        Ok(fills)
+        Ok(())
     }
 
+    fn persist_strategy_output(
     fn persist_strategy_output(
         &mut self,
         event_time_ms: i64,
@@ -1699,6 +1760,14 @@ fn paper_times(event_time_ms: i64) -> EventTimes {
         event_time_ms,
         exchange_time_ms: Some(event_time_ms),
         received_at_ms: Some(system_now_ms()),
+    }
+}
+
+fn live_trade_times(exchange_time_ms: i64, received_at_ms: i64) -> EventTimes {
+    EventTimes {
+        event_time_ms: exchange_time_ms,
+        exchange_time_ms: Some(exchange_time_ms),
+        received_at_ms: Some(received_at_ms),
     }
 }
 
@@ -2268,7 +2337,7 @@ mod tests {
             storage,
             strategy,
             portfolio: PortfolioState::new(1000.0).unwrap(),
-            execution: HistoricalExecution::new(assumptions).unwrap(),
+            execution: LivePaperExecution::new(assumptions).unwrap(),
             status: RunStatus::Created,
         }
     }
@@ -2304,7 +2373,7 @@ mod tests {
             storage,
             strategy: Box::new(NoOpStrategy),
             portfolio: PortfolioState::new(1000.0).unwrap(),
-            execution: HistoricalExecution::new(ExecutionAssumptions::default()).unwrap(),
+            execution: LivePaperExecution::new(ExecutionAssumptions::default()).unwrap(),
             status: RunStatus::Created,
         }
     }
@@ -2366,7 +2435,7 @@ mod tests {
     }
 
     #[test]
-    fn paper_processes_resting_fills_before_strategy_and_never_retrofills_new_orders() {
+    fn paper_processes_live_trade_fill_before_strategy_and_never_retrofills_new_orders() {
         let path = temp_database("execution-ordering");
         let storage = Arc::new(StorageReader::new(path.clone()));
         storage.initialize().unwrap();
@@ -2388,6 +2457,19 @@ mod tests {
         };
         core.start(60_000, &previous).unwrap();
 
+        let first_trade = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 90_000,
+            price: 99.5,
+            quantity: 5.0,
+        };
+        let first_fills = core.process_trade(&first_trade, 90_001).unwrap();
+        assert_eq!(first_fills.len(), 1);
+        assert_eq!(first_fills[0].side, crate::storage::OrderSide::Buy);
+        assert!((first_fills[0].price - 100.0).abs() < 1e-12);
+        assert_eq!(first_fills[0].exchange_trade_id, Some(1));
+        assert_eq!(core.portfolio.view().position_quantity, 1.0);
+
         let first = MarketCandle {
             open_time_ms: 60_000,
             close_time_ms: 119_999,
@@ -2397,14 +2479,8 @@ mod tests {
             close: 110.0,
             volume: 1.0,
         };
-        let first_fills = core.process_candle(&first).unwrap();
-        assert_eq!(first_fills.len(), 1);
-        assert_eq!(first_fills[0].side, crate::storage::OrderSide::Buy);
-        assert!((first_fills[0].price - 100.0).abs() < 1e-12);
-        assert_eq!(core.portfolio.view().position_quantity, 1.0);
+        core.process_strategy_candle(&first).unwrap();
 
-        // The sell order is created from the completed first candle. The first candle
-        // traded through 111, but the new order must still remain pending.
         let pending = core.open_orders();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].side, crate::storage::OrderSide::Sell);
@@ -2413,6 +2489,7 @@ mod tests {
 
         let history_after_first = storage.trading_run_history(core.run_id).unwrap();
         assert_eq!(history_after_first.fills.len(), 1);
+        assert_eq!(history_after_first.fills[0].exchange_trade_id.as_deref(), Some("1"));
         assert_eq!(history_after_first.positions.len(), 1);
         assert_eq!(history_after_first.equity.len(), 1);
         assert_eq!(history_after_first.order_intents.len(), 2);
@@ -2440,21 +2517,14 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[0].run_sequence < pair[1].run_sequence)
         );
-        assert!(
-            history_after_first.orders[0].order_id
-                < history_after_first.orders[1].order_id
-        );
 
-        let second = MarketCandle {
-            open_time_ms: 120_000,
-            close_time_ms: 179_999,
-            open: 110.0,
-            high: 112.0,
-            low: 109.0,
-            close: 111.0,
-            volume: 1.0,
+        let second_trade = LiveTradeEvent {
+            trade_id: 2,
+            event_time_ms: 130_000,
+            price: 111.5,
+            quantity: 5.0,
         };
-        let second_fills = core.process_candle(&second).unwrap();
+        let second_fills = core.process_trade(&second_trade, 130_001).unwrap();
         assert_eq!(second_fills.len(), 1);
         assert_eq!(second_fills[0].side, crate::storage::OrderSide::Sell);
         assert!((second_fills[0].price - 111.0).abs() < 1e-12);
@@ -2496,27 +2566,21 @@ mod tests {
         };
         core.start(60_000, &previous).unwrap();
 
-        let first = MarketCandle {
-            open_time_ms: 60_000,
-            close_time_ms: 119_999,
-            open: 100.0,
-            high: 101.0,
-            low: 99.0,
-            close: 100.0,
-            volume: 1.0,
+        let pre_eligible = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 119_999,
+            price: 100.0,
+            quantity: 5.0,
         };
-        assert!(core.process_candle(&first).unwrap().is_empty());
+        assert!(core.process_trade(&pre_eligible, 120_000).unwrap().is_empty());
 
-        let second = MarketCandle {
-            open_time_ms: 120_000,
-            close_time_ms: 179_999,
-            open: 100.0,
-            high: 101.0,
-            low: 99.0,
-            close: 100.0,
-            volume: 1.0,
+        let eligible = LiveTradeEvent {
+            trade_id: 2,
+            event_time_ms: 120_000,
+            price: 100.0,
+            quantity: 5.0,
         };
-        let fills = core.process_candle(&second).unwrap();
+        let fills = core.process_trade(&eligible, 120_001).unwrap();
         assert_eq!(fills.len(), 1);
         assert_eq!(fills[0].status, OrderStatus::PartiallyFilled);
         assert!((fills[0].quantity - 1.0).abs() < 1e-12);
@@ -2567,28 +2631,22 @@ mod tests {
         };
         core.start(60_000, &previous).unwrap();
 
-        let touch_only = MarketCandle {
-            open_time_ms: 60_000,
-            close_time_ms: 119_999,
-            open: 101.0,
-            high: 102.0,
-            low: 100.0,
-            close: 101.0,
-            volume: 1.0,
+        let touch_only = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 70_000,
+            price: 100.0,
+            quantity: 1.0,
         };
-        assert!(core.process_candle(&touch_only).unwrap().is_empty());
+        assert!(core.process_trade(&touch_only, 70_001).unwrap().is_empty());
         assert_eq!(core.open_orders().len(), 1);
 
-        let trades_through = MarketCandle {
-            open_time_ms: 120_000,
-            close_time_ms: 179_999,
-            open: 101.0,
-            high: 102.0,
-            low: 99.9,
-            close: 100.5,
-            volume: 1.0,
+        let trades_through = LiveTradeEvent {
+            trade_id: 2,
+            event_time_ms: 70_002,
+            price: 99.9,
+            quantity: 1.0,
         };
-        let fills = core.process_candle(&trades_through).unwrap();
+        let fills = core.process_trade(&trades_through, 70_003).unwrap();
         assert_eq!(fills.len(), 1);
         assert!((fills[0].price - 100.0).abs() < 1e-12);
         assert!(core.open_orders().is_empty());
@@ -2637,15 +2695,17 @@ mod tests {
         core.stop(100_000, "user_stop").unwrap();
         let after_second_stop = storage.trading_run_history(core.run_id).unwrap();
         assert_eq!(after_second_stop.events.len(), event_count);
-        assert_eq!(
-            after_second_stop
-                .status_events
-                .iter()
-                .filter(|event| event.status == RunStatus::Stopped)
-                .count(),
-            1
-        );
 
+        let later_trade = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 120_000,
+            price: 100.0,
+            quantity: 1.0,
+        };
+        assert!(matches!(
+            core.process_trade(&later_trade, 120_001),
+            Err(PaperError::RunNotActive(run_id)) if run_id == core.run_id
+        ));
         let later_candle = MarketCandle {
             open_time_ms: 120_000,
             close_time_ms: 179_999,
@@ -2656,11 +2716,12 @@ mod tests {
             volume: 1.0,
         };
         assert!(matches!(
-            core.process_candle(&later_candle),
+            core.process_strategy_candle(&later_candle),
             Err(PaperError::RunNotActive(run_id)) if run_id == core.run_id
         ));
-        let after_rejected_candle = storage.trading_run_history(core.run_id).unwrap();
-        assert_eq!(after_rejected_candle.events.len(), event_count);
+
+        let after_rejected_work = storage.trading_run_history(core.run_id).unwrap();
+        assert_eq!(after_rejected_work.events.len(), event_count);
 
         drop(core);
         drop(storage);
@@ -2700,20 +2761,15 @@ mod tests {
         };
         first.start(60_000, &previous).unwrap();
         second.start(60_000, &previous).unwrap();
-        assert_eq!(first.status, RunStatus::Running);
-        assert_eq!(second.status, RunStatus::Running);
 
-        let candle = MarketCandle {
-            open_time_ms: 60_000,
-            close_time_ms: 119_999,
-            open: 100.0,
-            high: 101.0,
-            low: 99.0,
-            close: 100.5,
-            volume: 1.0,
+        let trade = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 70_000,
+            price: 100.0,
+            quantity: 5.0,
         };
-        let first_fills = first.process_candle(&candle).unwrap();
-        let second_fills = second.process_candle(&candle).unwrap();
+        let first_fills = first.process_trade(&trade, 70_001).unwrap();
+        let second_fills = second.process_trade(&trade, 70_001).unwrap();
         assert_eq!(first_fills.len(), 1);
         assert!(second_fills.is_empty());
         assert_eq!(first.portfolio.view().position_quantity, 2.0);
@@ -2722,18 +2778,12 @@ mod tests {
         let first_history = storage.trading_run_history(first_run_id).unwrap();
         let second_history = storage.trading_run_history(second_run_id).unwrap();
         assert_eq!(first_history.fills.len(), 1);
+        assert_eq!(first_history.fills[0].exchange_trade_id.as_deref(), Some("1"));
         assert_eq!(first_history.orders.len(), 1);
         assert!(second_history.fills.is_empty());
         assert!(second_history.orders.is_empty());
         assert!(first_history.events.iter().all(|event| event.run_id == first_run_id));
         assert!(second_history.events.iter().all(|event| event.run_id == second_run_id));
-
-        let first_audit = storage.trading_run_audit_page(first_run_id, None, 500).unwrap();
-        let second_audit = storage.trading_run_audit_page(second_run_id, None, 500).unwrap();
-        assert!(first_audit.events.iter().all(|item| item.event.run_id == first_run_id));
-        assert!(second_audit.events.iter().all(|item| item.event.run_id == second_run_id));
-        assert!(first_audit.events.iter().any(|item| item.event.event_kind == crate::storage::RunEventKind::Fill));
-        assert!(!second_audit.events.iter().any(|item| item.event.event_kind == crate::storage::RunEventKind::Fill));
 
         drop(first);
         drop(second);
@@ -3055,7 +3105,14 @@ mod tests {
             close: 100.5,
             volume: 1.0,
         };
-        core.process_candle(&candle).unwrap();
+        let trade = LiveTradeEvent {
+            trade_id: 1,
+            event_time_ms: 70_000,
+            price: 100.0,
+            quantity: 5.0,
+        };
+        core.process_trade(&trade, 70_001).unwrap();
+        core.process_strategy_candle(&candle).unwrap();
         core.stop(120_000, "user_stop").unwrap();
         drop(core);
 

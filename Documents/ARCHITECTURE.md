@@ -475,7 +475,7 @@ Execution interpretation is now explicit:
 - Both adapters emit the same shared `ExecutionFill` contract, so portfolio accounting and canonical persistence do not need mode-specific fill representations.
 - Pending-order validation, latency-based eligibility timestamps, partial-fill quantity calculation, fee calculation, and cumulative fill accounting remain centralized in the execution module instead of being duplicated.
 - No strategy wrapper or Live-Paper copy of `StaticGridStrategy` exists. A focused test submits one static-grid `on_start` output unchanged into both adapters and proves the resting intents are identical.
-- Phase 1 is structural only for the running service: the current Paper runtime remains on the historical adapter until Phases 2–4 deliver lossless backend trade events and serialize them into the Run actor. The new live adapter is not yet used as evidence of production live-event execution.
+- Phase 1 introduced the adapter split. Phase 3 now wires the running Live-Paper core to `LivePaperExecution`; Backtest remains on `HistoricalExecution`.
 ## Phase 4.8C Phase 2 — Backend realtime execution feed
 
 The Market service now exposes a backend-only bounded event path for execution chronology. It is separate from the browser's market-stream UI polling.
@@ -484,12 +484,28 @@ The Market service now exposes a backend-only bounded event path for execution c
 - Trade events preserve Binance trade ID, exchange trade time, price, and quantity. Candle events remain separate so later phases can route trades to execution immediately while completed candles drive strategy timing.
 - Each running Live-Paper Run owns a `RunMarketSubscription`. Its per-Run cursor tracks the last backend sequence and last Binance trade ID. Exact duplicate trade IDs are suppressed; backwards trade IDs are treated as continuity failures.
 - Broadcast lag, sequence gaps, channel closure, and connection-epoch changes are explicit errors. A feed reconnect currently fails the development Run and persists a stable reason because missed trade chronology cannot yet be reconstructed safely.
-- The subscription is already attached to backend Live-Paper runtimes and is independent of browser presence. Phase 2 intentionally does not create fills from trade events yet; Phase 3 replaces the candle-based resting-order fill path.
+- The subscription is attached to backend Live-Paper runtimes and is independent of browser presence. Phase 3 now consumes its trade events for resting-order fills; candle events remain separate from execution.
 - The bounded channel capacity is 16,384 execution events. A slow consumer fails explicitly rather than silently dropping execution information.
 
 ### Development trading-state reset
 
 Migration 007 intentionally clears disposable Bot/Run operational state before the realtime execution path proceeds. It deletes `trading_runs` and `trading_bots` and relies on foreign-key cascades for their canonical child records. Download definitions, historical datasets/OHLC/trades, market instruments, and live-capture tables are preserved. No compatibility bridge is kept for the discarded development trading records.
+
+
+## Phase 4.8C Phase 3 — Live-Paper resting-order execution
+
+Live-Paper resting orders now execute from Binance trade events rather than completed candle OHLC ranges.
+
+- `PaperRunCore` owns `LivePaperExecution`; it no longer owns or calls the historical candle executor.
+- Each qualifying `MarketRealtimeEventKind::Trade` is converted to a `LiveTradeEvent` with Binance trade ID, exchange trade time, price, and quantity and is processed immediately in the backend Run loop.
+- Touch fills use BUY `trade <= limit` and SELL `trade >= limit`; Trade Through uses strict BUY `trade < limit` and SELL `trade > limit`. Simulated limit fills remain priced at the resting limit.
+- `latency_ms` gates eligibility by exchange timestamp only. `partial_fill_ratio` and configured fees remain shared execution assumptions.
+- Canonical Fill rows persist the qualifying Binance trade ID in `exchange_trade_id`; event timing preserves exchange time and backend receive time. Order-state and position effects follow the same shared accounting path as before.
+- Completed strategy candles call `strategy.on_candle` and persist strategy/equity effects only; they cannot retroactively fill resting Live-Paper orders.
+- Duplicate trade IDs are suppressed per Run and defensively by `LivePaperExecution`; backwards trade IDs and feed continuity failures fail explicitly rather than guessing.
+- A stopped or failed Run expires pending simulated orders and rejects later trade processing.
+
+Backtest execution is unchanged and continues to use `HistoricalExecution`.
 
 
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts

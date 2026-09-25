@@ -199,7 +199,7 @@ fn new_paper_core(
         storage: Arc::clone(&storage),
         strategy,
         portfolio: PortfolioState::new(1000.0).unwrap(),
-        execution: HistoricalExecution::new(execution).unwrap(),
+        execution: LivePaperExecution::new(execution).unwrap(),
         status: RunStatus::Created,
     };
     (storage, core)
@@ -210,7 +210,7 @@ fn decimal(value: &Option<ExactDecimal>) -> Option<String> {
 }
 
 #[test]
-fn phase4_backtest_and_paper_are_semantically_equal_on_identical_completed_candles() {
+fn phase4_backtest_and_paper_are_semantically_equal_with_equivalent_live_trade_touches() {
     let candles = parity_candles();
     let backtest_path = verification_database("parity-backtest");
     let paper_path = verification_database("parity-paper");
@@ -241,10 +241,25 @@ fn phase4_backtest_and_paper_are_semantically_equal_on_identical_completed_candl
     let (paper_storage, mut paper_core) =
         new_paper_core(&paper_path, paper_strategy, parity_execution());
     paper_core.start(60_000, &candles[0]).expect("start parity Paper");
+    let mut trade_id = 1_u64;
     for candle in &candles[1..] {
+        for price in [candle.low, candle.high] {
+            paper_core
+                .process_trade(
+                    &LiveTradeEvent {
+                        trade_id,
+                        event_time_ms: candle.close_time_ms,
+                        price,
+                        quantity: 10.0,
+                    },
+                    candle.close_time_ms,
+                )
+                .expect("process parity Paper trade");
+            trade_id += 1;
+        }
         paper_core
-            .process_candle(candle)
-            .expect("process parity Paper candle");
+            .process_strategy_candle(candle)
+            .expect("process parity Paper strategy candle");
     }
     let paper_history = paper_storage.trading_run_history(paper_core.run_id).unwrap();
 

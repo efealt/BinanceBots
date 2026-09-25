@@ -22,6 +22,7 @@ pub struct ExecutionFill {
     pub price: f64,
     pub fee: f64,
     pub event_time_ms: i64,
+    pub exchange_trade_id: Option<u64>,
     pub status: OrderStatus,
     pub cumulative_filled_quantity: f64,
     pub average_fill_price: f64,
@@ -157,7 +158,7 @@ impl HistoricalExecution {
             } else {
                 candle.close_time_ms
             };
-            fills.push(fill_order(order, price, event_time_ms, &assumptions)?);
+            fills.push(fill_order(order, price, event_time_ms, None, &assumptions)?);
         }
 
         self.book.retain_open();
@@ -176,12 +177,14 @@ impl HistoricalExecution {
 #[derive(Clone, Debug)]
 pub struct LivePaperExecution {
     book: ExecutionBook,
+    last_trade_id: Option<u64>,
 }
 
 impl LivePaperExecution {
     pub fn new(assumptions: ExecutionAssumptions) -> Result<Self, String> {
         Ok(Self {
             book: ExecutionBook::new(assumptions)?,
+            last_trade_id: None,
         })
     }
 
@@ -217,6 +220,18 @@ impl LivePaperExecution {
 
     fn process_trade(&mut self, trade: &LiveTradeEvent) -> Result<Vec<ExecutionFill>, String> {
         validate_live_trade(trade)?;
+        if let Some(previous_trade_id) = self.last_trade_id {
+            if trade.trade_id == previous_trade_id {
+                return Ok(Vec::new());
+            }
+            if trade.trade_id < previous_trade_id {
+                return Err(format!(
+                    "live trade id moved backwards: previous {}, current {}",
+                    previous_trade_id, trade.trade_id
+                ));
+            }
+        }
+
         let mut fills = Vec::new();
         let assumptions = self.book.assumptions.clone();
 
@@ -247,10 +262,17 @@ impl LivePaperExecution {
             let Some(price) = maybe_price else {
                 continue;
             };
-            fills.push(fill_order(order, price, trade.event_time_ms, &assumptions)?);
+            fills.push(fill_order(
+                order,
+                price,
+                trade.event_time_ms,
+                Some(trade.trade_id),
+                &assumptions,
+            )?);
         }
 
         self.book.retain_open();
+        self.last_trade_id = Some(trade.trade_id);
         Ok(fills)
     }
 }
@@ -292,6 +314,7 @@ fn fill_order(
     order: &mut PendingOrder,
     price: f64,
     event_time_ms: i64,
+    exchange_trade_id: Option<u64>,
     assumptions: &ExecutionAssumptions,
 ) -> Result<ExecutionFill, String> {
     let chunk = (order.original_quantity * assumptions.partial_fill_ratio)
@@ -324,6 +347,7 @@ fn fill_order(
         price,
         fee,
         event_time_ms,
+        exchange_trade_id,
         status,
         cumulative_filled_quantity: order.filled_quantity,
         average_fill_price,
@@ -481,7 +505,129 @@ mod tests {
             .unwrap();
         assert_eq!(fills.len(), 1);
         assert_eq!(fills[0].event_time_ms, 1_250);
+        assert_eq!(fills[0].exchange_trade_id, Some(42));
         assert_eq!(fills[0].price, 99.5);
+    }
+
+    #[test]
+    fn live_paper_execution_respects_latency_partial_fills_and_duplicate_trade_ids() {
+        let mut execution = LivePaperExecution::new(ExecutionAssumptions {
+            latency_ms: 100,
+            partial_fill_ratio: 0.5,
+            ..ExecutionAssumptions::default()
+        })
+        .unwrap();
+        execution
+            .submit(
+                1,
+                1_000,
+                StrategyOrderIntent {
+                    intent_key: Some("buy".into()),
+                    side: OrderSide::Buy,
+                    order_type: OrderType::Limit,
+                    time_in_force: Some(TimeInForce::Gtc),
+                    price: Some(100.0),
+                    quantity: 2.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .unwrap();
+
+        let pre_eligible = execution
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 10,
+                event_time_ms: 1_099,
+                price: 99.0,
+                quantity: 5.0,
+            }))
+            .unwrap();
+        assert!(pre_eligible.is_empty());
+
+        let first = execution
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 11,
+                event_time_ms: 1_100,
+                price: 100.0,
+                quantity: 5.0,
+            }))
+            .unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].status, OrderStatus::PartiallyFilled);
+        assert!((first[0].quantity - 1.0).abs() < 1e-12);
+
+        let duplicate = execution
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 11,
+                event_time_ms: 1_100,
+                price: 99.0,
+                quantity: 5.0,
+            }))
+            .unwrap();
+        assert!(duplicate.is_empty());
+        assert_eq!(execution.pending_orders().len(), 1);
+
+        let second = execution
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 12,
+                event_time_ms: 1_101,
+                price: 99.0,
+                quantity: 5.0,
+            }))
+            .unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].status, OrderStatus::Filled);
+        assert!(execution.pending_orders().is_empty());
+    }
+
+    #[test]
+    fn live_paper_trade_through_requires_strict_crossing() {
+        let mut execution = LivePaperExecution::new(ExecutionAssumptions {
+            limit_fill_policy: LimitFillPolicy::TradeThrough,
+            ..ExecutionAssumptions::default()
+        })
+        .unwrap();
+        execution
+            .submit(
+                1,
+                1_000,
+                StrategyOrderIntent {
+                    intent_key: Some("buy".into()),
+                    side: OrderSide::Buy,
+                    order_type: OrderType::Limit,
+                    time_in_force: Some(TimeInForce::Gtc),
+                    price: Some(100.0),
+                    quantity: 1.0,
+                    stop_price: None,
+                    reduce_only: false,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .unwrap();
+
+        assert!(
+            execution
+                .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                    trade_id: 20,
+                    event_time_ms: 1_001,
+                    price: 100.0,
+                    quantity: 1.0,
+                }))
+                .unwrap()
+                .is_empty()
+        );
+
+        let crossed = execution
+            .process_event(&LiveExecutionEvent::Trade(LiveTradeEvent {
+                trade_id: 21,
+                event_time_ms: 1_002,
+                price: 99.99,
+                quantity: 1.0,
+            }))
+            .unwrap();
+        assert_eq!(crossed.len(), 1);
+        assert_eq!(crossed[0].price, 100.0);
     }
 
     #[test]
