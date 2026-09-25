@@ -82,6 +82,7 @@ const technicalAuditRun = document.querySelector("#trading-technical-audit-run")
 const auditBody = document.querySelector("#trading-audit-body");
 const auditStatus = document.querySelector("#trading-audit-status");
 const auditLoadAllButton = document.querySelector("#trading-audit-load-all");
+const historyDrawer = document.querySelector("#trading-bot-history-drawer");
 const historyBadge = document.querySelector("#trading-history-badge");
 const historyList = document.querySelector("#trading-history-list");
 const historyStatus = document.querySelector("#trading-history-status");
@@ -130,6 +131,7 @@ let activityRefreshInFlight = false;
 let activityLastRefreshAt = 0;
 let activityLastFillSignature = "";
 let botHistoryRuns = [];
+let historyExpanded = false;
 let historyRequestToken = 0;
 let historyRefreshInFlight = false;
 let historyLastRefreshAt = 0;
@@ -313,6 +315,18 @@ function sortedBotsForStrip() {
   });
 }
 
+function updateHistoryDrawerState() {
+  const hasSelectedBot = Number.isInteger(Number(selectedBotId)) && Number(selectedBotId) > 0 && !botDraftMode;
+  historyDrawer.hidden = !hasSelectedBot || !historyExpanded;
+
+  const toggle = botStrip.querySelector("[data-history-toggle]");
+  if (toggle) {
+    toggle.textContent = (historyExpanded ? "Hide runs" : "Previous runs")
+      + " · " + botHistoryRuns.length;
+    toggle.setAttribute("aria-expanded", String(historyExpanded));
+  }
+}
+
 function renderBotStrip() {
   botStrip.replaceChildren();
   const bots = sortedBotsForStrip();
@@ -322,18 +336,23 @@ function renderBotStrip() {
     empty.className = "trading-bot-empty";
     empty.textContent = "No bots created";
     botStrip.appendChild(empty);
+    updateHistoryDrawerState();
     return;
   }
 
   for (const bot of bots) {
     const activeRun = activeRunForBot(bot.bot_id);
-    const card = document.createElement("button");
-    card.type = "button";
+    const selected = Number(bot.bot_id) === Number(selectedBotId);
+    const card = document.createElement("div");
     card.className = "trading-bot-card";
     card.dataset.botId = String(bot.bot_id);
-    card.classList.toggle("is-selected", Number(bot.bot_id) === Number(selectedBotId));
+    card.classList.toggle("is-selected", selected);
     card.classList.toggle("is-running", Boolean(activeRun));
-    card.setAttribute("aria-pressed", String(Number(bot.bot_id) === Number(selectedBotId)));
+
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "trading-bot-card-select";
+    select.setAttribute("aria-pressed", String(selected));
 
     const top = document.createElement("span");
     top.className = "trading-bot-card-top";
@@ -348,10 +367,27 @@ function renderBotStrip() {
     meta.className = "trading-bot-card-meta";
     meta.textContent = "Bot #" + bot.bot_id + (activeRun ? " · Run #" + activeRun.run_id : "");
 
-    card.append(top, meta);
-    card.addEventListener("click", () => void selectBot(bot.bot_id));
+    select.append(top, meta);
+    select.addEventListener("click", () => void selectBot(bot.bot_id));
+    card.appendChild(select);
+
+    if (selected) {
+      const historyToggle = document.createElement("button");
+      historyToggle.type = "button";
+      historyToggle.className = "trading-bot-history-toggle";
+      historyToggle.dataset.historyToggle = String(bot.bot_id);
+      historyToggle.setAttribute("aria-controls", "trading-bot-history-drawer");
+      historyToggle.addEventListener("click", () => {
+        historyExpanded = !historyExpanded;
+        updateHistoryDrawerState();
+      });
+      card.appendChild(historyToggle);
+    }
+
     botStrip.appendChild(card);
   }
+
+  updateHistoryDrawerState();
 }
 
 function setBotStatus(message) {
@@ -1647,6 +1683,7 @@ function resetBotHistory(message = "Select a saved Bot to load its Run history."
   empty.textContent = message;
   historyList.appendChild(empty);
   historyStatus.textContent = "Newest Run appears first. Historical selection is inspection-only.";
+  updateHistoryDrawerState();
 }
 
 function historyMetric(label, value) {
@@ -1669,6 +1706,7 @@ function renderBotHistory() {
     empty.textContent = "Select a saved Bot to load its Run history.";
     historyList.appendChild(empty);
     historyStatus.textContent = "No persisted Bot selected.";
+    updateHistoryDrawerState();
     return;
   }
 
@@ -1678,6 +1716,7 @@ function renderBotHistory() {
     empty.textContent = "This Bot has no Runs yet.";
     historyList.appendChild(empty);
     historyStatus.textContent = "Saving a Bot does not create a Run.";
+    updateHistoryDrawerState();
     return;
   }
 
@@ -1729,6 +1768,7 @@ function renderBotHistory() {
   }
 
   historyStatus.textContent = "Newest Run first · history is read-only and never starts/stops execution.";
+  updateHistoryDrawerState();
 }
 
 async function loadBotHistory(botId, quiet = false) {
@@ -2028,6 +2068,8 @@ function renderIdleBotWorkspace(message = null) {
 async function selectBot(botId) {
   const bot = tradingBots.find((candidate) => Number(candidate.bot_id) === Number(botId));
   if (!bot) return;
+  const botChanged = Number(selectedBotId) !== Number(bot.bot_id);
+  if (botChanged) historyExpanded = false;
   clearPreview(false);
   clearInspectionState();
   resetBotHistory("Loading Bot #" + bot.bot_id + " Run history…");
@@ -2084,6 +2126,7 @@ async function selectBot(botId) {
 }
 
 function openNewBotDraft() {
+  historyExpanded = false;
   clearPreview(false);
   clearInspectionState();
   resetBotHistory();

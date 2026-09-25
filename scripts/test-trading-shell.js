@@ -48,6 +48,7 @@ for (const required of [
   'id="trading-technical-audit-close"',
   'id="trading-inspection-exit-wrap"',
   'id="trading-activity-load-older-wrap"',
+  'id="trading-bot-history-drawer"',
   'id="trading-history-list"',
   'id="trading-history-badge"',
   'id="trading-detail-run-badge"',
@@ -116,8 +117,14 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=18')) {
-  throw new Error("Trading page must load the Phase 6 realtime-fill integration client");
+if (!trading.includes('/trading.js?v=19')) {
+  throw new Error("Trading page must load the selected-Bot history drawer client");
+}
+if (!trading.includes('/styles.css?v=trading-16')) {
+  throw new Error("Trading page must load the selected-Bot history drawer styles");
+}
+if (trading.includes('class="panel trading-history-panel"')) {
+  throw new Error("Bot history must live with the selected Bot instead of a duplicate bottom panel");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -146,6 +153,9 @@ for (const required of [
   'bot_id: selectedBotId',
   'fetchJson("/api/trading/bots")',
   'async function selectBot(botId)',
+  'function updateHistoryDrawerState()',
+  'historyToggle.dataset.historyToggle = String(bot.bot_id)',
+  'historyExpanded = !historyExpanded',
   'function openNewBotDraft()',
   'async function persistCurrentBotFromForm()',
   'previewButton.addEventListener("click"',

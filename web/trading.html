@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-15" />
+    <link rel="stylesheet" href="/styles.css?v=trading-16" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -89,6 +89,21 @@
           <div id="trading-bot-strip" class="trading-bot-strip" aria-live="polite">
             <div id="trading-bot-empty" class="trading-bot-empty">Loading bots…</div>
           </div>
+
+          <div id="trading-bot-history-drawer" class="trading-bot-history-drawer" hidden>
+            <div class="trading-bot-history-drawer-heading">
+              <div>
+                <span class="trading-order-side-kicker">Selected Bot</span>
+                <strong>Previous runs</strong>
+              </div>
+              <span id="trading-history-badge" class="badge badge--muted">0 Runs</span>
+            </div>
+            <div id="trading-history-list" class="trading-history-list" aria-live="polite">
+              <div class="trading-history-empty">Select a saved Bot to load its Run history.</div>
+            </div>
+            <p id="trading-history-status" class="panel-note trading-table-status">Newest Run appears first. Historical selection is inspection-only.</p>
+          </div>
+
           <p id="trading-bot-status" class="panel-note trading-bot-status" role="status">Reading saved Bot state…</p>
         </section>
 
@@ -368,20 +383,6 @@
 
         </section>
 
-        <section class="panel trading-history-panel" aria-labelledby="trading-history-heading">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Bot history</p>
-              <h2 id="trading-history-heading">Runs for selected Bot</h2>
-            </div>
-            <span id="trading-history-badge" class="badge badge--muted">0 Runs</span>
-          </div>
-          <div id="trading-history-list" class="trading-history-list" aria-live="polite">
-            <div class="trading-history-empty">Select a saved Bot to load its Run history.</div>
-          </div>
-          <p id="trading-history-status" class="panel-note trading-table-status">Newest Run appears first. Historical selection is inspection-only.</p>
-        </section>
-
       </main>
     </div>
 
@@ -423,6 +424,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=2"></script>
-    <script src="/trading.js?v=18"></script>
+    <script src="/trading.js?v=19"></script>
   </body>
 </html>
