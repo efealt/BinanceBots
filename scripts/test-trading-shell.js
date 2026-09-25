@@ -166,7 +166,7 @@ for (const required of [
   'historyToggle.dataset.historyToggle = String(bot.bot_id)',
   'historyExpanded = !historyExpanded',
   'function openNewBotDraft()',
-  'async function persistCurrentBotFromForm()',
+  'async function persistCurrentBotFromForm({ forceCreate = false, botNameOverride = null } = {})',
   'previewButton.addEventListener("click"',
   'requestJson("/api/trading/preview"',
   'function refreshPreviewStaleness()',
