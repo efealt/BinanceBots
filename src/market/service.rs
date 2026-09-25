@@ -541,23 +541,27 @@ mod tests {
         let (tx, _) = broadcast::channel(8);
         let mut subscription = RunMarketSubscription::new(15, tx.subscribe());
 
-        tx.send(MarketRealtimeEvent {
-            sequence: 1,
-            connection_epoch: 1,
-            received_at_ms: 1_000,
-            kind: MarketRealtimeEventKind::Status(FeedStatus::Live),
-        })
-        .unwrap();
+        assert!(
+            tx.send(MarketRealtimeEvent {
+                sequence: 1,
+                connection_epoch: 1,
+                received_at_ms: 1_000,
+                kind: MarketRealtimeEventKind::Status(FeedStatus::Live),
+            })
+            .is_ok()
+        );
         let first = subscription.recv().await.unwrap();
         assert_eq!(first.sequence, 1);
 
-        tx.send(MarketRealtimeEvent {
-            sequence: 3,
-            connection_epoch: 1,
-            received_at_ms: 1_010,
-            kind: MarketRealtimeEventKind::Trade(trade(60, 1_009, 100.0)),
-        })
-        .unwrap();
+        assert!(
+            tx.send(MarketRealtimeEvent {
+                sequence: 3,
+                connection_epoch: 1,
+                received_at_ms: 1_010,
+                kind: MarketRealtimeEventKind::Trade(trade(60, 1_009, 100.0)),
+            })
+            .is_ok()
+        );
         let error = match subscription.recv().await {
             Err(error) => error,
             Ok(_) => panic!("expected sequence-gap failure"),
@@ -573,13 +577,15 @@ mod tests {
         assert!(error.stable_reason().contains("execution_feed_sequence_gap"));
 
         let mut replacement = RunMarketSubscription::new(16, tx.subscribe());
-        tx.send(MarketRealtimeEvent {
-            sequence: 4,
-            connection_epoch: 1,
-            received_at_ms: 1_020,
-            kind: MarketRealtimeEventKind::Trade(trade(61, 1_019, 100.1)),
-        })
-        .unwrap();
+        assert!(
+            tx.send(MarketRealtimeEvent {
+                sequence: 4,
+                connection_epoch: 1,
+                received_at_ms: 1_020,
+                kind: MarketRealtimeEventKind::Trade(trade(61, 1_019, 100.1)),
+            })
+            .is_ok()
+        );
         let recovered = replacement.recv().await.unwrap();
         assert_eq!(recovered.sequence, 4);
         assert!(matches!(
