@@ -657,8 +657,9 @@ function ensureTradingChart() {
     return null;
   }
   if (!tradingChart) {
-    tradingChart = new MarketChart(tradingChartElement, { showWeekends: false, indicators: false, rightGapRatio: 0.22 });
+    tradingChart = new MarketChart(tradingChartElement, { showWeekends: false, indicators: false });
     tradingChart.initialize();
+    tradingChart.chart.timeScale().applyOptions({ rightOffset: 30 });
     chartFillMarkersPlugin = LightweightCharts.createSeriesMarkers(tradingChart.series, [], { autoScale: false });
     bindTradingChartCrosshair();
   }
@@ -1060,6 +1061,7 @@ function renderTradingChart({ fitContent = false } = {}) {
   }
 
   chart.setCandles(chartCandles.map(toMarketChartCandle), fitContent);
+  if (fitContent) chart.chart.timeScale().applyOptions({ rightOffset: 30 });
   renderRunOverlays();
   renderChartReadout();
 

@@ -112,7 +112,7 @@ for (const required of [
 if (!trading.includes("https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js")) {
   throw new Error("Trading chart must load the same pinned Lightweight Charts runtime as Market");
 }
-if (!trading.includes('/market-chart.js?v=7')) {
+if (!trading.includes('/market-chart.js?v=8')) {
   throw new Error("Trading page must reuse the MarketChart wrapper");
 }
 if (!trading.includes('/trading-contract.js?v=2')) {
@@ -121,7 +121,7 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=20')) {
+if (!trading.includes('/trading.js?v=21')) {
   throw new Error("Trading page must load the Bot identity safeguard client");
 }
 if (!trading.includes('/styles.css?v=trading-17')) {
@@ -201,7 +201,7 @@ for (const required of [
   'technicalAuditDialog.close()',
   'trading-order-card',
   'newest first',
-  'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false, rightGapRatio: 0.22 })',
+  'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
   'LightweightCharts.createSeriesMarkers',
   'LightweightCharts.LineSeries',
   'LightweightCharts.LineStyle.Dashed',
@@ -353,13 +353,13 @@ if (!tradingJs.includes('method: creating ? "POST" : "PUT"')) {
 if (!marketChartJs.includes('this.chart?.priceScale("right").applyOptions({ autoScale: true });')) {
   throw new Error("MarketChart reset must restore right-price autoscale when switching markets");
 }
-if (!trading.includes('/market-chart.js?v=7')) {
+if (!trading.includes('/market-chart.js?v=8')) {
   throw new Error("Trading page must load the market-switch price-scale reset");
 }
 
-if (!marketChartJs.includes('rightGapRatio = 0') || !marketChartJs.includes('rightOffsetPixels')) {
-  throw new Error("Reusable MarketChart must support an optional responsive right-side gap");
+if (marketChartJs.includes('rightGapRatio') || marketChartJs.includes('rightOffsetPixels')) {
+  throw new Error("Trading right-side spacing must not use custom pixel/resize calculations in the shared MarketChart");
 }
-if (!tradingJs.includes('rightGapRatio: 0.22')) {
-  throw new Error("Trading chart must reserve right-side breathing room without changing the shared Market page default");
+if (!tradingJs.includes('timeScale().applyOptions({ rightOffset: 30 })')) {
+  throw new Error("Trading chart must use Lightweight Charts native rightOffset for right-side breathing room");
 }
