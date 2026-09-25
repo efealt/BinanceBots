@@ -951,10 +951,6 @@ impl PaperManager {
                         }
                     }
                 }
-                execution_event = execution_feed.recv() => {                            }
-                        }
-                    }
-                }
                 execution_event = execution_feed.recv() => {
                     match execution_event {
                         Ok(event) => {
@@ -1250,7 +1246,6 @@ impl PaperRunCore {
         Ok(())
     }
 
-    fn persist_strategy_output(
     fn persist_strategy_output(
         &mut self,
         event_time_ms: i64,
