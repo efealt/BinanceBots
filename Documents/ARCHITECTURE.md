@@ -21,7 +21,7 @@ The browser is a client only. Backend work does not depend on the browser remain
 
 ## Deployment
 
-- Repository: `efealt/BinanceGrid`
+- Repository: `efealt/BinanceBots`
 - Branch: `main`
 - Render region: Frankfurt
 - Build: `cargo build --release`
