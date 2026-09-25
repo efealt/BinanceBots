@@ -15,6 +15,7 @@ pub struct ArchiveDownloader {
     storage: Arc<StorageReader>,
     http: Client,
     run_guard: Arc<Mutex<()>>,
+    progress: Arc<Mutex<Option<ArchiveDownloadProgress>>>,
 }
 
 impl ArchiveDownloader {
@@ -27,6 +28,7 @@ impl ArchiveDownloader {
             storage,
             http,
             run_guard: Arc::new(Mutex::new(())),
+            progress: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -39,6 +41,29 @@ impl ArchiveDownloader {
             .run_guard
             .try_lock()
             .map_err(|_| ArchiveDownloadError::AlreadyRunning)?;
+        self.set_progress(ArchiveDownloadProgress {
+            download_id,
+            status: "preparing".into(),
+            archives_processed: 0,
+            archives_total: 0,
+            percent: 0,
+        })
+        .await;
+
+        let result = self
+            .run_inner(download_id, requested_start_time_ms)
+            .await;
+        if result.is_err() {
+            self.mark_progress_failed(download_id).await;
+        }
+        result
+    }
+
+    async fn run_inner(
+        &self,
+        download_id: i64,
+        requested_start_time_ms: Option<i64>,
+    ) -> Result<ArchiveDownloadResult, ArchiveDownloadError> {
         let storage = Arc::clone(&self.storage);
         let preparation = tokio::task::spawn_blocking(move || {
             storage.prepare_archive_download(download_id, requested_start_time_ms)
@@ -57,6 +82,16 @@ impl ArchiveDownloader {
             .cloned()
             .collect::<Vec<_>>();
         let already_present = archive_plan.len().saturating_sub(missing.len());
+        let total_archives = missing.len();
+        self.set_progress(ArchiveDownloadProgress {
+            download_id,
+            status: "running".into(),
+            archives_processed: 0,
+            archives_total: total_archives,
+            percent: archive_progress_percent(0, total_archives),
+        })
+        .await;
+
         let mut imported_archives = 0_usize;
         let mut imported_rows = 0_usize;
         let mut failures = Vec::new();
@@ -106,7 +141,17 @@ impl ArchiveDownloader {
                 }
             }
 
-            if index + 1 < missing.len() {
+            let archives_processed = index + 1;
+            self.set_progress(ArchiveDownloadProgress {
+                download_id,
+                status: "running".into(),
+                archives_processed,
+                archives_total: total_archives,
+                percent: archive_progress_percent(archives_processed, total_archives),
+            })
+            .await;
+
+            if archives_processed < total_archives {
                 sleep(ARCHIVE_DELAY).await;
             }
         }
@@ -119,6 +164,15 @@ impl ArchiveDownloader {
             "failed"
         };
         self.finish(&preparation, status).await?;
+        self.set_progress(ArchiveDownloadProgress {
+            download_id,
+            status: status.into(),
+            archives_processed: total_archives,
+            archives_total: total_archives,
+            percent: 100,
+        })
+        .await;
+
         Ok(ArchiveDownloadResult {
             status: status.into(),
             archives_imported: imported_archives,
@@ -126,6 +180,37 @@ impl ArchiveDownloader {
             rows_imported: imported_rows,
             failed_archives: failures,
         })
+    }
+
+    pub async fn progress(&self, download_id: i64) -> Option<ArchiveDownloadProgress> {
+        self.progress
+            .lock()
+            .await
+            .as_ref()
+            .filter(|progress| progress.download_id == download_id)
+            .cloned()
+    }
+
+    async fn set_progress(&self, progress: ArchiveDownloadProgress) {
+        *self.progress.lock().await = Some(progress);
+    }
+
+    async fn mark_progress_failed(&self, download_id: i64) {
+        let mut progress = self.progress.lock().await;
+        match progress.as_mut() {
+            Some(current) if current.download_id == download_id => {
+                current.status = "failed".into();
+            }
+            _ => {
+                *progress = Some(ArchiveDownloadProgress {
+                    download_id,
+                    status: "failed".into(),
+                    archives_processed: 0,
+                    archives_total: 0,
+                    percent: 0,
+                });
+            }
+        }
     }
 
     async fn finish(
@@ -207,6 +292,22 @@ pub struct ArchiveDownloadResult {
     pub archives_already_present: usize,
     pub rows_imported: usize,
     pub failed_archives: Vec<String>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct ArchiveDownloadProgress {
+    pub download_id: i64,
+    pub status: String,
+    pub archives_processed: usize,
+    pub archives_total: usize,
+    pub percent: u8,
+}
+
+fn archive_progress_percent(processed: usize, total: usize) -> u8 {
+    if total == 0 {
+        return 100;
+    }
+    ((processed.min(total) * 100) / total) as u8
 }
 
 #[derive(Debug, Error)]
@@ -463,7 +564,17 @@ impl DownloadRunPreparation {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_archive_timestamp_ms;
+    use super::{archive_progress_percent, normalize_archive_timestamp_ms};
+
+    #[test]
+    fn archive_progress_reports_percentage_by_completed_archive() {
+        assert_eq!(archive_progress_percent(0, 4), 0);
+        assert_eq!(archive_progress_percent(1, 4), 25);
+        assert_eq!(archive_progress_percent(3, 4), 75);
+        assert_eq!(archive_progress_percent(4, 4), 100);
+        assert_eq!(archive_progress_percent(9, 4), 100);
+        assert_eq!(archive_progress_percent(0, 0), 100);
+    }
 
     #[test]
     fn archive_timestamp_keeps_milliseconds_unchanged() {

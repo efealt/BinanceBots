@@ -77,6 +77,78 @@ function setEditFeedback(message, tone = "") {
   editFeedback.dataset.tone = tone;
 }
 
+function createDownloadProgressIndicator() {
+  const container = document.createElement("div");
+  container.className = "download-progress";
+  container.hidden = true;
+
+  const label = document.createElement("span");
+  label.className = "download-progress-label";
+  label.textContent = "0%";
+
+  const track = document.createElement("div");
+  track.className = "download-progress-track";
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-label", "Archive download progress");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  track.setAttribute("aria-valuenow", "0");
+
+  const fill = document.createElement("div");
+  fill.className = "download-progress-fill";
+  track.append(fill);
+  container.append(label, track);
+  return { container, label, track, fill };
+}
+
+function setDownloadProgress(indicator, progress) {
+  const percent = Math.max(0, Math.min(100, Number(progress?.percent ?? 0)));
+  indicator.container.hidden = false;
+  indicator.label.textContent = Math.round(percent) + "%";
+  indicator.track.setAttribute("aria-valuenow", String(Math.round(percent)));
+  indicator.fill.style.width = percent + "%";
+
+  const processed = Number(progress?.archives_processed);
+  const total = Number(progress?.archives_total);
+  indicator.container.title = Number.isFinite(processed) && Number.isFinite(total) && total > 0
+    ? processed + " of " + total + " ZIP archives processed"
+    : "Preparing archive download";
+}
+
+function startDownloadProgressPolling(downloadId, indicator) {
+  let stopped = false;
+  let inFlight = false;
+  let timer = null;
+
+  setDownloadProgress(indicator, { percent: 0, archives_processed: 0, archives_total: 0 });
+
+  const poll = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    try {
+      const response = await fetch(`/api/data/downloads/${downloadId}/progress`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) return;
+      const progress = await response.json();
+      if (progress && ["preparing", "running"].includes(progress.status)) {
+        setDownloadProgress(indicator, progress);
+      }
+    } catch {
+      // The main download request remains authoritative; a missed progress poll is harmless.
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  timer = window.setInterval(poll, 750);
+  window.setTimeout(poll, 150);
+  return () => {
+    stopped = true;
+    if (timer !== null) window.clearInterval(timer);
+  };
+}
+
 function openEditDialog(download) {
   editingDownloadId = download.download_id;
   editSummary.textContent = `${download.name} · ${download.symbol} · ${marketLabel(download.market_type)}`;
@@ -135,6 +207,7 @@ function renderDownloads(downloads) {
     actionButton.type = "button";
     actionButton.className = "data-download-action";
     actionButton.textContent = "Download missing";
+    const progressIndicator = createDownloadProgressIndicator();
     let startDate;
     if (download.requested_start_time_ms === null || download.requested_start_time_ms === undefined) {
       startDate = document.createElement("input");
@@ -153,6 +226,7 @@ function renderDownloads(downloads) {
       if (startDate) startDate.disabled = true;
       actionButton.textContent = "Downloading…";
       setFeedback(`Downloading missing ZIP archives for ${download.name}…`, "info");
+      const stopProgressPolling = startDownloadProgressPolling(download.download_id, progressIndicator);
       try {
         const response = await fetch(`/api/data/downloads/${download.download_id}/run`, {
           method: "POST",
@@ -161,15 +235,19 @@ function renderDownloads(downloads) {
         });
         if (!response.ok) throw new Error(await response.text());
         const result = await response.json();
+        setDownloadProgress(progressIndicator, { percent: 100 });
         const failed = result.failed_archives.length;
         const message = `Imported ${result.rows_imported.toLocaleString()} candles from ${result.archives_imported} ZIP ${result.archives_imported === 1 ? "archive" : "archives"}${result.archives_already_present ? `; ${result.archives_already_present} already present` : ""}${failed ? `; ${failed} archive ${failed === 1 ? "needs" : "need"} retry` : ""}.`;
         setFeedback(message, failed ? "error" : "success");
         await loadDownloads();
       } catch (error) {
+        progressIndicator.container.hidden = true;
         setFeedback(error.message || "Could not import the archive data.", "error");
         actionButton.disabled = false;
         if (startDate) startDate.disabled = false;
         actionButton.textContent = "Download missing";
+      } finally {
+        stopProgressPolling();
       }
     });
     const editButton = document.createElement("button");
@@ -179,7 +257,7 @@ function renderDownloads(downloads) {
     editButton.title = "Edit catalog entry";
     editButton.setAttribute("aria-label", `Edit start date for ${download.name}`);
     editButton.addEventListener("click", () => openEditDialog(download));
-    actionCell.append(actionButton, editButton);
+    actionCell.append(actionButton, progressIndicator.container, editButton);
     row.append(actionCell);
     tableBody.append(row);
   }

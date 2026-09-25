@@ -1,7 +1,7 @@
 # BinanceBots Architecture
 
 Status: current system  
-Last updated: 2026-09-24
+Last updated: 2026-09-25
 
 ## Runtime
 
@@ -66,6 +66,7 @@ The Data Downloader imports Binance public 1-minute ZIP archives into SQLite.
 - The current partial month uses daily archives through yesterday.
 - Already imported archives are skipped.
 - Spot and USD-M perpetual data remain separate datasets.
+- Active archive imports expose backend-owned archive-count progress through an authenticated progress endpoint; Data Downloader polls that state and shows a percentage bar while the import runs.
 - Import receipts, coverage, checksums, and candle data are persisted.
 
 Backtest reads stored historical data and can display 1-minute data or UTC-aggregated 1-hour/1-day views. Research diagnostics are computed from the stored series and rendered in the browser.

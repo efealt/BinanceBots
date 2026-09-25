@@ -1,4 +1,6 @@
-use crate::downloader::{ArchiveDownloadError, ArchiveDownloadResult, ArchiveDownloader};
+use crate::downloader::{
+    ArchiveDownloadError, ArchiveDownloadProgress, ArchiveDownloadResult, ArchiveDownloader,
+};
 use crate::storage::{
     DataDownload, DataDownloadSpec, DatasetSummary, OhlcvCandle, StorageError, StorageReader,
 };
@@ -31,6 +33,10 @@ pub fn router(storage_reader: Arc<StorageReader>) -> Router {
         .route(
             "/api/data/downloads/{download_id}/run",
             axum::routing::post(run_download),
+        )
+        .route(
+            "/api/data/downloads/{download_id}/progress",
+            get(download_progress),
         )
         .route("/api/data/downloads/{download_id}", patch(update_download))
         .with_state(Arc::new(DataApiState {
@@ -118,6 +124,16 @@ async fn run_download(
         .run(download_id, start_date)
         .await?;
     Ok(Json(result))
+}
+
+async fn download_progress(
+    State(state): State<Arc<DataApiState>>,
+    Path(download_id): Path<i64>,
+) -> Result<Json<Option<ArchiveDownloadProgress>>, DataApiError> {
+    if download_id <= 0 {
+        return Err(DataApiError::InvalidQuery("download id is required".into()));
+    }
+    Ok(Json(state.archive_downloader.progress(download_id).await))
 }
 
 fn normalize_download_request(

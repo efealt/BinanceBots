@@ -351,6 +351,11 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .data-download-action { padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 0.75rem; font-weight: 750; cursor: pointer; white-space: nowrap; }
 .data-download-action:hover { border-color: var(--accent); }
 .data-download-action:disabled { cursor: wait; opacity: 0.7; }
+.download-progress { display: grid; grid-template-columns: 38px 96px; align-items: center; gap: 7px; }
+.download-progress[hidden] { display: none; }
+.download-progress-label { color: var(--accent); font-size: 0.72rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; }
+.download-progress-track { height: 7px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.download-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 220ms ease; }
 .data-download-edit { display: inline-grid; width: 32px; height: 32px; padding: 0; place-items: center; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); color: var(--muted); cursor: pointer; font: inherit; font-size: 1.05rem; line-height: 1; }
 .data-download-edit:hover { border-color: var(--accent); color: var(--accent); }
 .download-start-date { width: 132px; margin: 0 8px 0 0; padding: 6px 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); color: var(--text); font: inherit; font-size: 0.75rem; }
