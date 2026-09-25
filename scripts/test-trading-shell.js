@@ -201,7 +201,7 @@ for (const required of [
   'technicalAuditDialog.close()',
   'trading-order-card',
   'newest first',
-  'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false })',
+  'new MarketChart(tradingChartElement, { showWeekends: false, indicators: false, rightGapRatio: 0.22 })',
   'LightweightCharts.createSeriesMarkers',
   'LightweightCharts.LineSeries',
   'LightweightCharts.LineStyle.Dashed',
