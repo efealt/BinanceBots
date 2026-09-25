@@ -121,7 +121,7 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=21')) {
+if (!trading.includes('/trading.js?v=22')) {
   throw new Error("Trading page must load the Bot identity safeguard client");
 }
 if (!trading.includes('/styles.css?v=trading-17')) {
@@ -362,4 +362,14 @@ if (marketChartJs.includes('rightGapRatio') || marketChartJs.includes('rightOffs
 }
 if (!tradingJs.includes('timeScale().applyOptions({ rightOffset: 30 })')) {
   throw new Error("Trading chart must use Lightweight Charts native rightOffset for right-side breathing room");
+}
+
+if (!tradingJs.includes('function apiErrorMessage(response, responseText)')) {
+  throw new Error("Trading must sanitize backend error responses before showing them to the operator");
+}
+if (!tradingJs.includes('Backend temporarily unavailable (') || !tradingJs.includes('The requested action was not confirmed.')) {
+  throw new Error("Trading must present concise 502/503/504 uncertainty instead of raw gateway HTML");
+}
+if (!tradingJs.includes('body.length <= 500')) {
+  throw new Error("Trading must bound unexpected backend error bodies");
 }

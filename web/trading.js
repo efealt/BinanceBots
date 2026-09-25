@@ -2077,6 +2077,32 @@ function buildStartConfiguration() {
   };
 }
 
+function apiErrorMessage(response, responseText) {
+  const body = String(responseText ?? "").trim();
+  const contentType = String(response.headers.get("content-type") ?? "").toLowerCase();
+  const htmlResponse = contentType.includes("text/html")
+    || body.startsWith("<!DOCTYPE")
+    || body.startsWith("<html");
+  const transientGatewayFailure = [502, 503, 504].includes(response.status);
+
+  if (transientGatewayFailure || htmlResponse) {
+    return "Backend temporarily unavailable (" + response.status + "). The requested action was not confirmed.";
+  }
+
+  if (contentType.includes("application/json") && body) {
+    try {
+      const payload = JSON.parse(body);
+      const message = payload?.error ?? payload?.message ?? payload?.detail;
+      if (message) return String(message);
+    } catch {
+      // Fall through to the bounded plain-text response below.
+    }
+  }
+
+  if (body && body.length <= 500) return body;
+  return response.status + " " + response.statusText;
+}
+
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
     credentials: "same-origin",
@@ -2088,7 +2114,7 @@ async function requestJson(url, options = {}) {
   });
   const responseText = await response.text();
   if (!response.ok) {
-    throw new Error(responseText || (response.status + " " + response.statusText));
+    throw new Error(apiErrorMessage(response, responseText));
   }
   return responseText ? JSON.parse(responseText) : null;
 }
