@@ -535,6 +535,26 @@ Backtest and Live-Paper intentionally share strategy semantics without sharing a
 - If historical tick-level execution is added later, it will be a separate Backtest execution adapter. Strategy implementations and Live-Paper execution semantics will not be changed to accommodate it.
 
 
+
+## Phase 4.8C Phase 6 — Trading integration and production acceptance boundary
+
+The final Live-Paper execution path is:
+
+`shared Strategy → StrategyOrderIntent → LivePaperExecution(real Binance trades) → canonical Fill → shared portfolio/accounting → shared Run persistence → runtime snapshot → Trading UI`.
+
+Backtest remains parallel and intentionally mode-specific at execution time:
+
+`shared Strategy → StrategyOrderIntent → HistoricalExecution(historical bars) → canonical Fill → shared portfolio/accounting → shared Run persistence`.
+
+- A qualifying Live-Paper trade is persisted before the runtime snapshot is published. That snapshot carries the updated open-order set, recent fills, portfolio/PnL state, and stream revision.
+- The Trading client consumes that one snapshot to end/update the filled order lifetime, add the fill marker, update Position/PnL/equity, and redraw Open Orders. None of those operations waits for a 1-minute candle close.
+- Run Activity remains newest-first and is derived from canonical persisted events. When the runtime fill signature changes, the client refreshes Run Activity immediately instead of waiting for the normal 2-second presentation refresh.
+- Technical audit remains an on-demand diagnostic view; it does not drive execution or daily monitoring state.
+- The locked running configuration exposes the exact persisted latency, fill policy, partial-fill ratio, fee, spread, and slippage assumptions. UI copy explicitly distinguishes trade-driven execution from candle-driven strategy timing.
+- Browser WebSocket ownership remains presentation-only: closing or reconnecting a browser does not stop a backend Run.
+- Different Bots keep independent backend Runs, execution books, portfolios, persistence streams, and UI snapshots keyed by immutable `run_id`.
+- Hosted production acceptance still requires an observed real Binance Touch and timestamp comparison before the execution-correctness roadmap is fully closed.
+
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
 
 The lower Trading workspace now has dedicated read-only backend contracts for history and presentation without changing execution semantics.

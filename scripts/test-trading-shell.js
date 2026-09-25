@@ -66,6 +66,12 @@ if (!/id="trading-mode-live"[^>]*disabled/.test(trading)) {
 if (!trading.includes("Live-Real-Account execution is locked server-side.")) {
   throw new Error("Trading shell must use explicit Live-Real-Account lock terminology");
 }
+if (!trading.includes("Resting limits react to qualifying Binance trades immediately; latency only delays eligibility and partial-fill ratio only controls simulated fill size.")) {
+  throw new Error("Phase 6 must explain trade-driven Live-Paper fills and the exact latency/partial-fill assumptions");
+}
+if (/wait(?:s|ing)? for (?:the )?candle close/i.test(trading)) {
+  throw new Error("Live-Paper UI must not describe a candle-close dependency for resting fills");
+}
 if (!trading.includes(">LIVE-PAPER</button>") || !trading.includes(">LIVE-REAL-ACCOUNT <span>Locked</span></button>")) {
   throw new Error("Trading mode labels must use explicit Live-Paper / Live-Real-Account terminology");
 }
@@ -110,8 +116,8 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=17')) {
-  throw new Error("Trading page must load the Phase 5B compact-workspace polish client");
+if (!trading.includes('/trading.js?v=18')) {
+  throw new Error("Trading page must load the Phase 6 realtime-fill integration client");
 }
 for (const id of [
   "trading-chart-last-price",
@@ -163,6 +169,9 @@ for (const required of [
   'quantityPrimary.textContent = "Filled "',
   'quantitySecondary.textContent = "Remaining "',
   'syncRunActivityFromMonitor(monitor)',
+  'function runtimeFillSignature(monitor)',
+  'fillSignature !== activityLastFillSignature',
+  'void loadActivity(runId, { quiet: true })',
   'syncCanonicalAuditFromMonitor(monitor)',
   'loadActivity(runId',
   '"/api/trading/bots/" + botId + "/runs?limit=100"',

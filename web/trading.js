@@ -128,6 +128,7 @@ let activityOldestSequence = null;
 let activityRequestToken = 0;
 let activityRefreshInFlight = false;
 let activityLastRefreshAt = 0;
+let activityLastFillSignature = "";
 let botHistoryRuns = [];
 let historyRequestToken = 0;
 let historyRefreshInFlight = false;
@@ -1391,6 +1392,7 @@ function resetActivity(message = "No Live-Paper Run selected.") {
   activityOldestSequence = null;
   activityRefreshInFlight = false;
   activityLastRefreshAt = 0;
+  activityLastFillSignature = "";
   activityList.replaceChildren();
   const empty = document.createElement("div");
   empty.className = "trading-activity-empty";
@@ -1444,13 +1446,33 @@ async function loadActivity(runId, { older = false, quiet = false } = {}) {
   }
 }
 
+function runtimeFillSignature(monitor) {
+  return (monitor?.fills ?? [])
+    .map((fill) => [fill.orderId, fill.eventTimeMs, fill.price, fill.quantity, fill.status].join(":"))
+    .join("|");
+}
+
 function syncRunActivityFromMonitor(monitor) {
   const runId = monitor?.run.id;
   if (!runId || inspectedRunId != null || detailRunId() !== runId) return;
+
+  const fillSignature = runtimeFillSignature(monitor);
   if (activityRunId !== runId) {
+    activityLastFillSignature = fillSignature;
     void loadActivity(runId);
     return;
   }
+
+  // A fill snapshot is published only after Fill -> OrderState -> Position -> Equity
+  // persistence. Refresh activity immediately from that same backend event rather than
+  // waiting for the normal presentation refresh window.
+  if (fillSignature !== activityLastFillSignature) {
+    if (activityRefreshInFlight) return;
+    activityLastFillSignature = fillSignature;
+    void loadActivity(runId, { quiet: true });
+    return;
+  }
+
   if (Date.now() - activityLastRefreshAt < 2000 || activityRefreshInFlight) return;
   void loadActivity(runId, { quiet: true });
 }
