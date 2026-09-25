@@ -1,6 +1,6 @@
 # Phase 4 — Live Paper Runtime + Shared Trading Page
 
-Status: IN PROGRESS — 4.1–4.8A COMPLETE
+Status: COMPLETE — 4.1–4.8D PRODUCTION ACCEPTED
 
 ## Prerequisite
 
@@ -209,41 +209,43 @@ Foundation already complete:
 - [x] Trading uses the same native Lightweight Charts engine as Market.
 
 Remaining:
-- [ ] Add persistent Bot identity + saved configuration above the existing Run model.
+- [x] Add persistent Bot identity + saved configuration above the existing Run model.
 - [x] Add the top Bot strip, bot selection, New Bot, Save Bot, and unsaved-change state.
 - [x] Make Live-Paper execution bot-aware and support multiple different Live-Paper bots concurrently.
 - [x] Add backend-derived **Show on graph** preview for the selected/new bot.
 - [x] Phase 5A — Add Bot history + quieter newest-first Run activity backend contracts while preserving the complete canonical audit.
 - [x] Phase 5B — Redesign only the lower Trading workspace: compact Portfolio monitor, compact BUY-left / SELL-right Open orders, newest-first Run activity, and Bot history. Keep the accepted Bots strip, Live-Paper controls, and Shared market monitor unchanged.
 - [x] Phase 6 — Convert Console into a lightweight real Bot monitor: real persisted Bots/Run status, slow status refresh, compact PnL/position/equity cards, and click-through to detailed Trading; no live chart/WebSocket duplication.
-- [ ] Phase 7 — Complete integrated multi-bot production acceptance across Console + Trading.
+- [x] Phase 7 — Complete integrated multi-bot production acceptance across Console + Trading.
 
 **Checkpoint:** Trading is the persistent operational home for saved bots and their forward Live-Paper runs. Live-Real-Account execution remains locked until its later phase.
+
+**4.8B accepted:** Persistent Bot identity/configuration, immutable Bot-owned Runs, user-controlled Bot evolution, identity-sensitive Symbol/Market/Strategy safeguards, multi-Bot concurrency, preview/history inspection, lightweight Console monitoring, and responsive Trading were all exercised on the hosted production deployment. Same-Bot restarts create new immutable Run IDs; creating a new Bot from the identity safeguard carries no Run history.
 
 ### 4.8C — Live-Paper real-time execution adapter
 
 Detailed roadmap: `Roadmaps/04.8C-live-paper-realtime-execution-adapter.md`
 
-- [ ] Split historical Backtest execution from real-time Live-Paper execution without duplicating strategy code.
-- [ ] Deliver backend Binance trade events directly to running Live-Paper Runs.
-- [ ] Fill resting Live-Paper limit orders immediately on qualifying live trades under Touch / Trade Through rules.
-- [ ] Keep latency, partial fills, fees, and other Paper execution assumptions explicit rather than using candle close as an artificial delay.
-- [ ] Serialize live trade execution and completed-candle strategy decisions inside one deterministic Run state machine.
-- [ ] Update parity tests to compare shared strategy/intents/accounting rather than falsely requiring identical Backtest/Paper fill timing.
-- [ ] Preserve the frozen XAGUSDT Backtest regression unchanged.
-- [ ] Production-test an intrabar Touch and prove the fill persists before candle close.
+- [x] Split historical Backtest execution from real-time Live-Paper execution without duplicating strategy code.
+- [x] Deliver backend Binance trade events directly to running Live-Paper Runs.
+- [x] Fill resting Live-Paper limit orders immediately on qualifying live trades under Touch / Trade Through rules.
+- [x] Keep latency, partial fills, fees, and other Paper execution assumptions explicit rather than using candle close as an artificial delay.
+- [x] Serialize live trade execution and completed-candle strategy decisions inside one deterministic Run state machine.
+- [x] Update parity tests to compare shared strategy/intents/accounting rather than falsely requiring identical Backtest/Paper fill timing.
+- [x] Preserve the frozen XAGUSDT Backtest regression unchanged.
+- [x] Production-test an intrabar Touch and prove the fill persists before candle close.
 
 **Checkpoint:** Live-Paper is a real-time simulated execution environment using the same strategy code as Backtest, not a candle-based Backtest loop running live.
 
 ### 4.8D — Production smoke + visual acceptance
 
-- [ ] Create and save an idle bot without starting a run.
-- [ ] Start at least two different Live-Paper bots and verify concurrent backend ownership and state isolation.
-- [ ] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, run activity, and Bot history.
-- [ ] Close/reopen the page and verify all running bots continue and restore correctly.
-- [ ] Stop/restart a bot and verify separate immutable run IDs remain under the same Bot history.
-- [ ] Update `Documents/ARCHITECTURE.md` with the final implemented Bot → Run architecture.
-- [ ] Mark Phase 4 complete only after the hosted workspace is visually meaningful and persisted bot/run state is coherent.
+- [x] Create and save an idle bot without starting a run.
+- [x] Start at least two different Live-Paper bots and verify concurrent backend ownership and state isolation.
+- [x] Verify live candles, preview/grid/order lines, fills, positions, equity/PnL, fees, exposure, run activity, and Bot history.
+- [x] Close/reopen the page and verify all running bots continue and restore correctly.
+- [x] Stop/restart a bot and verify separate immutable run IDs remain under the same Bot history.
+- [x] Update `Documents/ARCHITECTURE.md` with the final implemented Bot → Run architecture.
+- [x] Mark Phase 4 complete only after the hosted workspace is visually meaningful and persisted bot/run state is coherent.
 
 **Checkpoint:** Phase 4 is proven end-to-end in production.
 
@@ -256,3 +258,6 @@ The shared Trading page must show the live market, active grid/orders, fills, po
 **Live mode remains locked and no real Binance orders are possible.**
 
 The next phase is **Phase 5 — Paper-period historical replay**.
+
+
+**Phase 4 closeout:** Production acceptance completed with multiple concurrent Live-Paper Bots, independent Stop/restart behavior, preserved immutable Run history, Console ↔ Trading ownership consistency, correct live chart/order/fill state, responsive layout, and the frozen XAGUSDT regression green. Phase 4 is complete; Live-Real-Account remains server-side locked for later phases.

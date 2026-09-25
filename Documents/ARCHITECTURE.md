@@ -623,6 +623,25 @@ Console is now the low-bandwidth default monitoring surface; Trading remains the
 - Browser navigation remains presentation-only. Leaving Trading closes its browser streams naturally; backend-owned Live-Paper runtimes continue independently.
 - The bandwidth boundary is structural and CI-enforced: Console uses one slow JSON poll and contains no WebSocket/market-stream code, whereas detailed Trading intentionally owns the live chart and streaming inspection paths.
 
+## Phase 4.8B production model — persistent Bots and immutable Runs
+
+The production Trading model is now explicitly **Bot → Run**:
+
+- A **Bot** is a durable user-defined trading-system identity plus its current editable saved configuration. Parameter changes do not create a new Bot automatically.
+- A **Run** is one immutable execution session owned by exactly one Bot. Every Start creates a new Run and freezes the exact configuration used for that session. Stopping a Bot ends only that Run; starting the same Bot later creates a new Run ID while preserving prior Runs.
+- Editing a Bot never rewrites historical Runs. Symbol, Market, and Strategy are identity-sensitive fields in Trading: saving one of those changes requires an explicit choice to cancel, update the same Bot, or create a brand-new Bot from the unsaved form. **Save as New Bot** creates a new `bot_id` with no inherited Run history.
+- One Bot may own at most one active Run at a time. Different Bots may run concurrently. Runtime state, execution books, portfolio/accounting, market subscriptions, persistence, chart overlays, Run Activity, and audit state stay isolated by `run_id`.
+- The browser is not runtime ownership. Closing/reloading Trading, switching Bots, opening historical inspection, or navigating to Console does not stop backend-owned Live-Paper Runs.
+- **Previous runs** is Bot-scoped immutable history. Inspecting an old Run is read-only and can coexist with a currently running Run for the same Bot; returning to the current Run restores live detail state.
+- **Show on graph** is side-effect free. Preview never creates a Bot/Run/order/fill/event and becomes visibly stale when strategy-defining form inputs change.
+- **Console** is the low-bandwidth read-only operations surface. **Trading** is the detailed live inspection/control surface. Console deep-links to the selected Bot in Trading without taking runtime ownership.
+- Trading's shared market chart resets its price autoscale when switching markets and uses Lightweight Charts' native `timeScale.rightOffset` for presentation breathing room; these are UI-only behaviors and do not affect strategy/execution state.
+- Live-Real-Account remains server-side locked. The Bot/Run workspace is mode-neutral so the same operational structure can be reused when real execution is explicitly introduced later.
+
+Hosted Phase 4.8B acceptance exercised save-only creation, reload/deploy persistence, preview/stale preview, three simultaneous Live-Paper Bots across different symbols/configurations, cross-Bot switching, independent Stop, same-Bot restart with a new Run ID, historical inspection, Console ↔ Trading navigation, and wide/narrow responsive layouts. The accepted production hierarchy is:
+
+`persisted Bot → immutable Run → backend runtime/execution → canonical Run persistence → Console summary / Trading detail`.
+
 ## Source of truth
 
 - GitHub `main` is the code source of truth.

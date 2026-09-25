@@ -96,7 +96,7 @@ The shared `Strategy` interface, portfolio/accounting, execution engine, Backtes
 
 **Exit achieved:** Strategy implementations are structurally independent modules, the old shared `grid.rs` was removed, and the existing frozen XAGUSDT regression remains unchanged.
 
-### Phase 4 — Live Paper runtime + shared Trading page — IN PROGRESS (4.1–4.8A COMPLETE)
+### Phase 4 — Live Paper runtime + shared Trading page — COMPLETE
 
 Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
 
@@ -115,6 +115,8 @@ This same Trading page is retained for later phases. Phase 7 adds authenticated 
 Paper must run independently of the browser and persist the same decisions, order intents, simulated orders/fills, positions, and equity/PnL records required for later replay comparison.
 
 **Exit:** The same strategy code can run for a real-time period in Paper mode, survive normal browser disconnects, produce a complete persistent run without real-money execution, and be operated/observed through the shared Trading page with Live visibly locked.
+
+**Exit achieved:** Phase 4 production acceptance is complete. Persistent Bots own immutable Runs, multiple Live-Paper Bots run concurrently and independently, browser close/reload does not own runtime continuity, Console provides lightweight monitoring, Trading provides detailed control/inspection/history, Live-Paper fills are driven by real Binance trades through the realtime adapter, and Live-Real-Account remains server-side locked.
 
 ### Phase 5 — Paper-period historical replay
 
