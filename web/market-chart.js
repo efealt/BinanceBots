@@ -1,10 +1,11 @@
 class MarketChart {
-  constructor(container, { showWeekends = false, indicators = true } = {}) {
+  constructor(container, { showWeekends = false, indicators = true, rightGapRatio = 0 } = {}) {
     this.container = container;
     this.chart = null;
     this.series = null;
     this.indicatorLayer = null;
     this.indicatorsEnabled = indicators;
+    this.rightGapRatio = Math.max(0, Math.min(0.4, Number(rightGapRatio) || 0));
     this.candles = [];
     this.candleCount = 0;
     this.firstCandleTime = null;
@@ -24,13 +25,21 @@ class MarketChart {
       ? new ChartIndicatorLayer(this.chart)
       : null;
     this.weekendOverlay?.attach(this.chart);
+    this.applyRightGap();
 
     new ResizeObserver(([entry]) => {
       this.chart.applyOptions({
         width: entry.contentRect.width,
         height: entry.contentRect.height,
       });
+      this.applyRightGap(entry.contentRect.width);
     }).observe(this.container);
+  }
+
+  applyRightGap(width = this.container.clientWidth) {
+    if (!this.chart || this.rightGapRatio <= 0) return;
+    const rightOffsetPixels = Math.round(Math.max(0, Number(width) || 0) * this.rightGapRatio);
+    this.chart.timeScale().applyOptions({ rightOffsetPixels });
   }
 
   setCandles(candles, fitContent = false) {
@@ -59,6 +68,7 @@ class MarketChart {
     this.indicatorLayer?.setCandles(candles);
     this.weekendOverlay?.setCandles(candles);
     if (fitContent) this.chart.timeScale().fitContent();
+    this.applyRightGap();
     this.weekendOverlay?.render();
   }
 

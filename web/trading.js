@@ -657,7 +657,7 @@ function ensureTradingChart() {
     return null;
   }
   if (!tradingChart) {
-    tradingChart = new MarketChart(tradingChartElement, { showWeekends: false, indicators: false });
+    tradingChart = new MarketChart(tradingChartElement, { showWeekends: false, indicators: false, rightGapRatio: 0.22 });
     tradingChart.initialize();
     chartFillMarkersPlugin = LightweightCharts.createSeriesMarkers(tradingChart.series, [], { autoScale: false });
     bindTradingChartCrosshair();

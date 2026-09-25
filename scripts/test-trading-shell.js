@@ -112,7 +112,7 @@ for (const required of [
 if (!trading.includes("https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js")) {
   throw new Error("Trading chart must load the same pinned Lightweight Charts runtime as Market");
 }
-if (!trading.includes('/market-chart.js?v=6')) {
+if (!trading.includes('/market-chart.js?v=7')) {
   throw new Error("Trading page must reuse the MarketChart wrapper");
 }
 if (!trading.includes('/trading-contract.js?v=2')) {
@@ -353,6 +353,13 @@ if (!tradingJs.includes('method: creating ? "POST" : "PUT"')) {
 if (!marketChartJs.includes('this.chart?.priceScale("right").applyOptions({ autoScale: true });')) {
   throw new Error("MarketChart reset must restore right-price autoscale when switching markets");
 }
-if (!trading.includes('/market-chart.js?v=6')) {
+if (!trading.includes('/market-chart.js?v=7')) {
   throw new Error("Trading page must load the market-switch price-scale reset");
+}
+
+if (!marketChartJs.includes('rightGapRatio = 0') || !marketChartJs.includes('rightOffsetPixels')) {
+  throw new Error("Reusable MarketChart must support an optional responsive right-side gap");
+}
+if (!tradingJs.includes('rightGapRatio: 0.22')) {
+  throw new Error("Trading chart must reserve right-side breathing room without changing the shared Market page default");
 }
