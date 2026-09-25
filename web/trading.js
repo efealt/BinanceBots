@@ -2166,8 +2166,12 @@ async function initializeBotWorkspace() {
   setConnection("connecting", "Reading saved Bots and Live-Paper state");
   try {
     await loadBotCatalog();
+    const requestedBotId = Number(new URLSearchParams(window.location.search).get("bot_id"));
+    const requestedBot = Number.isInteger(requestedBotId) && requestedBotId > 0
+      ? tradingBots.find((bot) => Number(bot.bot_id) === requestedBotId) ?? null
+      : null;
     const firstRunning = sortedBotsForStrip().find((bot) => activeRunForBot(bot.bot_id));
-    const target = firstRunning ?? sortedBotsForStrip()[0] ?? null;
+    const target = requestedBot ?? firstRunning ?? sortedBotsForStrip()[0] ?? null;
     if (target) {
       await selectBot(target.bot_id);
     } else {

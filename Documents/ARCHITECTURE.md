@@ -611,6 +611,17 @@ Backtest, Paper, and Live use one mode-neutral persistence contract. Each run ha
 
 Trading values such as prices, quantities, fees, balances, and PnL are stored as canonical decimal text rather than binary floating-point. Event time, exchange time, receive time, and persistence time remain distinct. Order-state changes are append-only, and normal storage APIs do not delete Paper/Live history.
 
+## Phase 4.8B Phase 6 — Lightweight Operations Console
+
+Console is now the low-bandwidth default monitoring surface; Trading remains the detailed execution workspace.
+
+- The protected `GET /api/trading/console` endpoint returns one compact snapshot of all persisted Bots. Each row combines saved Bot identity/configuration with its latest Run summary; active Live-Paper Bots are ordered first.
+- Console cards show Bot name, symbol/market, running/idle state, active or latest Run ID, latest persisted position, equity, realized PnL, fees, fill count, and update age. Console does not create, update, start, or stop Bots/Runs.
+- The Console browser performs one refresh every 45 seconds while visible and pauses polling while hidden. It opens no Binance market stream and no Run WebSocket.
+- Clicking a Console Bot opens `/trading.html?bot_id=<id>`. Trading resolves that persisted Bot after loading its catalog, selects it, and only then uses the existing detailed market/Run stream contracts.
+- Browser navigation remains presentation-only. Leaving Trading closes its browser streams naturally; backend-owned Live-Paper runtimes continue independently.
+- The bandwidth boundary is structural and CI-enforced: Console uses one slow JSON poll and contains no WebSocket/market-stream code, whereas detailed Trading intentionally owns the live chart and streaming inspection paths.
+
 ## Source of truth
 
 - GitHub `main` is the code source of truth.

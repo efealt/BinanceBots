@@ -114,6 +114,29 @@ struct BotHistoryResponse {
     runs: Vec<PaperBotRunSummary>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct ConsoleBotSummary {
+    bot_id: i64,
+    bot_name: String,
+    symbol: String,
+    market_type: String,
+    runtime_state: String,
+    active_run_id: Option<i64>,
+    latest_run_id: Option<i64>,
+    latest_run_status: Option<String>,
+    position_quantity: Option<ExactDecimal>,
+    realized_pnl: Option<ExactDecimal>,
+    fees_paid: Option<ExactDecimal>,
+    latest_equity: Option<ExactDecimal>,
+    fill_count: Option<i64>,
+    updated_at_ms: i64,
+}
+
+#[derive(Serialize)]
+struct ConsoleOverviewResponse {
+    bots: Vec<ConsoleBotSummary>,
+}
+
 #[derive(Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 enum TradingStreamMessage {
@@ -123,6 +146,7 @@ enum TradingStreamMessage {
 
 pub fn router(manager: Arc<PaperManager>, storage: Arc<StorageReader>) -> Router {
     Router::new()
+        .route("/api/trading/console", get(console_overview))
         .route("/api/trading/bots", post(create_bot).get(list_bots))
         .route("/api/trading/bots/{bot_id}", get(bot_snapshot).put(update_bot))
         .route("/api/trading/bots/{bot_id}/runs", get(bot_history))
@@ -179,6 +203,71 @@ async fn list_bots(
     Ok(Json(BotsResponse {
         bots: state.storage.trading_bots()?,
     }))
+}
+
+fn config_string(bot: &TradingBot, key: &str) -> Option<String> {
+    bot.config
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+}
+
+fn console_bot_summary(bot: TradingBot, latest: Option<PaperBotRunSummary>) -> ConsoleBotSummary {
+    let runtime_active = latest.as_ref().is_some_and(|run| run.runtime_active);
+    let symbol = config_string(&bot, "symbol")
+        .or_else(|| latest.as_ref().map(|run| run.symbol.clone()))
+        .unwrap_or_default();
+    let market_type = config_string(&bot, "market_type")
+        .or_else(|| latest.as_ref().map(|run| run.market_type.clone()))
+        .unwrap_or_default();
+    let updated_at_ms = latest
+        .as_ref()
+        .map(|run| run.updated_at_ms)
+        .unwrap_or(bot.updated_at_ms);
+
+    ConsoleBotSummary {
+        bot_id: bot.bot_id,
+        bot_name: bot.bot_name,
+        symbol,
+        market_type,
+        runtime_state: if runtime_active { "running" } else { "idle" }.into(),
+        active_run_id: latest.as_ref().filter(|run| run.runtime_active).map(|run| run.run_id),
+        latest_run_id: latest.as_ref().map(|run| run.run_id),
+        latest_run_status: latest.as_ref().map(|run| run.runtime_status.clone()),
+        position_quantity: latest.as_ref().and_then(|run| run.ending_position.clone()),
+        realized_pnl: latest.as_ref().and_then(|run| run.realized_pnl.clone()),
+        fees_paid: latest.as_ref().and_then(|run| run.fees_paid.clone()),
+        latest_equity: latest.as_ref().and_then(|run| run.latest_equity.clone()),
+        fill_count: latest.as_ref().map(|run| run.fill_count),
+        updated_at_ms,
+    }
+}
+
+async fn console_overview(
+    State(state): State<TradingApiState>,
+) -> Result<Json<ConsoleOverviewResponse>, TradingApiError> {
+    let mut summaries = Vec::new();
+
+    for bot in state.storage.trading_bots()? {
+        let latest = state
+            .manager
+            .bot_history(bot.bot_id, 1)
+            .await?
+            .into_iter()
+            .next();
+        summaries.push(console_bot_summary(bot, latest));
+    }
+
+    summaries.sort_by(|left, right| {
+        let left_running = left.runtime_state == "running";
+        let right_running = right.runtime_state == "running";
+        right_running
+            .cmp(&left_running)
+            .then_with(|| right.updated_at_ms.cmp(&left.updated_at_ms))
+            .then_with(|| right.bot_id.cmp(&left.bot_id))
+    });
+
+    Ok(Json(ConsoleOverviewResponse { bots: summaries }))
 }
 
 async fn bot_history(
@@ -685,6 +774,46 @@ mod tests {
             },
             execution: ExecutionAssumptions::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn console_overview_uses_persisted_bots_without_creating_runs() {
+        let path = temp_database("console-overview");
+        let storage = Arc::new(StorageReader::new(path.clone()));
+        storage.initialize().unwrap();
+        let manager = PaperManager::new(
+            Arc::clone(&storage),
+            Arc::new(MarketService::new()),
+        ).unwrap();
+        let state = TradingApiState {
+            manager,
+            storage: Arc::clone(&storage),
+        };
+
+        let (status, Json(bot)) = create_bot(
+            State(state.clone()),
+            Json(SaveTradingBotRequest {
+                bot_name: "Console BTC".into(),
+                configuration: sample_bot_configuration(25.0),
+            }),
+        ).await.unwrap();
+        assert_eq!(status, StatusCode::CREATED);
+
+        let Json(overview) = console_overview(State(state)).await.unwrap();
+        assert_eq!(overview.bots.len(), 1);
+        let summary = &overview.bots[0];
+        assert_eq!(summary.bot_id, bot.bot_id);
+        assert_eq!(summary.bot_name, "Console BTC");
+        assert_eq!(summary.symbol, "BTCUSDT");
+        assert_eq!(summary.market_type, "spot");
+        assert_eq!(summary.runtime_state, "idle");
+        assert_eq!(summary.active_run_id, None);
+        assert_eq!(summary.latest_run_id, None);
+        assert_eq!(summary.position_quantity, None);
+        assert!(storage.trading_runs_by_mode(crate::storage::RunMode::Paper, 10).unwrap().is_empty());
+
+        drop(storage);
+        cleanup_database(&path);
     }
 
     #[tokio::test]

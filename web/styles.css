@@ -1200,3 +1200,51 @@ body[data-trading-mode="live"] .trading-audit-panel {
   .trading-technical-audit-shell { padding: 14px; }
   .trading-technical-audit-toolbar { align-items: flex-start; flex-direction: column; }
 }
+
+/* Lightweight Operations Console */
+.console-page { display: grid; gap: 16px; min-width: 0; }
+.console-page-heading { margin-bottom: 0; }
+.console-refresh-copy { display: grid; justify-items: end; gap: 5px; color: var(--muted); text-align: right; }
+.console-refresh-copy strong { color: var(--text); font-size: 0.82rem; }
+.console-refresh-copy span { font-size: 0.72rem; }
+.console-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.console-summary-grid .status-card { min-width: 0; }
+.console-summary-grid .status-card strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.console-bots-panel { min-width: 0; min-height: 0; padding: 22px; }
+.console-bots-note { margin: 8px 0 0; }
+.console-bot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; margin-top: 18px; }
+.console-bot-card { display: grid; min-width: 0; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: var(--text); text-decoration: none; transition: border-color 120ms ease, transform 120ms ease; }
+.console-bot-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.console-bot-card--running { border-color: color-mix(in srgb, var(--bid) 55%, var(--border)); }
+.console-bot-card-heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.console-bot-identity { min-width: 0; }
+.console-bot-identity strong, .console-bot-identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-bot-identity strong { font-size: 0.94rem; }
+.console-bot-identity span { margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
+.console-running-badge { border-color: color-mix(in srgb, var(--bid) 50%, var(--border)); background: var(--bid-soft); color: var(--bid); }
+.console-bot-runline { color: var(--muted); font-size: 0.72rem; text-transform: capitalize; }
+.console-bot-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.console-bot-metric { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.console-bot-metric span, .console-bot-metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-bot-metric span { color: var(--muted); font-size: 0.62rem; }
+.console-bot-metric strong { margin-top: 5px; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.console-bot-metric strong.is-positive { color: var(--bid); }
+.console-bot-metric strong.is-negative { color: var(--ask); }
+.console-bot-footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px; color: var(--muted); font-size: 0.68rem; }
+.console-bot-footer span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-bot-footer strong { flex: 0 0 auto; color: var(--accent); font-size: 0.7rem; }
+.console-empty { grid-column: 1 / -1; padding: 26px; border: 1px dashed var(--border); border-radius: 11px; color: var(--muted); text-align: center; }
+.console-status { margin: 16px 0 0; }
+
+@media (max-width: 900px) {
+  .console-summary-grid { grid-template-columns: 1fr; }
+  .console-page-heading { align-items: flex-start; }
+  .console-page-heading > .lede { max-width: none; text-align: left; }
+  .console-refresh-copy { justify-items: start; text-align: left; }
+  .console-bot-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .console-bot-card-heading, .console-bot-footer { align-items: flex-start; flex-direction: column; }
+  .console-bot-metrics { grid-template-columns: 1fr 1fr; }
+}

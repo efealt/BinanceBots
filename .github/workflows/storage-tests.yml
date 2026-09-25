@@ -46,6 +46,8 @@ jobs:
         run: node scripts/test-backtest-analysis.js
       - name: Test Trading page shell
         run: node scripts/test-trading-shell.js
+      - name: Test lightweight Console contract
+        run: node scripts/test-console-shell.js
       - name: Test Trading shared mode contract
         run: node scripts/test-trading-contract.js
       - name: Run Phase 4 parity + safety verification

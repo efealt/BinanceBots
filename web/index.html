@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>Binance Grid</title>
+    <title>Binance Grid · Console</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -28,7 +28,7 @@
         </nav>
 
         <div class="topbar-actions">
-          <span class="environment-pill"><span class="status-dot pending"></span> Setup mode</span>
+          <span class="environment-pill"><span id="console-top-dot" class="status-dot pending"></span><span id="console-top-label">Low-bandwidth monitor</span></span>
           <form method="post" action="/logout">
             <button class="button button--secondary" type="submit">Sign out</button>
           </form>
@@ -38,22 +38,54 @@
         </div>
       </header>
 
-      <main>
-        <section class="bot-selector" aria-label="Bots">
+      <main class="console-page">
+        <section class="page-heading console-page-heading" aria-labelledby="console-heading">
+          <div>
+            <p class="eyebrow">Operations</p>
+            <h1 id="console-heading">Bot Console</h1>
+            <p class="lede">Low-bandwidth status for persisted Bots. Open Trading only when you need detailed live inspection or controls.</p>
+          </div>
+          <div class="console-refresh-copy">
+            <strong id="console-refresh-label">Loading Bot state…</strong>
+            <span>Read-only · refreshes about every 45 seconds</span>
+          </div>
+        </section>
+
+        <section class="console-summary-grid" aria-label="Bot status summary">
+          <article class="status-card">
+            <div class="card-header"><p>Running</p><span class="status-dot live"></span></div>
+            <strong id="console-running-count">—</strong>
+            <span>Live-Paper Bots</span>
+          </article>
+          <article class="status-card">
+            <div class="card-header"><p>Idle</p><span class="status-dot pending"></span></div>
+            <strong id="console-idle-count">—</strong>
+            <span>Saved Bots</span>
+          </article>
+          <article class="status-card">
+            <div class="card-header"><p>Last refresh</p><span id="console-refresh-dot" class="status-dot loading"></span></div>
+            <strong id="console-last-refresh">—</strong>
+            <span>Single compact API snapshot</span>
+          </article>
+        </section>
+
+        <section class="panel console-bots-panel" aria-labelledby="console-bots-heading">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Bots</p>
-              <h2>Bot strip</h2>
+              <h2 id="console-bots-heading">Operational status</h2>
             </div>
-            <span id="bot-count" class="badge badge--muted">0 bots</span>
+            <span id="console-bot-count" class="badge badge--muted">0 bots</span>
           </div>
-          <div id="bot-strip" class="bot-strip"></div>
+          <p class="panel-note console-bots-note">Running Bots are shown first. Select any card to open that Bot in Trading.</p>
+          <div id="console-bot-grid" class="console-bot-grid" aria-live="polite">
+            <div class="console-empty">Loading persisted Bots…</div>
+          </div>
+          <p id="console-status" class="panel-note console-status" role="status">Reading protected Bot state…</p>
         </section>
-
-        <section id="console-detail" class="console-detail" aria-live="polite"></section>
       </main>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=2"></script>
   </body>
 </html>
