@@ -18,7 +18,7 @@ fn temp_database(label: &str) -> PathBuf {
         .expect("system clock before epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "binance-grid-backtest-{label}-{}-{suffix}.sqlite3",
+        "binance-bots-backtest-{label}-{}-{suffix}.sqlite3",
         std::process::id()
     ))
 }

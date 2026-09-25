@@ -10,7 +10,7 @@ fn temp_database(label: &str) -> std::path::PathBuf {
         .expect("system clock before epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "binance-grid-{label}-{}-{suffix}.sqlite3",
+        "binance-bots-{label}-{}-{suffix}.sqlite3",
         std::process::id()
     ))
 }

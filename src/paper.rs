@@ -2172,7 +2172,7 @@ mod tests {
 
     fn temp_database(label: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "binance-grid-paper-{label}-{}-{}.sqlite3",
+            "binance-bots-paper-{label}-{}-{}.sqlite3",
             std::process::id(),
             system_now_ms()
         ))

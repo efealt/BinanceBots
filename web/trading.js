@@ -1,4 +1,4 @@
-const TradingContract = window.BinanceGridTradingContract;
+const TradingContract = window.BinanceBotsTradingContract;
 if (!TradingContract) throw new Error("Shared Trading contract failed to load");
 const themeToggle = document.querySelector("#theme-toggle");
 const runIdElement = document.querySelector("#trading-run-id");

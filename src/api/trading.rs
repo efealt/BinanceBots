@@ -669,7 +669,7 @@ mod tests {
 
     fn temp_database(label: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "binance-grid-trading-api-{label}-{}-{}.sqlite3",
+            "binance-bots-trading-api-{label}-{}-{}.sqlite3",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

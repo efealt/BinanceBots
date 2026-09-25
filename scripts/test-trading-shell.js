@@ -115,13 +115,13 @@ if (!trading.includes("https://unpkg.com/lightweight-charts@5.2.0/dist/lightweig
 if (!trading.includes('/market-chart.js?v=8')) {
   throw new Error("Trading page must reuse the MarketChart wrapper");
 }
-if (!trading.includes('/trading-contract.js?v=2')) {
+if (!trading.includes('/trading-contract.js?v=3')) {
   throw new Error("Trading page must load the Phase 4.8B Bot-aware shared mode contract before page behavior");
 }
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=22')) {
+if (!trading.includes('/trading.js?v=23')) {
   throw new Error("Trading page must load the Bot identity safeguard client");
 }
 if (!trading.includes('/styles.css?v=trading-17')) {
@@ -372,4 +372,20 @@ if (!tradingJs.includes('Backend temporarily unavailable (') || !tradingJs.inclu
 }
 if (!tradingJs.includes('body.length <= 500')) {
   throw new Error("Trading must bound unexpected backend error bodies");
+}
+
+for (const page of pages) {
+  const html = fs.readFileSync(page, "utf8");
+  if (html.includes("Binance Grid") || html.includes(">BG</span>")) {
+    throw new Error(page + " still contains legacy Binance Grid branding");
+  }
+  if (!html.includes("BinanceBots")) {
+    throw new Error(page + " is missing BinanceBots branding");
+  }
+}
+if (!tradingContract.includes("BinanceBotsTradingContract") || tradingContract.includes("BinanceGridTradingContract")) {
+  throw new Error("Trading contract namespace must use BinanceBots identity only");
+}
+if (!tradingJs.includes("BinanceBotsTradingContract") || tradingJs.includes("BinanceGridTradingContract")) {
+  throw new Error("Trading client must use BinanceBots contract namespace only");
 }

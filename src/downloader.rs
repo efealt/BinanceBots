@@ -21,7 +21,7 @@ impl ArchiveDownloader {
     pub fn new(storage: Arc<StorageReader>) -> Result<Self, ArchiveDownloadError> {
         let http = Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            .user_agent("binance-grid-research-archive-importer/1.0")
+            .user_agent("binance-bots-research-archive-importer/1.0")
             .build()?;
         Ok(Self {
             storage,

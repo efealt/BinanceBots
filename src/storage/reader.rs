@@ -878,7 +878,7 @@ mod tests {
             .expect("system clock is before Unix epoch")
             .as_nanos();
         let database_path = std::env::temp_dir().join(format!(
-            "binance-grid-data-download-test-{}-{unique_suffix}.sqlite3",
+            "binance-bots-data-download-test-{}-{unique_suffix}.sqlite3",
             std::process::id()
         ));
         let reader = StorageReader::new(database_path.clone());

@@ -3,7 +3,7 @@
   if (typeof module === "object" && module.exports) {
     module.exports = contract;
   }
-  root.BinanceGridTradingContract = contract;
+  root.BinanceBotsTradingContract = contract;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 

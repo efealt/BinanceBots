@@ -131,7 +131,7 @@ mod tests {
 
     fn temp_database(label: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        std::env::temp_dir().join(format!("binance-grid-bots-{label}-{}-{suffix}.sqlite3", std::process::id()))
+        std::env::temp_dir().join(format!("binance-bots-bots-{label}-{}-{suffix}.sqlite3", std::process::id()))
     }
 
     fn cleanup(path: &std::path::Path) {

@@ -1,6 +1,6 @@
-# BinanceGrid App
+# BinanceBots App
 
-BinanceGrid is a private quantitative market-data and research application for Binance, written in Rust with a plain HTML/CSS/JavaScript frontend.
+BinanceBots is a private quantitative market-data and research application for Binance, written in Rust with a plain HTML/CSS/JavaScript frontend.
 
 ## Current pages
 

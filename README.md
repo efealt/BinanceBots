@@ -1,4 +1,4 @@
-# Binance Grid
+# BinanceBots
 
 Local Rust dashboard and market-data foundation for the trading system.
 

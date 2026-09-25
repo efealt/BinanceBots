@@ -18,7 +18,7 @@ fn verification_database(label: &str) -> PathBuf {
         .expect("system clock before epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "binance-grid-phase4-verification-{label}-{}-{suffix}.sqlite3",
+        "binance-bots-phase4-verification-{label}-{}-{suffix}.sqlite3",
         std::process::id()
     ))
 }

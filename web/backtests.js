@@ -1154,8 +1154,8 @@ function renderSelectedTimeframe() {
   if (!candles.length) chartEmpty.textContent = "This ticker has no stored OHLCV candles.";
 }
 
-const BACKTEST_JOB_STORAGE_KEY = "binance-grid-active-backtest-job";
-const BACKTEST_RUN_STORAGE_KEY = "binance-grid-last-backtest-run";
+const BACKTEST_JOB_STORAGE_KEY = "binance-bots-active-backtest-job";
+const BACKTEST_RUN_STORAGE_KEY = "binance-bots-last-backtest-run";
 const BACKTEST_POLL_MS = 2500;
 let backtestJobActive = false;
 let backtestPollTimer = null;

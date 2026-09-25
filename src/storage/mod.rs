@@ -143,7 +143,7 @@ impl CaptureWriter {
         let capture_id = store.capture_id;
         let (sender, receiver) = sync_channel(WRITER_QUEUE_CAPACITY);
         let thread = std::thread::Builder::new()
-            .name("binance-grid-sqlite-writer".into())
+            .name("binance-bots-sqlite-writer".into())
             .spawn(move || writer_loop(store, receiver))
             .map_err(|error| StorageError::WriterStart(error.to_string()))?;
 

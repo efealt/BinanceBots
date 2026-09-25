@@ -160,7 +160,7 @@
   "interval": "1m",
   "market_type": "usd_m_perpetual",
   "ordinary_ci_downloads_market_data": false,
-  "purpose": "Frozen full real-market regression fixture for BinanceGrid Phase 3",
+  "purpose": "Frozen full real-market regression fixture for BinanceBots Phase 3",
   "schema_version": 4,
   "source": "Binance public data archives (data.binance.vision)",
   "symbol": "XAGUSDT",

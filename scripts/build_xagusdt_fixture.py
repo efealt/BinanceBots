@@ -69,7 +69,7 @@ def archive_urls() -> list[str]:
 
 def fetch_archive(url: str) -> tuple[bytes, str]:
     print(f"download {url}", flush=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "BinanceGrid regression fixture builder"})
+    request = urllib.request.Request(url, headers={"User-Agent": "BinanceBots regression fixture builder"})
     with urllib.request.urlopen(request, timeout=90) as response:
         payload = response.read()
     return payload, hashlib.sha256(payload).hexdigest()
@@ -222,7 +222,7 @@ def main() -> None:
     db_sha = hashlib.sha256(DB_PATH.read_bytes()).hexdigest()
     manifest = {
         "fixture": DB_PATH.name,
-        "purpose": "Frozen full real-market regression fixture for BinanceGrid Phase 3",
+        "purpose": "Frozen full real-market regression fixture for BinanceBots Phase 3",
         "source": "Binance public data archives (data.binance.vision)",
         "venue": "binance",
         "market_type": MARKET_TYPE,

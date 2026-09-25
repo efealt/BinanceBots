@@ -1,11 +1,11 @@
-# BinanceGrid Architecture
+# BinanceBots Architecture
 
 Status: current system  
 Last updated: 2026-09-24
 
 ## Runtime
 
-BinanceGrid is a Rust/Axum web application deployed on Render from GitHub `main`.
+BinanceBots is a Rust/Axum web application deployed on Render from GitHub `main`.
 
 ```text
 Browser
