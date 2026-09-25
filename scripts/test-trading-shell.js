@@ -51,6 +51,10 @@ for (const required of [
   'id="trading-bot-history-drawer"',
   'id="trading-history-list"',
   'id="trading-history-badge"',
+  'id="trading-bot-identity-dialog"',
+  'id="trading-bot-identity-new-name"',
+  'id="trading-bot-identity-update"',
+  'id="trading-bot-identity-create"',
   'id="trading-detail-run-badge"',
   'id="trading-audit-body"',
   'id="trading-audit-load-all"',
@@ -117,11 +121,11 @@ if (!trading.includes('/trading-contract.js?v=2')) {
 if (!trading.includes('data-trading-mode="paper"')) {
   throw new Error("Trading page must expose its active mode for unmistakable Paper/Live styling");
 }
-if (!trading.includes('/trading.js?v=19')) {
-  throw new Error("Trading page must load the selected-Bot history drawer client");
+if (!trading.includes('/trading.js?v=20')) {
+  throw new Error("Trading page must load the Bot identity safeguard client");
 }
-if (!trading.includes('/styles.css?v=trading-16')) {
-  throw new Error("Trading page must load the selected-Bot history drawer styles");
+if (!trading.includes('/styles.css?v=trading-17')) {
+  throw new Error("Trading page must load the Bot identity safeguard styles");
 }
 if (trading.includes('class="panel trading-history-panel"')) {
   throw new Error("Bot history must live with the selected Bot instead of a duplicate bottom panel");
@@ -153,6 +157,11 @@ for (const required of [
   'bot_id: selectedBotId',
   'fetchJson("/api/trading/bots")',
   'async function selectBot(botId)',
+  'function botIdentitySensitiveChanges()',
+  'function confirmBotIdentityChanges(changes)',
+  'async function botPersistenceChoiceForCurrentForm()',
+  'forceCreate: choice.action === "create"',
+  'botNameOverride: choice.action === "create" ? choice.botName : null',
   'function updateHistoryDrawerState()',
   'historyToggle.dataset.historyToggle = String(bot.bot_id)',
   'historyExpanded = !historyExpanded',
@@ -332,4 +341,11 @@ for (const required of [
   'indicators = true',
 ]) {
   if (!marketChartJs.includes(required)) throw new Error("Reusable MarketChart contract is missing: " + required);
+}
+
+if (!tradingJs.includes('for (const field of ["symbol", "market_type", "strategy_id"])')) {
+  throw new Error("Bot identity safeguard must be limited to Symbol, Market, and Strategy");
+}
+if (!tradingJs.includes('method: creating ? "POST" : "PUT"')) {
+  throw new Error("Save as New Bot must create a fresh Bot instead of overwriting then cloning");
 }

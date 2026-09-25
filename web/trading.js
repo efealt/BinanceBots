@@ -86,6 +86,13 @@ const historyDrawer = document.querySelector("#trading-bot-history-drawer");
 const historyBadge = document.querySelector("#trading-history-badge");
 const historyList = document.querySelector("#trading-history-list");
 const historyStatus = document.querySelector("#trading-history-status");
+const botIdentityDialog = document.querySelector("#trading-bot-identity-dialog");
+const botIdentityCloseButton = document.querySelector("#trading-bot-identity-close");
+const botIdentityChanges = document.querySelector("#trading-bot-identity-changes");
+const botIdentityNewName = document.querySelector("#trading-bot-identity-new-name");
+const botIdentityCancelButton = document.querySelector("#trading-bot-identity-cancel");
+const botIdentityUpdateButton = document.querySelector("#trading-bot-identity-update");
+const botIdentityCreateButton = document.querySelector("#trading-bot-identity-create");
 
 let stream = null;
 let reconnectTimer = null;
@@ -152,6 +159,7 @@ let currentPreview = null;
 let previewFingerprint = null;
 let previewStale = false;
 let previewRequestToken = 0;
+let botIdentityDecisionResolver = null;
 
 function marketTypeLabel(marketType) {
   return marketType === "spot" ? "Spot" : marketType === "usd_m_perpetual" ? "USD-M perpetual" : humanize(marketType);
@@ -303,6 +311,85 @@ function botFormFingerprint() {
 function hasUnsavedBotChanges() {
   if (botDraftMode || !selectedBot) return true;
   return selectedBotBaseline !== botFormFingerprint();
+}
+
+function botIdentityFieldLabel(field, value) {
+  if (field === "market_type") return marketTypeLabel(value);
+  if (field === "strategy_id") {
+    const option = Array.from(strategyInput.options).find((candidate) => candidate.value === value);
+    return option?.textContent?.trim() || value || "—";
+  }
+  return value || "—";
+}
+
+function botIdentitySensitiveChanges() {
+  if (botDraftMode || !selectedBot) return [];
+  const saved = selectedBot.config ?? {};
+  const current = {
+    symbol: symbolInput.value,
+    market_type: marketTypeInput.value,
+    strategy_id: strategyInput.value,
+  };
+  const labels = {
+    symbol: "Symbol",
+    market_type: "Market",
+    strategy_id: "Strategy",
+  };
+  const changes = [];
+  for (const field of ["symbol", "market_type", "strategy_id"]) {
+    const before = String(saved[field] ?? "");
+    const after = String(current[field] ?? "");
+    if (before === after) continue;
+    changes.push({
+      field,
+      label: labels[field],
+      before: botIdentityFieldLabel(field, before),
+      after: botIdentityFieldLabel(field, after),
+    });
+  }
+  return changes;
+}
+
+function resolveBotIdentityDecision(decision) {
+  if (!botIdentityDecisionResolver) return;
+  const resolver = botIdentityDecisionResolver;
+  botIdentityDecisionResolver = null;
+  if (botIdentityDialog.open) botIdentityDialog.close();
+  resolver(decision);
+}
+
+function confirmBotIdentityChanges(changes) {
+  if (!changes.length || botDraftMode || !selectedBot) {
+    return Promise.resolve({ action: "update" });
+  }
+
+  botIdentityChanges.replaceChildren();
+  for (const change of changes) {
+    const row = document.createElement("div");
+    row.className = "trading-bot-identity-change";
+    const label = document.createElement("strong");
+    label.textContent = change.label;
+    const values = document.createElement("span");
+    values.textContent = change.before + " → " + change.after;
+    row.append(label, values);
+    botIdentityChanges.appendChild(row);
+  }
+
+  botIdentityUpdateButton.textContent = "Update Bot #" + selectedBotId;
+  botIdentityNewName.value = "";
+  botIdentityCreateButton.disabled = true;
+
+  return new Promise((resolve) => {
+    botIdentityDecisionResolver = resolve;
+    botIdentityDialog.showModal();
+    botIdentityNewName.focus();
+  });
+}
+
+async function botPersistenceChoiceForCurrentForm() {
+  const changes = botIdentitySensitiveChanges();
+  if (!changes.length) return { action: "update" };
+  return confirmBotIdentityChanges(changes);
 }
 
 function sortedBotsForStrip() {
@@ -2144,11 +2231,11 @@ function openNewBotDraft() {
   setConnection("connected", "New Bot draft · no execution started");
 }
 
-async function persistCurrentBotFromForm() {
-  const botName = botNameInput.value.trim();
+async function persistCurrentBotFromForm({ forceCreate = false, botNameOverride = null } = {}) {
+  const botName = String(botNameOverride ?? botNameInput.value).trim();
   if (!botName) throw new Error("Bot name is required.");
   const configuration = buildStartConfiguration();
-  const creating = botDraftMode || !selectedBotId;
+  const creating = forceCreate || botDraftMode || !selectedBotId;
   const url = creating ? "/api/trading/bots" : ("/api/trading/bots/" + selectedBotId);
   const bot = await requestJson(url, {
     method: creating ? "POST" : "PUT",
@@ -2164,6 +2251,8 @@ async function persistCurrentBotFromForm() {
   selectedBotId = Number(bot.bot_id);
   selectedBot = bot;
   botDraftMode = false;
+  historyExpanded = false;
+  botHistoryRuns = [];
   applyBotConfiguration(bot);
   selectedBotBaseline = botFormFingerprint();
   renderBotStrip();
@@ -2178,9 +2267,22 @@ async function saveCurrentBot() {
   showControlError("");
   saveBotButton.disabled = true;
   try {
-    const bot = await persistCurrentBotFromForm();
+    const choice = await botPersistenceChoiceForCurrentForm();
+    if (choice.action === "cancel") {
+      setConfigLocked(false);
+      setControlStatus("Bot changes were not saved.");
+      return;
+    }
+    const bot = await persistCurrentBotFromForm({
+      forceCreate: choice.action === "create",
+      botNameOverride: choice.action === "create" ? choice.botName : null,
+    });
     setBotStatus("Bot #" + bot.bot_id + " · Saved · Idle");
-    setControlStatus("Bot #" + bot.bot_id + " saved. Live-Paper has not started.");
+    setControlStatus(
+      choice.action === "create"
+        ? "Created Bot #" + bot.bot_id + " as a new Bot with no inherited Run history."
+        : "Bot #" + bot.bot_id + " saved. Live-Paper has not started."
+    );
   } catch (error) {
     showControlError(error.message);
     setConfigLocked(false);
@@ -2467,10 +2569,26 @@ tradingForm.addEventListener("submit", async (event) => {
     const wasDraft = botDraftMode || !selectedBotId;
     const wasDirty = !wasDraft && hasUnsavedBotChanges();
     if (wasDraft || wasDirty) {
-      setControlStatus(wasDraft
-        ? "Creating Bot and starting Live-Paper…"
-        : "Saving Bot changes and starting Live-Paper…");
-      await persistCurrentBotFromForm();
+      let choice = { action: "update" };
+      if (!wasDraft) {
+        choice = await botPersistenceChoiceForCurrentForm();
+        if (choice.action === "cancel") {
+          setConfigLocked(false);
+          setControlStatus("Bot changes were not saved and Live-Paper was not started.");
+          return;
+        }
+      }
+      setControlStatus(
+        wasDraft
+          ? "Creating Bot and starting Live-Paper…"
+          : (choice.action === "create"
+            ? "Creating a new Bot from these changes and starting Live-Paper…"
+            : "Saving Bot changes and starting Live-Paper…")
+      );
+      await persistCurrentBotFromForm({
+        forceCreate: choice.action === "create",
+        botNameOverride: choice.action === "create" ? choice.botName : null,
+      });
     }
     if (!selectedBotId) throw new Error("A persisted Bot is required before Live-Paper can start.");
     if (activeRunForBot(selectedBotId)) {
@@ -2498,6 +2616,39 @@ tradingForm.addEventListener("submit", async (event) => {
     showControlError(error.message);
     setConfigLocked(false);
     setControlStatus("Live-Paper run was not started.");
+  }
+});
+
+botIdentityNewName.addEventListener("input", () => {
+  botIdentityCreateButton.disabled = !botIdentityNewName.value.trim();
+});
+
+botIdentityCancelButton.addEventListener("click", () => {
+  resolveBotIdentityDecision({ action: "cancel" });
+});
+
+botIdentityCloseButton.addEventListener("click", () => {
+  resolveBotIdentityDecision({ action: "cancel" });
+});
+
+botIdentityUpdateButton.addEventListener("click", () => {
+  resolveBotIdentityDecision({ action: "update" });
+});
+
+botIdentityCreateButton.addEventListener("click", () => {
+  const botName = botIdentityNewName.value.trim();
+  if (!botName) return;
+  resolveBotIdentityDecision({ action: "create", botName });
+});
+
+botIdentityDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  resolveBotIdentityDecision({ action: "cancel" });
+});
+
+botIdentityDialog.addEventListener("click", (event) => {
+  if (event.target === botIdentityDialog) {
+    resolveBotIdentityDecision({ action: "cancel" });
   }
 });
 

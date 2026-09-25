@@ -619,6 +619,7 @@ Console is now the low-bandwidth default monitoring surface; Trading remains the
 - Console cards show Bot name, symbol/market, running/idle state, active or latest Run ID, latest persisted position, equity, realized PnL, fees, fill count, and update age. Console does not create, update, start, or stop Bots/Runs.
 - The Console browser performs one refresh every 45 seconds while visible and pauses polling while hidden. It opens no Binance market stream and no Run WebSocket.
 - Clicking a Console Bot opens `/trading.html?bot_id=<id>`. Trading resolves that persisted Bot after loading its catalog, selects it, and only then uses the existing detailed market/Run stream contracts.
+- Bot identity is user-defined. Ordinary parameter edits update the selected Bot, but Symbol, Market, and Strategy are protected identity-sensitive fields in Trading. If one changes, Save and Save & Start require an explicit decision: cancel, overwrite the same Bot identity, or POST a completely new Bot from the edited form. The new Bot receives a new `bot_id` and no inherited Runs; historical Runs remain linked only to their original Bot and keep their immutable configuration snapshots.
 - Browser navigation remains presentation-only. Leaving Trading closes its browser streams naturally; backend-owned Live-Paper runtimes continue independently.
 - The bandwidth boundary is structural and CI-enforced: Console uses one slow JSON poll and contains no WebSocket/market-stream code, whereas detailed Trading intentionally owns the live chart and streaming inspection paths.
 

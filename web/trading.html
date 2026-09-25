@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Trading · Binance Grid</title>
-    <link rel="stylesheet" href="/styles.css?v=trading-16" />
+    <link rel="stylesheet" href="/styles.css?v=trading-17" />
   </head>
   <body data-trading-mode="paper">
     <div class="app-shell">
@@ -386,6 +386,33 @@
       </main>
     </div>
 
+    <dialog id="trading-bot-identity-dialog" class="trading-bot-identity-dialog" aria-labelledby="trading-bot-identity-heading">
+      <div class="trading-bot-identity-shell">
+        <div class="trading-bot-identity-header">
+          <div>
+            <p class="eyebrow">Bot identity safeguard</p>
+            <h2 id="trading-bot-identity-heading">This changes what the Bot represents</h2>
+            <p class="trading-bot-identity-copy">Symbol, market, and strategy are identity-sensitive. Existing Runs stay unchanged whichever option you choose.</p>
+          </div>
+          <button id="trading-bot-identity-close" class="trading-dialog-close" type="button" aria-label="Cancel Bot identity change">×</button>
+        </div>
+
+        <div id="trading-bot-identity-changes" class="trading-bot-identity-changes"></div>
+
+        <label class="field trading-bot-identity-name">New Bot name
+          <input id="trading-bot-identity-new-name" class="field-control" type="text" maxlength="120" placeholder="Required only for Save as New Bot" />
+        </label>
+
+        <div class="trading-bot-identity-actions">
+          <button id="trading-bot-identity-cancel" class="button button--secondary" type="button">Cancel</button>
+          <button id="trading-bot-identity-update" class="button button--warning" type="button">Update existing Bot</button>
+          <button id="trading-bot-identity-create" class="button button--primary" type="button" disabled>Save as New Bot</button>
+        </div>
+
+        <p class="panel-note">Save as New Bot creates a fresh Bot with no Run history. Update existing Bot keeps the same Bot ID; prior Runs remain frozen with their original parameters.</p>
+      </div>
+    </dialog>
+
     <dialog id="trading-technical-audit-dialog" class="trading-technical-audit-dialog" aria-labelledby="trading-technical-audit-heading">
       <div class="trading-technical-audit-shell">
         <div class="trading-technical-audit-header">
@@ -424,6 +451,6 @@
     <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/market-chart.js?v=5"></script>
     <script src="/trading-contract.js?v=2"></script>
-    <script src="/trading.js?v=19"></script>
+    <script src="/trading.js?v=20"></script>
   </body>
 </html>
