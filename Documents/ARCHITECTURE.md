@@ -508,6 +508,20 @@ Live-Paper resting orders now execute from Binance trade events rather than comp
 Backtest execution is unchanged and continues to use `HistoricalExecution`.
 
 
+## Phase 4.8C Phase 4 — Serialized Live-Paper chronology
+
+Each active Live-Paper Run now has one backend actor that exclusively owns strategy state, `LivePaperExecution`, portfolio state, replay aggregation, and canonical persistence ordering.
+
+- Binance trade events and Binance 1-minute candle events arrive through the same per-Run `RunMarketSubscription`. Its monotonic backend `sequence` is the tie-breaker when exchange timestamps are equal, and the actor processes one event at a time in that order.
+- Trades are routed immediately to `LivePaperExecution`. Closed 1-minute candles are routed separately through `ReplayAggregator` and only completed replay buckets call `strategy.on_candle`. Incomplete candle updates and pre-start completed candles cannot advance the strategy clock.
+- The 500 ms market snapshot timer is presentation-only. It refreshes quote/book/candle UI state but cannot mutate strategy state, execute an order, or create canonical trading events.
+- `on_start` remains synchronous with Run start and submits the initial static-grid intents to the Live-Paper executor immediately.
+- For each simulated fill the actor persists canonical effects in this order: Fill, OrderState, shared portfolio/accounting application, Position snapshot, Equity snapshot, then runtime/UI snapshot publication.
+- Canonical `run_sequence` therefore records the exact actor mutation order even when different market-event types share an exchange timestamp.
+- A future shared `Strategy::on_fill(...)` hook has one defined insertion point after canonical fill/accounting persistence and before the actor accepts its next market event. No fill-driven grid replenishment or recentering rule exists yet.
+- Bot concurrency limits, one-active-Run-per-Bot admission, immediate Start semantics, and Backtest chronology are unchanged.
+
+
 ## Phase 4.8B Phase 5A — Bot history and Run activity backend contracts
 
 The lower Trading workspace now has dedicated read-only backend contracts for history and presentation without changing execution semantics.

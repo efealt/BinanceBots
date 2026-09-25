@@ -253,12 +253,13 @@ fn phase4_backtest_and_paper_are_semantically_equal_with_equivalent_live_trade_t
                         quantity: 10.0,
                     },
                     candle.close_time_ms,
+                    trade_id,
                 )
                 .expect("process parity Paper trade");
             trade_id += 1;
         }
         paper_core
-            .process_strategy_candle(candle)
+            .process_strategy_candle(candle, candle.close_time_ms, trade_id)
             .expect("process parity Paper strategy candle");
     }
     let paper_history = paper_storage.trading_run_history(paper_core.run_id).unwrap();
