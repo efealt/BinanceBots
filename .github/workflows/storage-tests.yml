@@ -9,6 +9,7 @@ on:
       - "src/backtest/**"
       - "src/paper.rs"
       - "src/paper/**"
+      - "src/market/**"
       - "src/main.rs"
       - "src/trading/**"
       - "src/api/**"
