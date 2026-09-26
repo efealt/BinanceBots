@@ -1,5 +1,7 @@
 # Master Trading System Roadmap
 
+**Current status:** Phases 1–4.9 are complete. **Next substantive phase: Phase 5 — Paper-period historical replay.**
+
 ## Objective
 
 Build one backend trading/research system in which **Backtest, Paper, and Live use the same strategy interface and the same canonical run/order/fill/result data model**. Development progresses in that order: prove Backtest first, validate Paper against later historical replay second, and only then enable real-money Live trading.
@@ -88,7 +90,7 @@ Automated verification is green, the code is deployed live, and the authenticate
 
 ### Phase 3.7 — Strategy Module Structure — COMPLETE
 
-Detailed roadmap: `Roadmaps/03.7-strategy-module-structure.md`
+The completed detailed implementation roadmap was removed after acceptance; this master roadmap retains the accepted outcome.
 
 Before Paper runtime work begins, reorganize strategy implementations into a dedicated `src/trading/strategies/` namespace with one strategy per module. Move the existing static-grid fixture out of the generic `grid.rs` file and reserve separate modules for dynamic grid, volatility grid, mean reversion, and breakout without inventing their rules yet.
 
@@ -98,9 +100,7 @@ The shared `Strategy` interface, portfolio/accounting, execution engine, Backtes
 
 ### Phase 4 — Live Paper runtime + shared Trading page — COMPLETE
 
-Detailed roadmap: `Roadmaps/04-live-paper-runtime-shared-trading-page.md`
-
-Live-Paper execution correction roadmap: `Roadmaps/04.8C-live-paper-realtime-execution-adapter.md`
+The completed Phase 4 implementation roadmaps were removed after production acceptance; this master roadmap and `Documents/ARCHITECTURE.md` retain the accepted contracts.
 
 Add a backend-owned Paper mode that consumes real-time Binance market data but sends **no Binance account orders**.
 
@@ -117,6 +117,18 @@ Paper must run independently of the browser and persist the same decisions, orde
 **Exit:** The same strategy code can run for a real-time period in Paper mode, survive normal browser disconnects, produce a complete persistent run without real-money execution, and be operated/observed through the shared Trading page with Live visibly locked.
 
 **Exit achieved:** Phase 4 production acceptance is complete. Persistent Bots own immutable Runs, multiple Live-Paper Bots run concurrently and independently, browser close/reload does not own runtime continuity, Console provides lightweight monitoring, Trading provides detailed control/inspection/history, Live-Paper fills are driven by real Binance trades through the realtime adapter, and Live-Real-Account remains server-side locked.
+
+### Phase 4.9 — BinanceBots identity cutover and clean production acceptance — COMPLETE
+
+The application, GitHub repository, Render service display name, Rust package/binary, database filename, environment-variable namespace, browser namespace, and current documentation now use the **BinanceBots** identity.
+
+The existing Render service remains the same service and keeps its established public hostname **`https://binancegrid.onrender.com`**. The service display name is **BinanceBots**, the repository source is **`efealt/BinanceBots`**, the active binary is **`binance-bots`**, the production database is **`/var/data/binance_bots.sqlite3`**, and runtime configuration uses **`BINANCE_BOTS_*`** variables. The legacy URL slug is an accepted infrastructure detail, not the application identity.
+
+Fresh-production acceptance after the cutover verified the Data Downloader, Market feed, persistent Bot/Run lifecycle, browser-reload continuity, Live-Paper start/stop, Console running/idle transitions, immutable prior-Run inspection, and canonical persisted portfolio/fill state. The hosted downloader also now reports archive progress, identifies failed archives explicitly, skips already imported archives, and uses a two-UTC-day publication buffer to avoid false failures for Binance daily ZIPs that are not published yet.
+
+The applicable GitHub trading test workflow was green during the closeout work, and Render was LIVE on the accepted BinanceBots service. Completed detailed Phase 4/4.9 roadmaps were removed after closeout so the Roadmaps directory contains only work that remains plus the reusable template.
+
+**Exit achieved:** BinanceBots is the canonical current project identity, the accepted Render hostname is documented accurately, fresh end-to-end production behavior is verified, and development can resume directly at master Phase 5.
 
 ### Phase 5 — Paper-period historical replay
 
@@ -193,6 +205,8 @@ Phase 3.6 Visual Backtest Analysis + Buy & Hold benchmark
 Phase 3.7 Strategy module structure
    ↓
 Phase 4   Paper in real time + shared Paper/Live Trading page (Live locked)
+   ↓
+Phase 4.9 BinanceBots identity cutover + clean production acceptance
    ↓
 Phase 5   Later historical replay of that Paper period
    ↓

@@ -32,6 +32,17 @@
 - Visual validation must test whether the rendered result is meaningful for the user's stated analytical task, not only whether the page loads, data counts exist, or JavaScript produces no errors. If the visual result is wrong, fix it before reporting completion.
 - Keep API keys and other secrets in environment variables or ignored local storage. Never commit, print, or expose them in the UI.
 
+## Current project state
+
+- Current product/project identity: **BinanceBots**.
+- GitHub source of truth: `efealt/BinanceBots` on `main`.
+- Render service display name: **BinanceBots**. Its accepted public URL remains `https://binancegrid.onrender.com`; the legacy slug is infrastructure only and must not be treated as the product name.
+- Active production binary/package: `binance-bots`.
+- Active production database: `/var/data/binance_bots.sqlite3`; local default: `data/binance_bots.sqlite3`.
+- Active project environment variables use `BINANCE_BOTS_*`; do not reintroduce `BINANCE_GRID_*` compatibility aliases.
+- Phases 1–4.9 are complete. The next substantive roadmap phase is **Phase 5 — Paper-period historical replay**.
+- Completed detailed roadmaps are deleted after acceptance. `Roadmaps/00-master-trading-system-roadmap.md` is the active roadmap source; create a new detailed phase roadmap only when that phase actually begins.
+
 ## Development, deployment, and access rules
 
 - GitHub `main` is the code source of truth. The normal development loop is: user directs work in ChatGPT Chat → ChatGPT edits/commits GitHub → Render builds/runs the result → the deployed system is inspected through its permitted web/diagnostic surface.

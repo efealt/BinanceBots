@@ -23,7 +23,8 @@ The browser is a client only. Backend work does not depend on the browser remain
 
 - Repository: `efealt/BinanceBots`
 - Branch: `main`
-- Render identity note: the existing Render service intentionally remains named `BinanceGrid` and continues to use `https://binancegrid.onrender.com`; changing the Render-generated hostname would require a replacement service and is deferred unless the user explicitly requests it.
+- Render service name: **BinanceBots**.
+- Production URL: `https://binancegrid.onrender.com`. The existing Render slug is intentionally retained as an accepted infrastructure detail; it is not the product identity.
 - Render region: Frankfurt
 - Build: `cargo build --release`
 - Start: `./target/release/binance-bots`
@@ -31,6 +32,7 @@ The browser is a client only. Backend work does not depend on the browser remain
 - Persistent disk: `/var/data`
 - Production DB: `/var/data/binance_bots.sqlite3`
 - Local default DB: `data/binance_bots.sqlite3`
+- Runtime project environment variables: `BINANCE_BOTS_*`; obsolete `BINANCE_GRID_*` names are not supported.
 
 Local and Render databases are separate files using the same migration-defined schema.
 
@@ -63,10 +65,11 @@ Market View supports Binance Spot and USD-M perpetual markets.
 The Data Downloader imports Binance public 1-minute ZIP archives into SQLite.
 
 - Completed months use monthly archives.
-- The current partial month uses daily archives through yesterday.
+- The current partial month uses daily archives through two UTC days ago, leaving a publication buffer for Binance ZIP availability.
 - Already imported archives are skipped.
 - Spot and USD-M perpetual data remain separate datasets.
 - Active archive imports expose backend-owned archive-count progress through an authenticated progress endpoint; Data Downloader polls that state and shows a percentage bar while the import runs.
+- Failed archive labels and exact backend error reasons are shown after a partial/failed import so retries can be diagnosed without guessing.
 - Daily archive planning uses a two-UTC-day publication buffer so the downloader does not treat the newest unpublished Binance ZIP as a failure.
 - Import receipts, coverage, checksums, and candle data are persisted.
 
@@ -644,6 +647,28 @@ The production Trading model is now explicitly **Bot → Run**:
 Hosted Phase 4.8B acceptance exercised save-only creation, reload/deploy persistence, preview/stale preview, three simultaneous Live-Paper Bots across different symbols/configurations, cross-Bot switching, independent Stop, same-Bot restart with a new Run ID, historical inspection, Console ↔ Trading navigation, and wide/narrow responsive layouts. The accepted production hierarchy is:
 
 `persisted Bot → immutable Run → backend runtime/execution → canonical Run persistence → Console summary / Trading detail`.
+
+## Production acceptance and current roadmap position
+
+The BinanceBots identity cutover and fresh-production acceptance are complete.
+
+Accepted production identity:
+- application and Render service display name: **BinanceBots**;
+- GitHub repository: `efealt/BinanceBots`;
+- accepted Render URL: `https://binancegrid.onrender.com`;
+- package/binary: `binance-bots`;
+- production database: `/var/data/binance_bots.sqlite3`;
+- runtime configuration namespace: `BINANCE_BOTS_*`.
+
+Fresh-database production acceptance verified:
+- XAGUSDT and BTCUSDT USD-M historical datasets can be registered, imported, retried, and extended without re-importing completed archives;
+- Data Downloader exposes archive-count percentage progress and exact failed-archive reasons;
+- daily archive planning stops two UTC days behind the current UTC date to avoid treating not-yet-published Binance daily ZIPs as failures;
+- a persisted XAGUSDT Bot can be saved, started in Live-Paper, survive browser refresh/navigation, appear correctly as running in Console, stop cleanly to Idle, and preserve its immutable prior Run state;
+- fills, signed position, equity, fees, open-order state, and historical Run inspection remain available through the canonical Bot → Run model;
+- Render is LIVE on the existing persistent service and the applicable core-trading GitHub Actions checks used during closeout were green.
+
+Completed Phase 4, 4.8B, 4.8C, and 4.9 detailed roadmap files were removed after acceptance. The active roadmap is `Roadmaps/00-master-trading-system-roadmap.md`; the next substantive phase is **Phase 5 — Paper-period historical replay**.
 
 ## Source of truth
 
