@@ -1,6 +1,8 @@
 const form = document.querySelector("#download-entry-form");
 const saveButton = document.querySelector("#save-download");
 const saveFeedback = document.querySelector("#save-feedback");
+const failurePanel = document.querySelector("#download-failures");
+const failureList = document.querySelector("#download-failure-list");
 const catalogStatus = document.querySelector("#catalog-status");
 const downloadCount = document.querySelector("#download-count");
 const tableWrap = document.querySelector("#download-table-wrap");
@@ -70,6 +72,16 @@ function intervalLabel(interval) {
 function setFeedback(message, tone = "") {
   saveFeedback.textContent = message;
   saveFeedback.dataset.tone = tone;
+}
+
+function renderFailedArchives(failures = []) {
+  failureList.replaceChildren();
+  failurePanel.hidden = failures.length === 0;
+  for (const failure of failures) {
+    const item = document.createElement("li");
+    item.textContent = failure;
+    failureList.appendChild(item);
+  }
 }
 
 function setEditFeedback(message, tone = "") {
@@ -225,6 +237,7 @@ function renderDownloads(downloads) {
       actionButton.disabled = true;
       if (startDate) startDate.disabled = true;
       actionButton.textContent = "Downloading…";
+      renderFailedArchives([]);
       setFeedback(`Downloading missing ZIP archives for ${download.name}…`, "info");
       const stopProgressPolling = startDownloadProgressPolling(download.download_id, progressIndicator);
       try {
@@ -239,6 +252,7 @@ function renderDownloads(downloads) {
         const failed = result.failed_archives.length;
         const message = `Imported ${result.rows_imported.toLocaleString()} candles from ${result.archives_imported} ZIP ${result.archives_imported === 1 ? "archive" : "archives"}${result.archives_already_present ? `; ${result.archives_already_present} already present` : ""}${failed ? `; ${failed} archive ${failed === 1 ? "needs" : "need"} retry` : ""}.`;
         setFeedback(message, failed ? "error" : "success");
+        renderFailedArchives(result.failed_archives);
         await loadDownloads();
       } catch (error) {
         progressIndicator.container.hidden = true;

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>Data Downloader · BinanceBots</title>
-    <link rel="stylesheet" href="/styles.css?v=download-progress-1" />
+    <link rel="stylesheet" href="/styles.css?v=download-failures-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -87,6 +87,10 @@
               <button id="save-download" class="button button--primary" type="submit" form="download-entry-form">Save data entry</button>
               <p id="save-feedback" class="downloader-feedback" role="status" aria-live="polite"></p>
             </div>
+            <div id="download-failures" class="download-failures" hidden>
+              <strong>Failed archives</strong>
+              <ul id="download-failure-list"></ul>
+            </div>
           </article>
 
           <article class="panel">
@@ -146,6 +150,6 @@
       </form>
     </dialog>
 
-    <script src="/downloader.js?v=download-progress-1"></script>
+    <script src="/downloader.js?v=download-failures-1"></script>
   </body>
 </html>

@@ -344,6 +344,11 @@ h2 { margin-bottom: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
 .downloader-feedback[data-tone="success"] { color: var(--bid); }
 .downloader-feedback[data-tone="error"] { color: var(--ask); }
 .downloader-feedback[data-tone="info"] { color: var(--accent); }
+.download-failures { max-width: 980px; margin-top: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--ask) 48%, var(--border)); border-radius: 10px; background: var(--ask-soft); color: var(--ask); font-size: 0.75rem; line-height: 1.45; }
+.download-failures[hidden] { display: none; }
+.download-failures strong { display: block; margin-bottom: 7px; font-size: 0.76rem; }
+.download-failures ul { display: grid; gap: 5px; margin: 0; padding-left: 18px; }
+.download-failures li { overflow-wrap: anywhere; }
 .download-table { min-width: 1200px; }
 .download-table td { vertical-align: middle; font-variant-numeric: tabular-nums; }
 .download-table td:first-child { font-weight: 700; }
