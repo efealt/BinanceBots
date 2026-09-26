@@ -197,7 +197,7 @@ function renderDownloads(downloads) {
 
   tableWrap.hidden = false;
   emptyState.hidden = true;
-  catalogStatus.textContent = "ZIP imports use completed-month archives and daily files through yesterday.";
+  catalogStatus.textContent = "ZIP imports use completed-month archives and daily files through two UTC days ago.";
 
   for (const download of downloads) {
     const row = document.createElement("tr");

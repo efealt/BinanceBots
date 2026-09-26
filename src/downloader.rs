@@ -373,7 +373,7 @@ fn plan_archives(
         .ok_or(ArchiveDownloadError::InvalidStartDate)?
         .date_naive();
     let today = Utc::now().date_naive();
-    let Some(last_available_day) = today.pred_opt() else {
+    let Some(last_available_day) = safe_archive_cutoff(today) else {
         return Ok(Vec::new());
     };
     if start > last_available_day {
@@ -438,6 +438,10 @@ fn plan_archives(
         }
     }
     Ok(plan)
+}
+
+fn safe_archive_cutoff(today: NaiveDate) -> Option<NaiveDate> {
+    today.pred_opt()?.pred_opt()
 }
 
 fn last_day_of_month(date: NaiveDate) -> Result<NaiveDate, ArchiveDownloadError> {
@@ -564,7 +568,17 @@ impl DownloadRunPreparation {
 
 #[cfg(test)]
 mod tests {
-    use super::{archive_progress_percent, normalize_archive_timestamp_ms};
+    use super::{archive_progress_percent, normalize_archive_timestamp_ms, safe_archive_cutoff};
+    use chrono::NaiveDate;
+
+    #[test]
+    fn archive_cutoff_waits_two_utc_days_for_publication() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 26).unwrap();
+        assert_eq!(
+            safe_archive_cutoff(today),
+            NaiveDate::from_ymd_opt(2026, 9, 24)
+        );
+    }
 
     #[test]
     fn archive_progress_reports_percentage_by_completed_archive() {

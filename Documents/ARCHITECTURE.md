@@ -67,6 +67,7 @@ The Data Downloader imports Binance public 1-minute ZIP archives into SQLite.
 - Already imported archives are skipped.
 - Spot and USD-M perpetual data remain separate datasets.
 - Active archive imports expose backend-owned archive-count progress through an authenticated progress endpoint; Data Downloader polls that state and shows a percentage bar while the import runs.
+- Daily archive planning uses a two-UTC-day publication buffer so the downloader does not treat the newest unpublished Binance ZIP as a failure.
 - Import receipts, coverage, checksums, and candle data are persisted.
 
 Backtest reads stored historical data and can display 1-minute data or UTC-aggregated 1-hour/1-day views. Research diagnostics are computed from the stored series and rendered in the browser.
